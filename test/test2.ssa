@@ -1,0 +1,18 @@
+export function w $plus(w %t0, w %t1) {
+@l0
+	%x =l alloc4 4
+	storew %t0, %x
+	%y =l alloc4 4
+	storew %t1, %y
+	%t3 =w loadw %x
+	%t4 =w loadw %y
+	%t2 =w add %t3, %t4
+	ret %t2
+}
+
+export function w $main() {
+@l1
+	%t0 =w call $plus(w 3, w 4, ...)
+	ret %t0
+}
+
