@@ -28,6 +28,25 @@ void error(const char *fmt, ...) {
   exit(1);
 }
 
+char *user_input;
+
+void error_at(const char *loc, const char *fmt, ...) {
+  // Display the error position in the line.
+  int pos = cast(int) (loc - user_input);
+  fprintf(stderr, "%s\n", user_input);
+  for (int i = 0; i < pos; ++i) {
+    fprintf(stderr, " "); // padding until pos.
+  }
+  // fprintf(stderr, "%*s", pos, " ");
+  fprintf(stderr, "^ ");
+
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  fprintf(stderr, "\n");
+  exit(1);
+}
+
 // Consumes one token and returns true if the token is op.
 bool consume(char op) {
   if (token.kind != TokenKind.reserved || token.str[0] != op) {
@@ -39,13 +58,13 @@ bool consume(char op) {
 
 void expect(char op) {
   if (!consume(op)) {
-    error("Unexpected token %c", op);
+    error_at(token.str, "Expected token %c", op);
   }
 }
 
 int expect_number() {
   if (token.kind != TokenKind.num) {
-    error("Not a number");
+    error_at(token.str, "Expected a number");
   }
   int val = token.val;
   token = token.next;
@@ -83,7 +102,7 @@ Token* tokenize(char* p) {
       continue;
     }
 
-    error("Cannot tokenize.");
+    error_at(p, "Cannot tokenize.");
   }
   Token* _ = new_token(TokenKind.eof, cur, p);
   return head.next;
@@ -96,6 +115,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  user_input = argv[1];
   token = tokenize(argv[1]);
 
   printf("export function w $main() {\n");
