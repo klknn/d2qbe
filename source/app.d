@@ -20,7 +20,7 @@ struct Token {
 Token* token;
 
 // Reports an error like printf.
-void error(const char *fmt, ...) {
+extern (C) void error(const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
   vfprintf(stderr, fmt, ap);
@@ -28,16 +28,13 @@ void error(const char *fmt, ...) {
   exit(1);
 }
 
-char *user_input;
+char* user_input;
 
-void error_at(const char *loc, const char *fmt, ...) {
+extern (C) void error_at(const char* loc, const char* fmt, ...) {
   // Display the error position in the line.
-  int pos = cast(int) (loc - user_input);
+  int pos = cast(int)(loc - user_input);
   fprintf(stderr, "%s\n", user_input);
-  for (int i = 0; i < pos; ++i) {
-    fprintf(stderr, " "); // padding until pos.
-  }
-  // fprintf(stderr, "%*s", pos, " ");
+  fprintf(stderr, "%*s", pos, cast(const char*) " ");
   fprintf(stderr, "^ ");
 
   va_list ap;
@@ -126,10 +123,11 @@ int main(int argc, char** argv) {
   while (!at_eof()) {
     printf("\t%%t%d =w loadw %%x\n", i);
     if (consume('+')) {
-      printf("\t%%t%d =w add %%t%d, %d\n", i+1, i, expect_number());
-    } else {
+      printf("\t%%t%d =w add %%t%d, %d\n", i + 1, i, expect_number());
+    }
+    else {
       expect('-');
-      printf("\t%%t%d =w sub %%t%d, %d\n", i+1, i, expect_number());
+      printf("\t%%t%d =w sub %%t%d, %d\n", i + 1, i, expect_number());
     }
     i++;
     printf("\tstorew %%t%d, %%x\n", i++);
