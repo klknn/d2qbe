@@ -89,7 +89,7 @@ Token* tokenize(char* p) {
       p++;
       continue;
     }
-    if (*p == '+' || *p == '-') {
+    if (strchr("+-*/()", *p)) {
       cur = new_token(TokenKind.reserved, cur, p++);
       continue;
     }
@@ -101,6 +101,7 @@ Token* tokenize(char* p) {
 
     error_at(p, "Cannot tokenize.");
   }
+
   Token* _ = new_token(TokenKind.eof, cur, p);
   return head.next;
 }
@@ -194,14 +195,15 @@ const(char)* node_kind_to_str(NodeKind kind) {
   }
 }
 
-void gen(Node* node, const char* ret_var) {
+int gen(Node* node, int ret_var) {
   if (node.kind == NodeKind.num) {
-    printf("  %s =w copy %d\n", ret_var, node.val);
-    return;
+    printf("  %%t%d =w copy %d\n", ret_var + 1, node.val);
+    return ret_var + 1;
   }
-  gen(node.lhs, "%l");
-  gen(node.rhs, "%r");
-  printf("  %s =w %s %%l, %%r\n", ret_var, node_kind_to_str(node.kind));
+  int l = gen(node.lhs, ret_var);
+  int r = gen(node.rhs, l);
+  printf("  %%t%d =w %s %%t%d, %%t%d\n", r + 1, node_kind_to_str(node.kind), l, r);
+  return r + 1;
 }
 
 extern (C)
@@ -217,8 +219,8 @@ int main(int argc, char** argv) {
 
   printf("export function w $main() {\n");
   printf("@main\n");
-  gen(node, "%x");
-  printf("  ret %%x\n");
+  int ret = gen(node, 0);
+  printf("  ret %%t%d\n", ret);
   printf("}\n");
 
   return 0;
