@@ -88,6 +88,10 @@ Token* new_token(TokenKind kind, Token* cur, char* str, int len) {
   return tok;
 }
 
+bool startswith(const char* a, const char* b) {
+  return strlen(a) >= strlen(b) && memcmp(a, b, strlen(b)) == 0;
+}
+
 Token* tokenize(char* p) {
   Token head;
   head.next = null;
@@ -97,10 +101,19 @@ Token* tokenize(char* p) {
       p++;
       continue;
     }
-    if (strchr("+-*/()", *p)) {
+    // multi-char reserved.
+    if (startswith(p, "==") || startswith(p, "!=") ||
+      startswith(p, "<=") || startswith(p, ">=")) {
+      cur = new_token(TokenKind.reserved, cur, p, 2);
+      p += 2;
+      continue;
+    }
+    // single-char reserved.
+    if (strchr("+-*/()<>", *p)) {
       cur = new_token(TokenKind.reserved, cur, p++, 1);
       continue;
     }
+
     if (isdigit(*p)) {
       cur = new_token(TokenKind.num, cur, p, 0);
       cur.val = cast(int) strtol(p, &p, 10);
@@ -116,11 +129,15 @@ Token* tokenize(char* p) {
 }
 
 enum NodeKind {
-  add,
-  sub,
-  mul,
-  div,
-  num
+  add, // +
+  sub, // -
+  mul, // *
+  div, // /
+  lt, // <
+  le, // <=
+  eq, // ==
+  ne, // !=
+  num, // -?[0-9]+
 }
 
 struct Node {
@@ -154,12 +171,14 @@ Node* primary() {
   return new_node_num(expect_number());
 }
 
-// ENBF: unary = ("+" | "-")? primary
+// ENBF: unary = ("+" | "-")? unary | primary
 Node* unary() {
   if (consume("-")) {
-    return new_node(NodeKind.sub, new_node_num(0), primary());
+    return new_node(NodeKind.sub, new_node_num(0), unary());
   }
-  bool _ = consume("+");
+  if (consume("+")) {
+    return unary();
+  }
   return primary();
 }
 
@@ -179,8 +198,8 @@ Node* mul() {
   }
 }
 
-// ENBF: expr = mul ("+" mul | "-" mul)*
-Node* expr() {
+// ENBF: add = mul ("+" mul | "-" mul)*
+Node* add() {
   Node* node = mul();
   for (;;) {
     if (consume("+")) {
@@ -195,6 +214,50 @@ Node* expr() {
   }
 }
 
+// EBNF: relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+// e.g. x < y
+Node* relational() {
+  Node* node = add();
+  for (;;) {
+    if (consume("<")) {
+      node = new_node(NodeKind.lt, node, add());
+    }
+    else if (consume("<=")) {
+      node = new_node(NodeKind.le, node, add());
+    }
+    else if (consume(">")) {
+      node = new_node(NodeKind.lt, add(), node);
+    }
+    else if (consume(">=")) {
+      node = new_node(NodeKind.le, add(), node);
+    }
+    else {
+      return node;
+    }
+  }
+}
+
+// EBNF: equality = relational ("==" relational | "!=" relational)*
+// e.g. x == y
+Node* equality() {
+  Node* node = relational();
+  for (;;) {
+    if (consume("==")) {
+      node = new_node(NodeKind.eq, node, relational());
+    }
+    else if (consume("!=")) {
+      node = new_node(NodeKind.ne, node, relational());
+    }
+    else {
+      return node;
+    }
+  }
+}
+
+Node* expr() {
+  return equality();
+}
+
 const(char)* node_kind_to_str(NodeKind kind) {
   final switch (kind) {
   case NodeKind.add:
@@ -205,6 +268,15 @@ const(char)* node_kind_to_str(NodeKind kind) {
     return "mul";
   case NodeKind.div:
     return "div";
+  case NodeKind.lt:
+    // c + common-operator (slt) + operand-type (w)
+    return "csltw";
+  case NodeKind.le:
+    return "cslew";
+  case NodeKind.eq:
+    return "ceqw";
+  case NodeKind.ne:
+    return "cnew";
   case NodeKind.num:
     return "num";
   }
