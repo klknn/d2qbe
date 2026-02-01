@@ -15,6 +15,7 @@ struct Token {
   Token* next;
   int val;
   char* str;
+  int len;
 }
 
 Token* token;
@@ -44,18 +45,24 @@ extern (C) void error_at(const char* loc, const char* fmt, ...) {
   exit(1);
 }
 
-// Consumes one token and returns true if the token is op.
-bool consume(char op) {
-  if (token.kind != TokenKind.reserved || token.str[0] != op) {
-    return false;
-  }
-  token = token.next;
-  return true;
+bool is_token(const char* op) {
+  return token.kind == TokenKind.reserved &&
+    strlen(op) == token.len &&
+    memcmp(token.str, op, token.len) == 0;
 }
 
-void expect(char op) {
+// Consumes one token and returns true if the token is op.
+bool consume(const char* op) {
+  if (is_token(op)) {
+    token = token.next;
+    return true;
+  }
+  return false;
+}
+
+void expect(const char* op) {
   if (!consume(op)) {
-    error_at(token.str, "Expected token %c", op);
+    error_at(token.str, "Expected token %s", op);
   }
 }
 
@@ -72,10 +79,11 @@ bool at_eof() {
   return token.kind == TokenKind.eof;
 }
 
-Token* new_token(TokenKind kind, Token* cur, char* str) {
+Token* new_token(TokenKind kind, Token* cur, char* str, int len) {
   Token* tok = cast(Token*) calloc(1, Token.sizeof);
   tok.kind = kind;
   tok.str = str;
+  tok.len = len;
   cur.next = tok;
   return tok;
 }
@@ -90,19 +98,20 @@ Token* tokenize(char* p) {
       continue;
     }
     if (strchr("+-*/()", *p)) {
-      cur = new_token(TokenKind.reserved, cur, p++);
+      cur = new_token(TokenKind.reserved, cur, p++, 1);
       continue;
     }
     if (isdigit(*p)) {
-      cur = new_token(TokenKind.num, cur, p);
+      cur = new_token(TokenKind.num, cur, p, 0);
       cur.val = cast(int) strtol(p, &p, 10);
+      cur.len = cast(int)(p - cur.str);
       continue;
     }
 
     error_at(p, "Cannot tokenize.");
   }
 
-  Token* _ = new_token(TokenKind.eof, cur, p);
+  Token* _ = new_token(TokenKind.eof, cur, p, 1);
   return head.next;
 }
 
@@ -137,9 +146,9 @@ Node* new_node_num(int val) {
 
 // ENBF: primary = num | "(" expr ")"
 Node* primary() {
-  if (consume('(')) {
+  if (consume("(")) {
     Node* node = expr();
-    expect(')');
+    expect(")");
     return node;
   }
   return new_node_num(expect_number());
@@ -147,10 +156,10 @@ Node* primary() {
 
 // ENBF: unary = ("+" | "-")? primary
 Node* unary() {
-  if (consume('-')) {
+  if (consume("-")) {
     return new_node(NodeKind.sub, new_node_num(0), primary());
   }
-  bool _ = consume('+');
+  bool _ = consume("+");
   return primary();
 }
 
@@ -158,10 +167,10 @@ Node* unary() {
 Node* mul() {
   Node* node = unary();
   for (;;) {
-    if (consume('*')) {
+    if (consume("*")) {
       node = new_node(NodeKind.mul, node, unary());
     }
-    else if (consume('/')) {
+    else if (consume("/")) {
       node = new_node(NodeKind.div, node, unary());
     }
     else {
@@ -174,10 +183,10 @@ Node* mul() {
 Node* expr() {
   Node* node = mul();
   for (;;) {
-    if (consume('+')) {
+    if (consume("+")) {
       node = new_node(NodeKind.add, node, mul());
     }
-    else if (consume('-')) {
+    else if (consume("-")) {
       node = new_node(NodeKind.sub, node, mul());
     }
     else {
