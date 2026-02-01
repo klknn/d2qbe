@@ -105,6 +105,86 @@ Token* tokenize(char* p) {
   return head.next;
 }
 
+// Syntax EBNF:
+// expr    = mul ("+" mul | "-" mul)*
+// mul     = primary ("*" primary | "/" primary)*
+// primary = num | "(" expr ")"
+enum NodeKind {
+  add,
+  sub,
+  mul,
+  div,
+  num
+}
+
+struct Node {
+  NodeKind kind;
+  Node* lhs, rhs;
+  int val;
+}
+
+Node* new_node(NodeKind kind, Node* lhs, Node* rhs) {
+  Node* node = cast(Node*) calloc(1, Node.sizeof);
+  node.kind = kind;
+  node.lhs = lhs;
+  node.rhs = rhs;
+  return node;
+}
+
+Node* new_node_num(int val) {
+  Node* node = cast(Node*) calloc(1, Node.sizeof);
+  node.kind = NodeKind.num;
+  node.val = val;
+  return node;
+}
+
+Node* num();
+
+Node* primary() {
+  if (consume('(')) {
+    Node* node = expr();
+    expect(')');
+    return node;
+  }
+  return new_node_num(expect_number());
+}
+
+Node* mul() {
+  Node* node = primary();
+  for (;;) {
+    if (consume('*')) {
+      node = new_node(NodeKind.mul, node, primary());
+    }
+    else if (consume('/')) {
+      node = new_node(NodeKind.div, node, primary());
+    }
+    else {
+      return node;
+    }
+  }
+}
+
+Node* expr() {
+  Node* node = mul();
+  for (;;) {
+    if (consume('+')) {
+      node = new_node(NodeKind.add, node, mul());
+    }
+    else if (consume('-')) {
+      node = new_node(NodeKind.add, node, mul());
+    }
+    else {
+      return node;
+    }
+  }
+}
+
+void gen(Node* node) {
+  if (node.kind == NodeKind.num) {
+    printf("\tstore %d ");
+  }
+}
+
 extern (C)
 int main(int argc, char** argv) {
   if (argc != 2) {
@@ -114,6 +194,7 @@ int main(int argc, char** argv) {
 
   user_input = argv[1];
   token = tokenize(argv[1]);
+  // Node* node = expr();
 
   printf("export function w $main() {\n");
   printf("@main\n");
