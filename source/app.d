@@ -171,7 +171,7 @@ Node* expr() {
       node = new_node(NodeKind.add, node, mul());
     }
     else if (consume('-')) {
-      node = new_node(NodeKind.add, node, mul());
+      node = new_node(NodeKind.sub, node, mul());
     }
     else {
       return node;
@@ -179,10 +179,29 @@ Node* expr() {
   }
 }
 
-void gen(Node* node) {
-  if (node.kind == NodeKind.num) {
-    printf("\tstore %d ");
+const(char)* node_kind_to_str(NodeKind kind) {
+  final switch (kind) {
+  case NodeKind.add:
+    return "add";
+  case NodeKind.sub:
+    return "sub";
+  case NodeKind.mul:
+    return "mul";
+  case NodeKind.div:
+    return "div";
+  case NodeKind.num:
+    return "num";
   }
+}
+
+void gen(Node* node, const char* ret_var) {
+  if (node.kind == NodeKind.num) {
+    printf("  %s =w copy %d\n", ret_var, node.val);
+    return;
+  }
+  gen(node.lhs, "%l");
+  gen(node.rhs, "%r");
+  printf("  %s =w %s %%l, %%r\n", ret_var, node_kind_to_str(node.kind));
 }
 
 extern (C)
@@ -194,23 +213,12 @@ int main(int argc, char** argv) {
 
   user_input = argv[1];
   token = tokenize(argv[1]);
-  // Node* node = expr();
+  Node* node = expr();
 
   printf("export function w $main() {\n");
   printf("@main\n");
-  printf("\t%%x =w copy %d\n", expect_number()); // e.g. x = 1;
-  int i = 0;
-  while (!at_eof()) {
-    if (consume('+')) {
-      printf("\t%%x=w add %%x, %d\n", expect_number());
-    }
-    else {
-      expect('-');
-      printf("\t%%x=w sub %%x, %d\n", expect_number());
-    }
-    i++;
-  }
-  printf("\tret %%x\n");
+  gen(node, "%x");
+  printf("  ret %%x\n");
   printf("}\n");
 
   return 0;
