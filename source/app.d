@@ -198,23 +198,19 @@ int main(int argc, char** argv) {
 
   printf("export function w $main() {\n");
   printf("@main\n");
-  printf("\t%%x =l alloc4 4\n"); // int;
-  printf("\tstorew %d, %%x\n", expect_number()); // e.g. x = 1;
+  printf("\t%%x =w copy %d\n", expect_number()); // e.g. x = 1;
   int i = 0;
   while (!at_eof()) {
-    printf("\t%%t%d =w loadw %%x\n", i);
     if (consume('+')) {
-      printf("\t%%t%d =w add %%t%d, %d\n", i + 1, i, expect_number());
+      printf("\t%%x=w add %%x, %d\n", expect_number());
     }
     else {
       expect('-');
-      printf("\t%%t%d =w sub %%t%d, %d\n", i + 1, i, expect_number());
+      printf("\t%%x=w sub %%x, %d\n", expect_number());
     }
     i++;
-    printf("\tstorew %%t%d, %%x\n", i++);
   }
-  printf("\t%%t%d =w loadw %%x\n", i);
-  printf("\tret %%t%d\n", i);
+  printf("\tret %%x\n");
   printf("}\n");
 
   return 0;
