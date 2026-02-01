@@ -106,10 +106,6 @@ Token* tokenize(char* p) {
   return head.next;
 }
 
-// Syntax EBNF:
-// expr    = mul ("+" mul | "-" mul)*
-// mul     = primary ("*" primary | "/" primary)*
-// primary = num | "(" expr ")"
 enum NodeKind {
   add,
   sub,
@@ -139,8 +135,7 @@ Node* new_node_num(int val) {
   return node;
 }
 
-Node* num();
-
+// ENBF: primary = num | "(" expr ")"
 Node* primary() {
   if (consume('(')) {
     Node* node = expr();
@@ -150,14 +145,24 @@ Node* primary() {
   return new_node_num(expect_number());
 }
 
+// ENBF: unary = ("+" | "-")? primary
+Node* unary() {
+  if (consume('-')) {
+    return new_node(NodeKind.sub, new_node_num(0), primary());
+  }
+  bool _ = consume('+');
+  return primary();
+}
+
+// ENBF: mul = unary ("*" unary | "/" unary)*
 Node* mul() {
-  Node* node = primary();
+  Node* node = unary();
   for (;;) {
     if (consume('*')) {
-      node = new_node(NodeKind.mul, node, primary());
+      node = new_node(NodeKind.mul, node, unary());
     }
     else if (consume('/')) {
-      node = new_node(NodeKind.div, node, primary());
+      node = new_node(NodeKind.div, node, unary());
     }
     else {
       return node;
@@ -165,6 +170,7 @@ Node* mul() {
   }
 }
 
+// ENBF: expr = mul ("+" mul | "-" mul)*
 Node* expr() {
   Node* node = mul();
   for (;;) {
