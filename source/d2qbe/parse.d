@@ -1,3 +1,5 @@
+module d2qbe.parse;
+
 import core.stdc.ctype;
 import core.stdc.stdarg;
 import core.stdc.stdio;
@@ -256,59 +258,4 @@ Node* equality() {
 
 Node* expr() {
   return equality();
-}
-
-const(char)* node_kind_to_str(NodeKind kind) {
-  final switch (kind) {
-  case NodeKind.add:
-    return "add";
-  case NodeKind.sub:
-    return "sub";
-  case NodeKind.mul:
-    return "mul";
-  case NodeKind.div:
-    return "div";
-  case NodeKind.lt:
-    // c + common-operator (slt) + operand-type (w)
-    return "csltw";
-  case NodeKind.le:
-    return "cslew";
-  case NodeKind.eq:
-    return "ceqw";
-  case NodeKind.ne:
-    return "cnew";
-  case NodeKind.num:
-    return "num";
-  }
-}
-
-int gen(Node* node, int ret_var) {
-  if (node.kind == NodeKind.num) {
-    printf("  %%t%d =w copy %d\n", ret_var + 1, node.val);
-    return ret_var + 1;
-  }
-  int l = gen(node.lhs, ret_var);
-  int r = gen(node.rhs, l);
-  printf("  %%t%d =w %s %%t%d, %%t%d\n", r + 1, node_kind_to_str(node.kind), l, r);
-  return r + 1;
-}
-
-extern (C)
-int main(int argc, char** argv) {
-  if (argc != 2) {
-    fprintf(stderr, "wrong number of args\n");
-    return 1;
-  }
-
-  user_input = argv[1];
-  token = tokenize(argv[1]);
-  Node* node = expr();
-
-  printf("export function w $main() {\n");
-  printf("@main\n");
-  int ret = gen(node, 0);
-  printf("  ret %%t%d\n", ret);
-  printf("}\n");
-
-  return 0;
 }

@@ -1,10 +1,14 @@
 .PHONY: test clean
 
 DC=ldc2
-DFLAGS=-g -betterC
+DFLAGS=-g -betterC -I source
+OBJS=parse.o codegen.o app.o
 
-d2qbe: source/app.d
-	$(DC) $(DFLAGS) $< -of=$@
+%.o: source/d2qbe/%.d
+	$(DC) $(DFLAGS) -c $<
+
+d2qbe: $(OBJS)
+	$(DC) $(DFLAGS) $(OBJS) -of=$@
 
 test: d2qbe qbe/qbe
 	./test/run.sh
