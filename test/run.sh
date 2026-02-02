@@ -46,5 +46,8 @@ assert 0 '1>2'
 assert 1 '1>=0'
 assert 1 '1>=1'
 assert 0 '1>=2'
+assert 12 'a=12;a'
+assert 13 'a=12;a+1'
+assert 10 'a=12;b=-2;a+b'
 
 echo OK

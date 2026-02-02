@@ -14,11 +14,15 @@ int main(int argc, char** argv) {
 
   user_input = argv[1];
   token = tokenize(argv[1]);
-  Node* node = expr();
+  program();
+  // Node* node = expr();
 
   printf("export function w $main() {\n");
   printf("@main\n");
-  int ret = gen(node, 0);
+  int ret = 0;
+  for (int i = 0; code[i]; i++) {
+    ret = gen(code[i], ret);
+  }
   printf("  ret %%t%d\n", ret);
   printf("}\n");
 

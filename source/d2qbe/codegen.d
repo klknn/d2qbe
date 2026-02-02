@@ -25,6 +25,15 @@ const(char)* node_kind_to_str(NodeKind kind) {
     return "cnew";
   case NodeKind.num:
     return "num";
+  case NodeKind.assign:
+  case NodeKind.lvar:
+    assert(false);
+  }
+}
+
+void gen_lval(Node* node) {
+  if (node.kind != NodeKind.lvar) {
+    error("Variable expected in lhs.");
   }
 }
 
@@ -32,6 +41,18 @@ int gen(Node* node, int ret_var) {
   if (node.kind == NodeKind.num) {
     printf("  %%t%d =w copy %d\n", ret_var + 1, node.val);
     return ret_var + 1;
+  }
+  if (node.kind == NodeKind.lvar) {
+    printf("  %%t%d =w copy %%%s\n", ret_var + 1, node.ident);
+    return ret_var + 1;
+  }
+  if (node.kind == NodeKind.assign) {
+    if (node.lhs.kind != NodeKind.lvar) {
+      error("Variable expected in lhs");
+    }
+    int rhs = gen(node.rhs, ret_var);
+    printf("  %%%s =w copy %%t%d\n", node.lhs.ident, rhs);
+    return rhs;
   }
   int l = gen(node.lhs, ret_var);
   int r = gen(node.rhs, l);

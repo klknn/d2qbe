@@ -8,6 +8,7 @@ import core.stdc.stdlib;
 
 enum TokenKind {
   reserved,
+  ident,
   num,
   eof,
 }
@@ -62,6 +63,15 @@ bool consume(const char* op) {
   return false;
 }
 
+Token* consume_ident() {
+  if (token.kind != TokenKind.ident) {
+    return null;
+  }
+  Token* ret = token;
+  token = token.next;
+  return ret;
+}
+
 void expect(const char* op) {
   if (!consume(op)) {
     error_at(token.str, "Expected token %s", op);
@@ -111,8 +121,14 @@ Token* tokenize(char* p) {
       continue;
     }
     // single-char reserved.
-    if (strchr("+-*/()<>", *p)) {
+    if (strchr("+-*/()<>=;", *p)) {
       cur = new_token(TokenKind.reserved, cur, p++, 1);
+      continue;
+    }
+
+    // identifier.
+    if ('a' <= *p && *p <= 'z') {
+      cur = new_token(TokenKind.ident, cur, p++, 1);
       continue;
     }
 
@@ -140,12 +156,16 @@ enum NodeKind {
   eq, // ==
   ne, // !=
   num, // -?[0-9]+
+  assign, // int x = 1
+  lvar, // x
 }
 
 struct Node {
   NodeKind kind;
   Node* lhs, rhs;
-  int val;
+  int val; // for NodeKind.num.
+  int offset; // for NodeKind.lvar.
+  char* ident; // for NodeKind.lvar.
 }
 
 Node* new_node(NodeKind kind, Node* lhs, Node* rhs) {
@@ -163,11 +183,22 @@ Node* new_node_num(int val) {
   return node;
 }
 
-// ENBF: primary = num | "(" expr ")"
+// ENBF: primary = num | ident | "(" expr ")"
 Node* primary() {
   if (consume("(")) {
     Node* node = expr();
     expect(")");
+    return node;
+  }
+  Token* tok = consume_ident();
+  if (tok) {
+    Node* node = cast(Node*) calloc(1, Node.sizeof);
+    node.kind = NodeKind.lvar;
+    node.offset = (tok.str[0] - 'a' + 1) * 8;
+
+    node.ident = cast(char*) calloc(tok.len + 1, 1);
+    strncpy(node.ident, tok.str, tok.len);
+    // printf("👺 ident %s", node.ident);
     return node;
   }
   return new_node_num(expect_number());
@@ -256,6 +287,34 @@ Node* equality() {
   }
 }
 
+// EBNF: assign = equality ("=" assign)?
+Node* assign() {
+  Node* node = equality();
+  if (consume("=")) {
+    node = new_node(NodeKind.assign, node, assign());
+  }
+  return node;
+}
+
+// EBNF: expr = assign
 Node* expr() {
-  return equality();
+  return assign();
+}
+
+// EBNF: stmt = expr ";"
+Node* stmt() {
+  Node* node = expr();
+  // expect(";");
+  bool _ = consume(";");
+  return node;
+}
+
+Node*[100] code;
+
+void program() {
+  int i = 0;
+  while (!at_eof()) {
+    code[i++] = stmt();
+  }
+  code[i] = null;
 }
