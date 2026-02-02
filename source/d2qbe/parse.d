@@ -104,6 +104,30 @@ bool startswith(const char* a, const char* b) {
   return strlen(a) >= strlen(b) && memcmp(a, b, strlen(b)) == 0;
 }
 
+int identifier_length(const(char)* p) {
+  int i = 0;
+  if (isalpha(p[i]) || p[i] == '_') {
+    i++;
+  }
+  else {
+    return 0;
+  }
+  while (isalnum(p[i]) || p[i] == '_') {
+    i++;
+  }
+  return i;
+}
+
+unittest {
+  assert(identifier_length("a") == 1);
+  assert(identifier_length("_") == 1);
+  assert(identifier_length("") == 0);
+  assert(identifier_length("0") == 0);
+  assert(identifier_length("a ") == 1);
+  assert(identifier_length("a0 ") == 2);
+  assert(identifier_length("a0=1") == 2);
+}
+
 Token* tokenize(char* p) {
   Token head;
   head.next = null;
@@ -127,8 +151,10 @@ Token* tokenize(char* p) {
     }
 
     // identifier.
-    if ('a' <= *p && *p <= 'z') {
-      cur = new_token(TokenKind.ident, cur, p++, 1);
+    int ident_len = identifier_length(p);
+    if (ident_len) {
+      cur = new_token(TokenKind.ident, cur, p, ident_len);
+      p += ident_len;
       continue;
     }
 
@@ -164,7 +190,6 @@ struct Node {
   NodeKind kind;
   Node* lhs, rhs;
   int val; // for NodeKind.num.
-  int offset; // for NodeKind.lvar.
   char* ident; // for NodeKind.lvar.
 }
 
@@ -194,8 +219,6 @@ Node* primary() {
   if (tok) {
     Node* node = cast(Node*) calloc(1, Node.sizeof);
     node.kind = NodeKind.lvar;
-    node.offset = (tok.str[0] - 'a' + 1) * 8;
-
     node.ident = cast(char*) calloc(tok.len + 1, 1);
     strncpy(node.ident, tok.str, tok.len);
     // printf("👺 ident %s", node.ident);
