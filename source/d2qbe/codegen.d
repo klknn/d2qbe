@@ -27,6 +27,7 @@ const(char)* node_kind_to_str(NodeKind kind) {
     return "num";
   case NodeKind.assign:
   case NodeKind.lvar:
+  case NodeKind.return_:
     assert(false);
   }
 }
@@ -53,6 +54,11 @@ int gen(Node* node, int ret_var) {
     int rhs = gen(node.rhs, ret_var);
     printf("  %%%s =w copy %%t%d\n", node.lhs.ident, rhs);
     return rhs;
+  }
+  if (node.kind == NodeKind.return_) {
+    int lhs = gen(node.lhs, ret_var);
+    printf("  ret %%t%d\n", lhs);
+    return lhs;
   }
   int l = gen(node.lhs, ret_var);
   int r = gen(node.rhs, l);

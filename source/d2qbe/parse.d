@@ -137,23 +137,28 @@ Token* tokenize(char* p) {
       p++;
       continue;
     }
-    // multi-char reserved.
+    // multi-punct reserved.
     if (startswith(p, "==") || startswith(p, "!=") ||
       startswith(p, "<=") || startswith(p, ">=")) {
       cur = new_token(TokenKind.reserved, cur, p, 2);
       p += 2;
       continue;
     }
-    // single-char reserved.
+    // single-punct reserved.
     if (strchr("+-*/()<>=;", *p)) {
       cur = new_token(TokenKind.reserved, cur, p++, 1);
       continue;
     }
 
-    // identifier.
+    // identifier or ident-like reserved.
     int ident_len = identifier_length(p);
     if (ident_len) {
-      cur = new_token(TokenKind.ident, cur, p, ident_len);
+      TokenKind kind = TokenKind.ident;
+      // check if the token is reserved.
+      if (strncmp(p, "return", ident_len) == 0) {
+        kind = TokenKind.reserved;
+      }
+      cur = new_token(kind, cur, p, ident_len);
       p += ident_len;
       continue;
     }
@@ -184,6 +189,7 @@ enum NodeKind {
   num, // -?[0-9]+
   assign, // int x = 1
   lvar, // x
+  return_, // return x
 }
 
 struct Node {
@@ -324,11 +330,18 @@ Node* expr() {
   return assign();
 }
 
-// EBNF: stmt = expr ";"
+// EBNF: stmt = expr ";" | "return" expr ";"
 Node* stmt() {
-  Node* node = expr();
-  // expect(";");
-  bool _ = consume(";");
+  Node* node;
+  if (consume("return")) {
+    node = cast(Node*) calloc(1, Node.sizeof);
+    node.kind = NodeKind.return_;
+    node.lhs = expr();
+  }
+  else {
+    node = expr();
+  }
+  expect(";");
   return node;
 }
 

@@ -17,38 +17,40 @@ assert() {
   fi
 }
 
-assert 0 0
-assert 42 42
-assert 21 '5+20-4'
-assert 41 ' 12 + 34 - 5 '
-assert 47 '5+6*7'
-assert 15 '5*(9-6)'
-assert 4 '(3+5)/2'
-assert 10 '-10+20'
-assert 10 '- -10'
-assert 10 '- - +10'
+assert 0 "return 0;"
+assert 42 "return 42;"
+assert 21 'return 5+20-4;'
+assert 41 'return 12 + 34 - 5 ;'
+assert 47 'return 5+6*7;'
+assert 15 'return 5*(9-6);'
+assert 4 'return (3+5)/2;'
+assert 10 'return -10+20;'
+assert 10 'return - -10;'
+assert 10 'return - - +10;'
 
-assert 0 '0==1'
-assert 1 '42==42'
-assert 1 '0!=1'
-assert 0 '42!=42'
+assert 0 'return 0==1;'
+assert 1 'return 42==42;'
+assert 1 'return 0!=1;'
+assert 0 'return 42!=42;'
 
-assert 1 '0<1'
-assert 0 '1<1'
-assert 0 '2<1'
-assert 1 '0<=1'
-assert 1 '1<=1'
-assert 0 '2<=1'
+assert 1 'return 0<1;'
+assert 0 'return 1<1;'
+assert 0 'return 2<1;'
+assert 1 'return 0<=1;'
+assert 1 'return 1<=1;'
+assert 0 'return 2<=1;'
 
-assert 1 '1>0'
-assert 0 '1>1'
-assert 0 '1>2'
-assert 1 '1>=0'
-assert 1 '1>=1'
-assert 0 '1>=2'
-assert 12 'a=12;a'
-assert 13 'a=12;a+1'
-assert 10 'a=12;b=-2;a+b'
-assert 10 'foo=12;bar=-2;foo+bar'
+assert 1 'return 1>0;'
+assert 0 'return 1>1;'
+assert 0 'return 1>2;'
+assert 1 'return 1>=0;'
+assert 1 'return 1>=1;'
+assert 0 'return 1>=2;'
+
+assert 12 'returnx=12; return returnx;'
+assert 12 'a=12; return a;'
+assert 13 'a=12; return a+1;'
+assert 10 'a=12;b=-2; return a+b;'
+assert 10 'foo=12;bar=-2;return foo+bar;'
 
 echo OK
