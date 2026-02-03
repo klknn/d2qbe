@@ -222,7 +222,8 @@ struct Node {
   int val; // for NodeKind.num.
   char* ident; // for NodeKind.lvar.
 
-  Node* cond, then, else_; // for if statement.
+  Node* begin, advance; // for for statement.
+  Node* cond, then, else_; // for if/while statement.
 }
 
 Node* new_node(NodeKind kind, Node* lhs, Node* rhs) {
@@ -385,6 +386,24 @@ Node* stmt() {
     expect("(");
     node.cond = expr();
     expect(")");
+    node.then = stmt();
+  }
+  else if (consume("for")) {
+    node = cast(Node*) calloc(1, Node.sizeof);
+    node.kind = NodeKind.for_;
+    expect("(");
+    if (!consume(";")) {
+      node.begin = expr();
+      expect(";");
+    }
+    if (!consume(";")) {
+      node.cond = expr();
+      expect(";");
+    }
+    if (!consume(")")) {
+      node.advance = expr();
+      expect(")");
+    }
     node.then = stmt();
   }
   else {

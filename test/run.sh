@@ -70,5 +70,12 @@ assert 2 "a = 0; if (0) a = 1; else if (1) a = 2; else a = 3; return a;"
 
 assert 10 "a=0; while(a<10) a = a + 1; return a;"
 assert 0 "a=10; while(a>0) a = a - 1; return a;"
+assert 10 "a=10; while(1) if (a>0)return a;return 0;"
+
+assert 10 "for (a=0;a<10;a=a+1) a= a;return a;"
+assert 0 "for (a=10;a>0;a=a-1) a= a;return a;"
+assert 5 "for(a=0;a<10;a=a+1) if (a>5) return 5;return a;"
+assert 10 "a=0;for (;a<10;) a=a+1;return a;"
+assert 1 "a=0;for (;;) if (a<10)return 1;return 0;"
 
 echo OK

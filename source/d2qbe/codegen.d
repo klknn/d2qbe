@@ -42,6 +42,9 @@ void gen_lval(Node* node) {
 }
 
 int gen(Node* node, int ret_var) {
+  if (!node) {
+    return ret_var;
+  }
   if (node.kind == NodeKind.num) {
     printf("  %%t%d =w copy %d\n", ret_var + 1, node.val);
     return ret_var + 1;
@@ -70,14 +73,12 @@ int gen(Node* node, int ret_var) {
     int then = gen(node.then, cond);
     int ret = then;
     if (node.then.kind != NodeKind.return_) {
-      printf("  jmp @endif%d\n", ret_var);
+      printf("  jmp @endif%d\n", ret_var); // To skip the else block.
     }
     printf("@else%d\n", ret_var);
-    if (node.else_) {
-      ret = gen(node.else_, then);
-    }
+    ret = gen(node.else_, then);
     if (node.then.kind != NodeKind.return_) {
-      printf("@endif%d\n", ret_var);
+      printf("@endif%d\n", ret_var); // From the then block.
     }
     return ret;
   }
@@ -90,6 +91,20 @@ int gen(Node* node, int ret_var) {
     printf("  jmp @cond%d\n", ret_var);
     printf("@break%d\n", ret_var);
     return then;
+  }
+  if (node.kind == NodeKind.for_) {
+    int ret = gen(node.begin, ret_var);
+    printf("@forcond%d\n", ret_var);
+    if (node.cond) {
+      ret = gen(node.cond, ret);
+      printf("  jnz %%t%d, @forthen%d, @forend%d\n", ret, ret_var, ret_var);
+    }
+    printf("@forthen%d\n", ret_var);
+    ret = gen(node.then, ret);
+    ret = gen(node.advance, ret);
+    printf("  jmp @forcond%d\n", ret_var);
+    printf("@forend%d\n", ret_var);
+    return ret;
   }
   int l = gen(node.lhs, ret_var);
   int r = gen(node.rhs, l);
