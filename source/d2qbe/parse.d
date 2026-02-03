@@ -371,11 +371,21 @@ Node* stmt() {
   else if (consume("if")) {
     node = cast(Node*) calloc(1, Node.sizeof);
     node.kind = NodeKind.if_;
+    expect("(");
     node.cond = expr();
+    expect(")");
     node.then = stmt();
     if (consume("else")) {
       node.else_ = stmt();
     }
+  }
+  else if (consume("while")) {
+    node = cast(Node*) calloc(1, Node.sizeof);
+    node.kind = NodeKind.while_;
+    expect("(");
+    node.cond = expr();
+    expect(")");
+    node.then = stmt();
   }
   else {
     node = expr();

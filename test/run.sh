@@ -51,6 +51,7 @@ assert 12 'returnx=12; return returnx;'
 assert 12 'a=12; return a;'
 assert 13 'a=12; return a+1;'
 assert 10 'a=12;b=-2; return a+b;'
+assert 12 'a=11; a = a + 1; return a;'
 assert 10 'foo=12;bar=-2;return foo+bar;'
 
 assert 1 "if (2>1) return 1; return 123;"
@@ -63,5 +64,8 @@ assert 2 "if (1) if (0) return 1; return 2;"
 assert 0 "if (1) return 0; else if (0) return 1; else return 2;"
 assert 1 "if (0) return 0; else if (1) return 1; else return 2;"
 assert 2 "if (0) return 0; else if (0) return 1; else return 2;"
+
+assert 10 "a=0; while(a<10) a = a + 1; return a;"
+assert 0 "a=10; while(a>0) a = a - 1; return a;"
 
 echo OK

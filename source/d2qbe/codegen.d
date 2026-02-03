@@ -73,7 +73,16 @@ int gen(Node* node, int ret_var) {
       return gen(node.else_, then);
     }
     return then;
-
+  }
+  if (node.kind == NodeKind.while_) {
+    printf("@cond%d\n", ret_var);
+    int cond = gen(node.cond, ret_var);
+    printf("  jnz %%t%d, @body%d, @break%d\n", cond, ret_var, ret_var);
+    printf("@body%d\n", ret_var);
+    int then = gen(node.then, cond);
+    printf("  jmp @cond%d\n", ret_var);
+    printf("@break%d\n", ret_var);
+    return then;
   }
   int l = gen(node.lhs, ret_var);
   int r = gen(node.rhs, l);
