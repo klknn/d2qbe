@@ -28,6 +28,9 @@ const(char)* node_kind_to_str(NodeKind kind) {
   case NodeKind.assign:
   case NodeKind.lvar:
   case NodeKind.return_:
+  case NodeKind.if_:
+  case NodeKind.for_:
+  case NodeKind.while_:
     assert(false);
   }
 }
@@ -59,6 +62,18 @@ int gen(Node* node, int ret_var) {
     int lhs = gen(node.lhs, ret_var);
     printf("  ret %%t%d\n", lhs);
     return lhs;
+  }
+  if (node.kind == NodeKind.if_) {
+    int cond = gen(node.cond, ret_var);
+    printf("  jnz %%t%d, @then%d, @else%d\n", cond, ret_var, ret_var);
+    printf("@then%d\n", ret_var);
+    int then = gen(node.then, cond);
+    printf("@else%d\n", ret_var);
+    if (node.else_) {
+      return gen(node.else_, then);
+    }
+    return then;
+
   }
   int l = gen(node.lhs, ret_var);
   int r = gen(node.rhs, l);

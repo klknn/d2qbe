@@ -53,4 +53,8 @@ assert 13 'a=12; return a+1;'
 assert 10 'a=12;b=-2; return a+b;'
 assert 10 'foo=12;bar=-2;return foo+bar;'
 
+assert 1 "if (2>1) return 1; return 123;"
+assert 1 "if (0) return 1; if (1) return 1; return 0;"
+assert 123 "if (1>2) return 1; return 123;"
+
 echo OK

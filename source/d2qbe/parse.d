@@ -128,6 +128,28 @@ unittest {
   assert(identifier_length("a0=1") == 2);
 }
 
+const(char)** keywords = ["return", "if", "else", "while", "for", ""];
+
+bool is_keyword(const char* p) {
+  if (strlen(p) == 0) {
+    return false;
+  }
+  int ident_len = identifier_length(p);
+  for (int i = 0; keywords[i] != ""; i++) {
+    if (strncmp(p, keywords[i], ident_len) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+unittest {
+  assert(is_keyword("return a;"));
+  assert(!is_keyword("returna;"));
+  assert(is_keyword("for (;;)"));
+  assert(!is_keyword(""));
+}
+
 Token* tokenize(char* p) {
   Token head;
   head.next = null;
@@ -154,8 +176,7 @@ Token* tokenize(char* p) {
     int ident_len = identifier_length(p);
     if (ident_len) {
       TokenKind kind = TokenKind.ident;
-      // check if the token is reserved.
-      if (strncmp(p, "return", ident_len) == 0) {
+      if (is_keyword(p)) {
         kind = TokenKind.reserved;
       }
       cur = new_token(kind, cur, p, ident_len);
@@ -190,6 +211,9 @@ enum NodeKind {
   assign, // int x = 1
   lvar, // x
   return_, // return x
+  if_,
+  while_,
+  for_,
 }
 
 struct Node {
@@ -197,6 +221,8 @@ struct Node {
   Node* lhs, rhs;
   int val; // for NodeKind.num.
   char* ident; // for NodeKind.lvar.
+
+  Node* cond, then, else_; // for if statement.
 }
 
 Node* new_node(NodeKind kind, Node* lhs, Node* rhs) {
@@ -330,7 +356,11 @@ Node* expr() {
   return assign();
 }
 
-// EBNF: stmt = expr ";" | "return" expr ";"
+// EBNF: stmt = expr ";"
+//            | "if" "(" expr ")" stmt ("else" stmt)?
+//            | "while" "(" expr ")" stmt
+//            | "for" "(" expr? ";" expr? ";" expr? ")" stmt
+//            | "return" expr ";"
 Node* stmt() {
   Node* node;
   if (consume("return")) {
@@ -338,10 +368,20 @@ Node* stmt() {
     node.kind = NodeKind.return_;
     node.lhs = expr();
   }
+  else if (consume("if")) {
+    node = cast(Node*) calloc(1, Node.sizeof);
+    node.kind = NodeKind.if_;
+    node.cond = expr();
+    node.then = stmt();
+    if (consume("else")) {
+      node.else_ = stmt();
+    }
+  }
   else {
     node = expr();
   }
-  expect(";");
+  // expect(";");
+  bool _ = consume(";");
   return node;
 }
 
