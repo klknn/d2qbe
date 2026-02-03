@@ -68,11 +68,18 @@ int gen(Node* node, int ret_var) {
     printf("  jnz %%t%d, @then%d, @else%d\n", cond, ret_var, ret_var);
     printf("@then%d\n", ret_var);
     int then = gen(node.then, cond);
+    int ret = then;
+    if (node.then.kind != NodeKind.return_) {
+      printf("  jmp @endif%d\n", ret_var);
+    }
     printf("@else%d\n", ret_var);
     if (node.else_) {
-      return gen(node.else_, then);
+      ret = gen(node.else_, then);
     }
-    return then;
+    if (node.then.kind != NodeKind.return_) {
+      printf("@endif%d\n", ret_var);
+    }
+    return ret;
   }
   if (node.kind == NodeKind.while_) {
     printf("@cond%d\n", ret_var);
