@@ -31,6 +31,7 @@ const(char)* node_kind_to_str(NodeKind kind) {
   case NodeKind.if_:
   case NodeKind.for_:
   case NodeKind.while_:
+  case NodeKind.block:
     assert(false);
   }
 }
@@ -106,6 +107,14 @@ int gen(Node* node, int ret_var) {
     printf("@forend%d\n", ret_var);
     return ret;
   }
+  if (node.kind == NodeKind.block) {
+    while (node) {
+      ret_var = gen(node.block_list, ret_var);
+      node = node.block_list;
+    }
+    return ret_var;
+  }
+  // TODO use final switch statement.
   int l = gen(node.lhs, ret_var);
   int r = gen(node.rhs, l);
   printf("  %%t%d =w %s %%t%d, %%t%d\n", r + 1, node_kind_to_str(node.kind), l, r);

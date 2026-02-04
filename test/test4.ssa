@@ -1,0 +1,1 @@
+main () { int a; while (1) { a = 1; if (a) return a; } return 0; }

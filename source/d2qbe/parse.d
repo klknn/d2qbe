@@ -167,7 +167,7 @@ Token* tokenize(char* p) {
       continue;
     }
     // single-punct reserved.
-    if (strchr("+-*/()<>=;", *p)) {
+    if (strchr("+-*/()<>=;{}", *p)) {
       cur = new_token(TokenKind.reserved, cur, p++, 1);
       continue;
     }
@@ -211,9 +211,10 @@ enum NodeKind {
   assign, // int x = 1
   lvar, // x
   return_, // return x
-  if_,
-  while_,
-  for_,
+  if_, // if (...) ...
+  while_, // while (...) ...
+  for_, // for (...) ...
+  block, // { ... }
 }
 
 struct Node {
@@ -224,6 +225,7 @@ struct Node {
 
   Node* begin, advance; // for for statement.
   Node* cond, then, else_; // for if/while statement.
+  Node* block_list; // for block.
 }
 
 Node* new_node(NodeKind kind, Node* lhs, Node* rhs) {
@@ -358,12 +360,23 @@ Node* expr() {
 }
 
 // EBNF: stmt = expr ";"
+//            | "{" stmt* "}"
 //            | "if" "(" expr ")" stmt ("else" stmt)?
 //            | "while" "(" expr ")" stmt
 //            | "for" "(" expr? ";" expr? ";" expr? ")" stmt
 //            | "return" expr ";"
 Node* stmt() {
   Node* node;
+  if (consume("{")) {
+    Node* block = cast(Node*) calloc(1, Node.sizeof);
+    block.kind = NodeKind.block;
+    node = block;
+    while (!consume("}")) {
+      node.block_list = stmt();
+      node = node.block_list;
+    }
+    return block;
+  }
   if (consume("return")) {
     node = cast(Node*) calloc(1, Node.sizeof);
     node.kind = NodeKind.return_;
@@ -416,6 +429,7 @@ Node* stmt() {
 
 Node*[100] code;
 
+// EBNF: program = stmt*
 void program() {
   int i = 0;
   while (!at_eof()) {
