@@ -14,7 +14,10 @@ codegen.o: source/d2qbe/codegen.d parse.o
 
 app.o: source/d2qbe/app.d codegen.o parse.o
 
-test: d2qbe qbe/qbe
+ext.o: test/ext.d
+	$(DC) $(DFLAGS) -c $<
+
+test: d2qbe qbe/qbe ext.o
 	./test/run.sh
 
 clean:

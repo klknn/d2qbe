@@ -215,6 +215,7 @@ enum NodeKind {
   while_, // while (...) ...
   for_, // for (...) ...
   block, // { ... }
+  funcall, // f(...)
 }
 
 struct Node {
@@ -243,7 +244,7 @@ Node* new_node_num(int val) {
   return node;
 }
 
-// ENBF: primary = num | ident | "(" expr ")"
+// ENBF: primary = num | ident ("(" ")")? | "(" expr ")"
 Node* primary() {
   if (consume("(")) {
     Node* node = expr();
@@ -253,7 +254,13 @@ Node* primary() {
   Token* tok = consume_ident();
   if (tok) {
     Node* node = cast(Node*) calloc(1, Node.sizeof);
-    node.kind = NodeKind.lvar;
+    if (consume("(")) {
+      expect(")");
+      node.kind = NodeKind.funcall;
+    }
+    else {
+      node.kind = NodeKind.lvar;
+    }
     node.ident = cast(char*) calloc(tok.len + 1, 1);
     strncpy(node.ident, tok.str, tok.len);
     // printf("👺 ident %s", node.ident);

@@ -3,10 +3,11 @@
 assert() {
   expected="$1"
   input="$2"
+  output="$3"
 
   ./d2qbe "$input" | ./qbe/qbe > tmp.s
-  cc -o tmp tmp.s
-  ./tmp
+  cc -o tmp tmp.s ext.o
+  actual_output=$(./tmp)
   actual="$?"
 
   if [ "$actual" = "$expected" ]; then
@@ -14,6 +15,12 @@ assert() {
   else
     echo "$input => $expected expected, but got $actual"
     exit 1
+  fi
+  if [ -n "$output" ]; then
+  if [ "$actual_output" != "$output" ]; then
+    echo "stdout: $output expected, but got $actual_output"
+    exit 1
+  fi
   fi
 }
 
@@ -86,5 +93,7 @@ assert 10 "b=0;for(a=0;a<4;) { a=a+1;b=b+a; } return b;"
 assert 1 "if (1) { a = 1; return a; } return 0;"
 assert 2 "if(0) { a = 1; return a; } else { b = 2; return b; } return 0;"
 assert 1 "if(1) { a = 1; if (1) { return a; } } else { b = 2; return b; } return 0;"
+
+assert 0 "foo(); return 0;" "foo"
 
 echo OK
