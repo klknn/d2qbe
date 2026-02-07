@@ -4,38 +4,6 @@ import core.stdc.stdio;
 
 import d2qbe.parse;
 
-const(char)* node_kind_to_str(NodeKind kind) {
-  final switch (kind) {
-  case NodeKind.add:
-    return "add";
-  case NodeKind.sub:
-    return "sub";
-  case NodeKind.mul:
-    return "mul";
-  case NodeKind.div:
-    return "div";
-  case NodeKind.lt:
-    // c + common-operator (slt) + operand-type (w)
-    return "csltw";
-  case NodeKind.le:
-    return "cslew";
-  case NodeKind.eq:
-    return "ceqw";
-  case NodeKind.ne:
-    return "cnew";
-  case NodeKind.num:
-    return "num";
-  case NodeKind.assign:
-  case NodeKind.lvar:
-  case NodeKind.return_:
-  case NodeKind.if_:
-  case NodeKind.for_:
-  case NodeKind.while_:
-  case NodeKind.block:
-    assert(false);
-  }
-}
-
 void gen_lval(Node* node) {
   if (node.kind != NodeKind.lvar) {
     error("Variable expected in lhs.");
@@ -60,19 +28,29 @@ bool is_returned(Node* node) {
   return false;
 }
 
+int gen_binop(Node* node, int ret_var, const char* binop) {
+  int l = gen(node.lhs, ret_var);
+  int r = gen(node.rhs, l);
+  printf("  %%t%d =w %s %%t%d, %%t%d\n", r + 1, binop, l, r);
+  return r + 1;
+}
+
 int gen(Node* node, int ret_var) {
   if (!node) {
     return ret_var;
   }
-  if (node.kind == NodeKind.num) {
+  // TODO use final switch statement.
+  const(char)* binop;
+  final switch (node.kind) {
+  case NodeKind.num: {
     printf("  %%t%d =w copy %d\n", ret_var + 1, node.val);
     return ret_var + 1;
   }
-  if (node.kind == NodeKind.lvar) {
+  case NodeKind.lvar: {
     printf("  %%t%d =w copy %%%s\n", ret_var + 1, node.ident);
     return ret_var + 1;
   }
-  if (node.kind == NodeKind.assign) {
+  case NodeKind.assign: {
     if (node.lhs.kind != NodeKind.lvar) {
       error("Variable expected in lhs");
     }
@@ -80,12 +58,12 @@ int gen(Node* node, int ret_var) {
     printf("  %%%s =w copy %%t%d\n", node.lhs.ident, rhs);
     return rhs;
   }
-  if (node.kind == NodeKind.return_) {
+  case NodeKind.return_: {
     int lhs = gen(node.lhs, ret_var);
     printf("  ret %%t%d\n", lhs);
     return lhs;
   }
-  if (node.kind == NodeKind.if_) {
+  case NodeKind.if_: {
     int cond = gen(node.cond, ret_var);
     printf("  jnz %%t%d, @then%d, @else%d\n", cond, ret_var, ret_var);
     printf("@then%d\n", ret_var);
@@ -101,7 +79,7 @@ int gen(Node* node, int ret_var) {
     }
     return ret;
   }
-  if (node.kind == NodeKind.while_) {
+  case NodeKind.while_: {
     printf("@cond%d\n", ret_var);
     int cond = gen(node.cond, ret_var);
     printf("  jnz %%t%d, @body%d, @break%d\n", cond, ret_var, ret_var);
@@ -111,7 +89,7 @@ int gen(Node* node, int ret_var) {
     printf("@break%d\n", ret_var);
     return then;
   }
-  if (node.kind == NodeKind.for_) {
+  case NodeKind.for_: {
     int ret = gen(node.begin, ret_var);
     printf("@forcond%d\n", ret_var);
     if (node.cond) {
@@ -125,16 +103,29 @@ int gen(Node* node, int ret_var) {
     printf("@forend%d\n", ret_var);
     return ret;
   }
-  if (node.kind == NodeKind.block) {
+  case NodeKind.block: {
     while (node) {
       ret_var = gen(node.block_list, ret_var);
       node = node.block_list;
     }
     return ret_var;
   }
-  // TODO use final switch statement.
-  int l = gen(node.lhs, ret_var);
-  int r = gen(node.rhs, l);
-  printf("  %%t%d =w %s %%t%d, %%t%d\n", r + 1, node_kind_to_str(node.kind), l, r);
-  return r + 1;
+  case NodeKind.add:
+    return gen_binop(node, ret_var, "add");
+  case NodeKind.sub:
+    return gen_binop(node, ret_var, "sub");
+  case NodeKind.mul:
+    return gen_binop(node, ret_var, "mul");
+  case NodeKind.div:
+    return gen_binop(node, ret_var, "div");
+  case NodeKind.lt:
+    // c + common-operator (slt) + operand-type (w)
+    return gen_binop(node, ret_var, "csltw");
+  case NodeKind.le:
+    return gen_binop(node, ret_var, "cslew");
+  case NodeKind.eq:
+    return gen_binop(node, ret_var, "ceqw");
+  case NodeKind.ne:
+    return gen_binop(node, ret_var, "cnew");
+  }
 }
