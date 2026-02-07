@@ -85,5 +85,6 @@ assert 4 "a=0;while(1) { a=a+1; if (a>3) return a; } return a;"
 assert 10 "b=0;for(a=0;a<4;) { a=a+1;b=b+a; } return b;"
 assert 1 "if (1) { a = 1; return a; } return 0;"
 assert 2 "if(0) { a = 1; return a; } else { b = 2; return b; } return 0;"
+assert 1 "if(1) { a = 1; if (1) { return a; } } else { b = 2; return b; } return 0;"
 
 echo OK
