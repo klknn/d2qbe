@@ -95,5 +95,10 @@ assert 2 "if(0) { a = 1; return a; } else { b = 2; return b; } return 0;"
 assert 1 "if(1) { a = 1; if (1) { return a; } } else { b = 2; return b; } return 0;"
 
 assert 0 "foo(); return 0;" "foo"
+assert 0 "foo1(1); return 0;" "foo 1"
+assert 0 "foo2(1, 2); return 0;" "foo 1 2"
+assert 0 "foo2(1+2, 2); return 0;" "foo 3 2"
+assert 0 "foo1(foo()); return 0;" "foo
+foo 4"
 
 echo OK

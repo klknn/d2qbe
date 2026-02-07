@@ -167,7 +167,7 @@ Token* tokenize(char* p) {
       continue;
     }
     // single-punct reserved.
-    if (strchr("+-*/()<>=;{}", *p)) {
+    if (strchr("+-*/()<>=;{},", *p)) {
       cur = new_token(TokenKind.reserved, cur, p++, 1);
       continue;
     }
@@ -218,6 +218,17 @@ enum NodeKind {
   funcall, // f(...)
 }
 
+struct NodeList {
+  NodeList* next;
+  Node* value;
+}
+
+NodeList* push_back(NodeList* nl, Node* v) {
+  nl.value = v;
+  nl.next = cast(NodeList*) calloc(1, NodeList.sizeof);
+  return nl.next;
+}
+
 struct Node {
   NodeKind kind;
   Node* lhs, rhs;
@@ -226,7 +237,8 @@ struct Node {
 
   Node* begin, advance; // for for statement.
   Node* cond, then, else_; // for if/while statement.
-  Node* block_list; // for block.
+  NodeList statements; // for block.
+  NodeList args; // for funcall.
 }
 
 Node* new_node(NodeKind kind, Node* lhs, Node* rhs) {
@@ -244,7 +256,7 @@ Node* new_node_num(int val) {
   return node;
 }
 
-// ENBF: primary = num | ident ("(" ")")? | "(" expr ")"
+// ENBF: primary = num | ident ("(" expr* ")")? | "(" expr ")"
 Node* primary() {
   if (consume("(")) {
     Node* node = expr();
@@ -255,8 +267,12 @@ Node* primary() {
   if (tok) {
     Node* node = cast(Node*) calloc(1, Node.sizeof);
     if (consume("(")) {
-      expect(")");
       node.kind = NodeKind.funcall;
+      NodeList* args = &node.args;
+      while (!consume(")")) {
+        args = push_back(args, expr());
+        bool _ = consume(","); // TODO: more strict syntax check.
+      }
     }
     else {
       node.kind = NodeKind.lvar;
@@ -378,9 +394,9 @@ Node* stmt() {
     Node* block = cast(Node*) calloc(1, Node.sizeof);
     block.kind = NodeKind.block;
     node = block;
+    NodeList* stmts = &node.statements;
     while (!consume("}")) {
-      node.block_list = stmt();
-      node = node.block_list;
+      stmts = push_back(stmts, stmt());
     }
     return block;
   }

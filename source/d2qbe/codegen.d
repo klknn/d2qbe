@@ -18,11 +18,10 @@ bool is_returned(Node* node) {
     return true;
   }
   if (node.kind == NodeKind.block) {
-    while (node) {
-      if (is_returned(node.block_list)) {
+    for (NodeList* stmts = &node.statements; stmts; stmts = stmts.next) {
+      if (is_returned(stmts.value)) {
         return true;
       }
-      node = node.block_list;
     }
   }
   return false;
@@ -102,15 +101,32 @@ int gen(Node* node, int ret_var) {
       return ret;
     }
   case NodeKind.block: {
-      while (node) {
-        ret_var = gen(node.block_list, ret_var);
-        node = node.block_list;
+      NodeList* stmts = &node.statements;
+      while (stmts) {
+        ret_var = gen(stmts.value, ret_var);
+        stmts = stmts.next;
       }
       return ret_var;
     }
   case NodeKind.funcall:
-    printf("%%t%d =w call $%s()\n", ret_var, node.ident);
-    return ret_var + 1;
+    int arg_ret = ret_var;
+    int[10] args_vars;
+    int n_arg = 0;
+    for (NodeList* args = &node.args; args.value; args = args.next) {
+      arg_ret = gen(args.value, arg_ret);
+      args_vars[n_arg] = arg_ret;
+      n_arg += 1;
+    }
+    assert(n_arg < args_vars.length);
+    printf("%%t%d =w call $%s(", arg_ret + 1, node.ident);
+    for (int i = 0; i < n_arg; ++i) {
+      printf("w %%t%d", args_vars[i]);
+      if (i != n_arg - 1) {
+        printf(", ");
+      }
+    }
+    printf(")\n");
+    return arg_ret + 1;
   case NodeKind.add:
     return gen_binop(node, ret_var, "add");
   case NodeKind.sub:
