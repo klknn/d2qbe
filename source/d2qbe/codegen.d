@@ -42,6 +42,24 @@ void gen_lval(Node* node) {
   }
 }
 
+bool is_returned(Node* node) {
+  if (!node) {
+    return false;
+  }
+  if (node.kind == NodeKind.return_) {
+    return true;
+  }
+  if (node.kind == NodeKind.block) {
+    while (node) {
+      if (is_returned(node.block_list)) {
+        return true;
+      }
+      node = node.block_list;
+    }
+  }
+  return false;
+}
+
 int gen(Node* node, int ret_var) {
   if (!node) {
     return ret_var;
@@ -73,7 +91,7 @@ int gen(Node* node, int ret_var) {
     printf("@then%d\n", ret_var);
     int then = gen(node.then, cond);
     int ret = then;
-    if (node.then.kind != NodeKind.return_) {
+    if (!is_returned(node.then)) {
       printf("  jmp @endif%d\n", ret_var); // To skip the else block.
     }
     printf("@else%d\n", ret_var);
