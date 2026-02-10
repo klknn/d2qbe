@@ -120,6 +120,7 @@ int identifier_length(const(char)* p) {
 
 unittest {
   assert(identifier_length("a") == 1);
+  assert(identifier_length("f") == 1);
   assert(identifier_length("_") == 1);
   assert(identifier_length("") == 0);
   assert(identifier_length("0") == 0);
@@ -136,7 +137,8 @@ bool is_keyword(const char* p) {
   }
   int ident_len = identifier_length(p);
   for (int i = 0; keywords[i] != ""; i++) {
-    if (strncmp(p, keywords[i], ident_len) == 0) {
+    const(char)* k = keywords[i];
+    if (strlen(k) == ident_len && strncmp(p, k, ident_len) == 0) {
       return true;
     }
   }
@@ -148,6 +150,9 @@ unittest {
   assert(!is_keyword("returna;"));
   assert(is_keyword("for (;;)"));
   assert(!is_keyword(""));
+  assert(!is_keyword("a"));
+  assert(!is_keyword("f"));
+  // assert(!is_keyword("f(){}"));
 }
 
 Token* tokenize(char* p) {
@@ -216,6 +221,7 @@ enum NodeKind {
   for_, // for (...) ...
   block, // { ... }
   funcall, // f(...)
+  defun, // f(...) { ... }
 }
 
 struct NodeList {
@@ -229,6 +235,8 @@ NodeList* push_back(NodeList* nl, Node* v) {
   return nl.next;
 }
 
+const int MAX_PARAM_SIZE = 10;
+
 struct Node {
   NodeKind kind;
   Node* lhs, rhs;
@@ -237,23 +245,37 @@ struct Node {
 
   Node* begin, advance; // for for statement.
   Node* cond, then, else_; // for if/while statement.
-  NodeList statements; // for block.
+  NodeList statements; // for block/funcdef.
   NodeList args; // for funcall.
+  const(Token)*[MAX_PARAM_SIZE] params; // for funcdef..
 }
 
-Node* new_node(NodeKind kind, Node* lhs, Node* rhs) {
+Node* new_node(NodeKind kind) {
   Node* node = cast(Node*) calloc(1, Node.sizeof);
   node.kind = kind;
+  return node;
+}
+
+Node* new_node_binop(NodeKind kind, Node* lhs, Node* rhs) {
+  Node* node = new_node(kind);
   node.lhs = lhs;
   node.rhs = rhs;
   return node;
 }
 
 Node* new_node_num(int val) {
-  Node* node = cast(Node*) calloc(1, Node.sizeof);
-  node.kind = NodeKind.num;
+  Node* node = new_node(NodeKind.num);
   node.val = val;
   return node;
+}
+
+char* new_str_from_token(Token* tok) {
+  if (!tok) {
+    return null;
+  }
+  char* ret = cast(char*) calloc(tok.len + 1, 1);
+  strncpy(ret, tok.str, tok.len);
+  return ret;
 }
 
 // ENBF: primary = num | ident ("(" expr* ")")? | "(" expr ")"
@@ -277,9 +299,7 @@ Node* primary() {
     else {
       node.kind = NodeKind.lvar;
     }
-    node.ident = cast(char*) calloc(tok.len + 1, 1);
-    strncpy(node.ident, tok.str, tok.len);
-    // printf("👺 ident %s", node.ident);
+    node.ident = new_str_from_token(tok);
     return node;
   }
   return new_node_num(expect_number());
@@ -288,7 +308,7 @@ Node* primary() {
 // ENBF: unary = ("+" | "-")? unary | primary
 Node* unary() {
   if (consume("-")) {
-    return new_node(NodeKind.sub, new_node_num(0), unary());
+    return new_node_binop(NodeKind.sub, new_node_num(0), unary());
   }
   if (consume("+")) {
     return unary();
@@ -301,10 +321,10 @@ Node* mul() {
   Node* node = unary();
   for (;;) {
     if (consume("*")) {
-      node = new_node(NodeKind.mul, node, unary());
+      node = new_node_binop(NodeKind.mul, node, unary());
     }
     else if (consume("/")) {
-      node = new_node(NodeKind.div, node, unary());
+      node = new_node_binop(NodeKind.div, node, unary());
     }
     else {
       return node;
@@ -317,10 +337,10 @@ Node* add() {
   Node* node = mul();
   for (;;) {
     if (consume("+")) {
-      node = new_node(NodeKind.add, node, mul());
+      node = new_node_binop(NodeKind.add, node, mul());
     }
     else if (consume("-")) {
-      node = new_node(NodeKind.sub, node, mul());
+      node = new_node_binop(NodeKind.sub, node, mul());
     }
     else {
       return node;
@@ -334,16 +354,16 @@ Node* relational() {
   Node* node = add();
   for (;;) {
     if (consume("<")) {
-      node = new_node(NodeKind.lt, node, add());
+      node = new_node_binop(NodeKind.lt, node, add());
     }
     else if (consume("<=")) {
-      node = new_node(NodeKind.le, node, add());
+      node = new_node_binop(NodeKind.le, node, add());
     }
     else if (consume(">")) {
-      node = new_node(NodeKind.lt, add(), node);
+      node = new_node_binop(NodeKind.lt, add(), node);
     }
     else if (consume(">=")) {
-      node = new_node(NodeKind.le, add(), node);
+      node = new_node_binop(NodeKind.le, add(), node);
     }
     else {
       return node;
@@ -357,10 +377,10 @@ Node* equality() {
   Node* node = relational();
   for (;;) {
     if (consume("==")) {
-      node = new_node(NodeKind.eq, node, relational());
+      node = new_node_binop(NodeKind.eq, node, relational());
     }
     else if (consume("!=")) {
-      node = new_node(NodeKind.ne, node, relational());
+      node = new_node_binop(NodeKind.ne, node, relational());
     }
     else {
       return node;
@@ -372,7 +392,7 @@ Node* equality() {
 Node* assign() {
   Node* node = equality();
   if (consume("=")) {
-    node = new_node(NodeKind.assign, node, assign());
+    node = new_node_binop(NodeKind.assign, node, assign());
   }
   return node;
 }
@@ -389,25 +409,23 @@ Node* expr() {
 //            | "for" "(" expr? ";" expr? ";" expr? ")" stmt
 //            | "return" expr ";"
 Node* stmt() {
-  Node* node;
   if (consume("{")) {
     Node* block = cast(Node*) calloc(1, Node.sizeof);
     block.kind = NodeKind.block;
-    node = block;
-    NodeList* stmts = &node.statements;
+    NodeList* stmts = &block.statements;
     while (!consume("}")) {
       stmts = push_back(stmts, stmt());
     }
     return block;
   }
   if (consume("return")) {
-    node = cast(Node*) calloc(1, Node.sizeof);
-    node.kind = NodeKind.return_;
+    Node* node = new_node(NodeKind.return_);
     node.lhs = expr();
+    expect(";");
+    return node;
   }
   else if (consume("if")) {
-    node = cast(Node*) calloc(1, Node.sizeof);
-    node.kind = NodeKind.if_;
+    Node* node = new_node(NodeKind.if_);
     expect("(");
     node.cond = expr();
     expect(")");
@@ -415,18 +433,18 @@ Node* stmt() {
     if (consume("else")) {
       node.else_ = stmt();
     }
+    return node;
   }
   else if (consume("while")) {
-    node = cast(Node*) calloc(1, Node.sizeof);
-    node.kind = NodeKind.while_;
+    Node* node = new_node(NodeKind.while_);
     expect("(");
     node.cond = expr();
     expect(")");
     node.then = stmt();
+    return node;
   }
   else if (consume("for")) {
-    node = cast(Node*) calloc(1, Node.sizeof);
-    node.kind = NodeKind.for_;
+    Node* node = new_node(NodeKind.for_);
     expect("(");
     if (!consume(";")) {
       node.begin = expr();
@@ -441,22 +459,37 @@ Node* stmt() {
       expect(")");
     }
     node.then = stmt();
+    return node;
   }
-  else {
-    node = expr();
+  Node* node = expr();
+  expect(";");
+  return node;
+}
+
+// EBNF: defun = ident "(" ident* ")" stmt;
+Node* defun() {
+  Node* node = new_node(NodeKind.defun);
+  Token* func_name = consume_ident();
+  if (!func_name) {
+    error_at(token.str, "function name expected.");
   }
-  // expect(";");
-  bool _ = consume(";");
+  node.ident = new_str_from_token(func_name);
+  expect("(");
+  for (int i = 0; !consume(")"); ++i) {
+    assert(i < MAX_PARAM_SIZE);
+    node.params[i] = consume_ident();
+  }
+  node.then = stmt();
   return node;
 }
 
 Node*[100] code;
 
-// EBNF: program = stmt*
+// EBNF: program = defun*
 void program() {
   int i = 0;
   while (!at_eof()) {
-    code[i++] = stmt();
+    code[i++] = defun();
   }
   code[i] = null;
 }

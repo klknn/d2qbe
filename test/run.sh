@@ -1,6 +1,6 @@
 #!/bin/bash
 
-assert() {
+assert_v2() {
   expected="$1"
   input="$2"
   output="$3"
@@ -22,6 +22,10 @@ assert() {
     exit 1
   fi
   fi
+}
+
+assert() {
+  assert_v2 "$1" "main() { $2 }" "$3"
 }
 
 assert 0 "return 0;"
@@ -100,5 +104,28 @@ assert 0 "foo2(1, 2); return 0;" "foo 1 2"
 assert 0 "foo2(1+2, 2); return 0;" "foo 3 2"
 assert 0 "foo1(foo()); return 0;" "foo
 foo 4"
+
+assert_v2 3 "f(a){ return a+1; } main() { return f(2); }"
+assert_v2 4 "f(a){ return a+1; } main() { return f(f(2)); }"
+assert_v2 3 "
+f(a){
+  return a+1;
+}
+
+main() {
+  return f(2);
+}
+"
+assert_v2 55 "
+fib(x) {
+  if (x<=1)
+    return 1;
+  return fib(x-1) + fib(x-2);
+}
+
+main() {
+  return fib(9);
+}
+"
 
 echo OK

@@ -118,7 +118,7 @@ int gen(Node* node, int ret_var) {
       n_arg += 1;
     }
     assert(n_arg < args_vars.length);
-    printf("%%t%d =w call $%s(", arg_ret + 1, node.ident);
+    printf("  %%t%d =w call $%s(", arg_ret + 1, node.ident);
     for (int i = 0; i < n_arg; ++i) {
       printf("w %%t%d", args_vars[i]);
       if (i != n_arg - 1) {
@@ -127,6 +127,20 @@ int gen(Node* node, int ret_var) {
     }
     printf(")\n");
     return arg_ret + 1;
+  case NodeKind.defun:
+    printf("export function w $%s(", node.ident);
+    // TODO print args
+    for (int i = 0; node.params[i]; ++i) {
+      const(Token)* p = node.params[i];
+      printf("w %%%.*s", p.len, p.str);
+      if (node.params[i + 1]) {
+        printf(", ");
+      }
+    }
+    printf(") {\n@%s\n", node.ident);
+    ret_var = gen(node.then, ret_var);
+    printf("}\n");
+    return ret_var;
   case NodeKind.add:
     return gen_binop(node, ret_var, "add");
   case NodeKind.sub:

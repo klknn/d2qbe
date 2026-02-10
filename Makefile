@@ -1,8 +1,10 @@
-.PHONY: test clean
+.PHONY: all test clean
 
 DC=ldc2
 DFLAGS=-g -betterC -I source
 OBJS=parse.o codegen.o app.o
+
+all: d2qbe qbe/qbe
 
 d2qbe: $(OBJS)
 	$(DC) $(DFLAGS) $(OBJS) -of=$@

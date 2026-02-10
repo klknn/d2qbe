@@ -16,13 +16,13 @@ int main(int argc, char** argv) {
   token = tokenize(argv[1]);
   program();
 
-  printf("export function w $main() {\n");
-  printf("@main\n");
+  // printf("export function w $main() {\n");
+  // printf("@main\n");
   int ret = 0;
   for (int i = 0; code[i]; i++) {
     ret = gen(code[i], ret);
   }
-  printf("}\n");
+  // printf("}\n");
 
   return 0;
 }
