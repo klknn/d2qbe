@@ -1,8 +1,8 @@
 .PHONY: all test clean
 
 DC=ldc2
-DFLAGS=-g -betterC -I source
-OBJS=parse.o codegen.o app.o
+DFLAGS=-g -w -betterC -Isource
+OBJS=tokenize.o parse.o codegen.o app.o
 
 all: d2qbe qbe/qbe
 
@@ -12,9 +12,11 @@ d2qbe: $(OBJS)
 %.o: source/d2qbe/%.d
 	$(DC) $(DFLAGS) -c $<
 
-codegen.o: source/d2qbe/codegen.d parse.o
+parse.o: source/d2qbe/parse.d tokenize.o
 
-app.o: source/d2qbe/app.d codegen.o parse.o
+codegen.o: source/d2qbe/codegen.d parse.o tokenize.o
+
+app.o: source/d2qbe/app.d codegen.o parse.o tokenize.o
 
 ext.o: test/ext.d
 	$(DC) $(DFLAGS) -c $<

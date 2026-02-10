@@ -3,6 +3,7 @@ module d2qbe.codegen;
 import core.stdc.stdio;
 
 import d2qbe.parse;
+import d2qbe.tokenize;
 
 void gen_lval(Node* node) {
   if (node.kind != NodeKind.lvar) {
@@ -44,7 +45,7 @@ int gen(Node* node, int ret_var) {
       return ret_var + 1;
     }
   case NodeKind.lvar: {
-      printf("  %%t%d =w copy %%%s\n", ret_var + 1, node.ident);
+      printf("  %%t%d =w copy %%%.*s\n", ret_var + 1, node.ident.len, node.ident.str);
       return ret_var + 1;
     }
   case NodeKind.assign: {
@@ -52,7 +53,7 @@ int gen(Node* node, int ret_var) {
         error("Variable expected in lhs");
       }
       int rhs = gen(node.rhs, ret_var);
-      printf("  %%%s =w copy %%t%d\n", node.lhs.ident, rhs);
+      printf("  %%%.*s =w copy %%t%d\n", node.lhs.ident.len, node.lhs.ident.str, rhs);
       return rhs;
     }
   case NodeKind.return_: {
@@ -118,7 +119,7 @@ int gen(Node* node, int ret_var) {
       n_arg += 1;
     }
     assert(n_arg < args_vars.length);
-    printf("  %%t%d =w call $%s(", arg_ret + 1, node.ident);
+    printf("  %%t%d =w call $%.*s(", arg_ret + 1, node.ident.len, node.ident.str);
     for (int i = 0; i < n_arg; ++i) {
       printf("w %%t%d", args_vars[i]);
       if (i != n_arg - 1) {
@@ -128,7 +129,7 @@ int gen(Node* node, int ret_var) {
     printf(")\n");
     return arg_ret + 1;
   case NodeKind.defun:
-    printf("export function w $%s(", node.ident);
+    printf("export function w $%.*s(", node.ident.len, node.ident.str);
     // TODO print args
     for (int i = 0; node.params[i]; ++i) {
       const(Token)* p = node.params[i];
@@ -137,7 +138,7 @@ int gen(Node* node, int ret_var) {
         printf(", ");
       }
     }
-    printf(") {\n@%s\n", node.ident);
+    printf(") {\n@%.*s\n", node.ident.len, node.ident.str);
     ret_var = gen(node.then, ret_var);
     printf("}\n");
     return ret_var;
