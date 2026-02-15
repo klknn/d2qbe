@@ -24,6 +24,8 @@ enum NodeKind {
   block, // { ... }
   funcall, // f(...)
   defun, // f(...) { ... }
+  addr, // &...
+  deref, // *...
 }
 
 struct NodeList {
@@ -98,13 +100,23 @@ Node* primary() {
   return new_node_num(expect_number());
 }
 
-// ENBF: unary = ("+" | "-")? unary | primary
+// ENBF: unary ="+"? primary | "-"? unary | ("*" | "&") unary
 Node* unary() {
+  if (consume("*")) {
+    Node* node = new_node(NodeKind.deref);
+    node.lhs = unary();
+    return node;
+  }
+  if (consume("&")) {
+    Node* node = new_node(NodeKind.addr);
+    node.lhs = unary();
+    return node;
+  }
   if (consume("-")) {
     return new_node_binop(NodeKind.sub, new_node_num(0), unary());
   }
   if (consume("+")) {
-    return unary();
+    return primary();
   }
   return primary();
 }

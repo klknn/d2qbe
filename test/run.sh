@@ -128,4 +128,7 @@ main() {
 }
 "
 
+assert_v2 12 "main() { a=12; b=&a; return *b; }"
+#assert_v2 12 "main() { a=12; b=&a; c=&b; return **c; }"
+
 echo OK

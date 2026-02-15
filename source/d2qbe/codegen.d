@@ -5,12 +5,6 @@ import core.stdc.stdio;
 import d2qbe.parse;
 import d2qbe.tokenize;
 
-void gen_lval(Node* node) {
-  if (node.kind != NodeKind.lvar) {
-    error("Variable expected in lhs.");
-  }
-}
-
 bool is_returned(Node* node) {
   if (!node) {
     return false;
@@ -40,6 +34,13 @@ int gen(Node* node, int ret_var) {
     return ret_var;
   }
   final switch (node.kind) {
+  case NodeKind.addr:
+    printf("  %%t%d =l alloc4 4\n", ret_var + 1);
+    printf("  storew %%t%d, %%t%d\n", ret_var, ret_var + 1);
+    return ret_var + 1;
+  case NodeKind.deref:
+    printf("  %%t%d =w loadw %%t%d\n", ret_var + 1, ret_var);
+    return ret_var + 1;
   case NodeKind.num: {
       printf("  %%t%d =w copy %d\n", ret_var + 1, node.val);
       return ret_var + 1;
