@@ -1874,7 +1874,7 @@ void program() {
       continue;
     }
     
-    if (is_type_name(token.str, token.len)) {
+    if (is_type_name(token.str, token.len) || is_type_start(token)) {
       Type t;
       parse_type(&t);
       Token* ident = consume_ident();
@@ -1894,40 +1894,7 @@ void program() {
         add_to_code(gvar);
       }
     } else {
-      // Untyped function definition for legacy test support
-      Token* ident = consume_ident();
-      if (!ident) {
-        error_at(token.str, "identifier expected at top level");
-      }
-      Type t;
-      t.name = "int";
-      t.ptr_depth = 0;
-      t.array_dims = 0;
-      
-      Node* node = new_node(NodeKind.NK_defun);
-      node.ident = ident;
-      node.return_type = t;
-      expect("(");
-      int p_idx = 0;
-      while (!consume(")")) {
-        assert(p_idx < MAX_PARAM_SIZE);
-        Type pt;
-        pt.name = "int";
-        pt.ptr_depth = 0;
-        pt.array_dims = 0;
-        node.params_types[p_idx] = pt;
-        node.params[p_idx] = consume_ident();
-        p_idx++;
-        consume(",");
-      }
-      
-      char* name = cast(char*) calloc(1, ident.len + 1);
-      memcpy(name, ident.str, ident.len);
-      register_function(name, false, p_idx, &t);
-
-      node.then = stmt();
-      node.is_decl_only = false;
-      add_to_code(node);
+      error_at(token.str, "type name expected at top level");
     }
   }
   code[code_count] = null;
