@@ -131,4 +131,17 @@ main() {
 assert_v2 12 "main() { a=12; b=&a; return *b; }"
 #assert_v2 12 "main() { a=12; b=&a; c=&b; return **c; }"
 
+# ==============================================================================
+# Stage 1 tests (Uncomment during implementation)
+# ==============================================================================
+# assert 42 "int x = 42; return x;"
+# assert 12 "int x; x = 12; return x;"
+# assert 5 "int x = 5; int* y = &x; return *y;"
+# assert 10 "int x = 5; int* y = &x; *y = 10; return x;"
+# assert_v2 3 "int f(int a) { return a+1; } int main() { return f(2); }"
+# assert_v2 5 "int add(int a, int b) { return a + b; } int main() { return add(2, 3); }"
+# assert 1 "bool x = true; return x;"
+# assert 0 "bool x = false; return x;"
+# assert 97 "char x = 97; return x;"
+
 echo OK
