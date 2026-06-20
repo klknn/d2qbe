@@ -30,13 +30,29 @@ This document is for the next AI agent or developer taking over the development 
 ---
 
 ## 3. Test Suites
-Testing can be run using the following targets:
-- **Unit Tests**: `make unittest`
-  - Runs in-memory module-level tests inside `source/d2qbe/*.d` in under 1 second.
-- **Integration Tests**: `make test`
-  - Runs end-to-end integration tests using `test/run.sh`.
-- **Self-Hosting Verification**: `./test/self_host.sh`
-  - Verifies the self-hosted compiler compiles the entire compiler source and runs integration tests successfully.
+
+### 3.1 Unit Tests (`make unittest`)
+- **How they work**: Runs built-in D `unittest` blocks inside compiler source files (`tokenize.d`, `parse.d`, `codegen.d`).
+- **Implementation**: The Makefile compiles these files with the `-unittest -main` flags using LDC and runs the resulting `unittest_runner` binary.
+- **Coverage**:
+  - `tokenize.d`: Verifies identifier parsing, character literals, escape sequences, and keyword recognition.
+  - `parse.d`: Verifies AST structure for complex expressions, operator precedence (e.g. shifts, bitwise, logical operators), and struct/enum type layout calculation.
+  - `codegen.d`: Verifies namespace management and stack variable offset layout.
+
+### 3.2 Integration Tests (`make test`)
+- **How they work**: Runs end-to-end integration tests using `test/run.sh`.
+- **Harness Details**:
+  - `assert <expected_exit_code> "<d_snippet>"`: Wraps the D snippet inside `int main() { ... }`, compiles it to QBE IR using `./d2qbe`, compiles QBE IR to assembly using `./qbe/qbe`, links with standard helpers in `test/ext.d`, runs it, and asserts the exit code.
+  - `assert_v2 <expected_exit_code> "<d_file_content>"`: Same flow as `assert`, but compiles complete, multi-function D files (e.g., `test/struct_test.d`, `test/enum_test.d`).
+
+### 3.3 Self-Hosting Verification (`./test/self_host.sh`)
+- **How it works**: Compiles the compiler using itself, and then runs the entire integration test suite using the self-hosted binary.
+- **Verification Flow**:
+  1. Concatenates all compiler source files (`tokenize.d`, `parse.d`, `codegen.d`, `app.d`) into a single file `test/self_host.d` (excluding module/import declarations).
+  2. Compiles `test/self_host.d` using the bootstrap compiler `./d2qbe` to produce `test/self_host.s` (QBE IR).
+  3. Uses `qbe/qbe` to assemble `test/self_host.s` to assembly.
+  4. Links the assembly with `ext.o` to produce `./test/d2qbe_self_hosted`.
+  5. Sets the `D2QBE` environment variable to `./test/d2qbe_self_hosted` and runs `test/run.sh` to guarantee that the self-hosted compiler produces correct executable binaries.
 
 ---
 
