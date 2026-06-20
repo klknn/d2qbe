@@ -219,6 +219,8 @@ bool is_keyword(const char* p) {
   if (len == 8 && strncmp(p, "template", 8) == 0) return true;
   if (len == 5 && strncmp(p, "alias", 5) == 0) return true;
   if (len == 6 && strncmp(p, "static", 6) == 0) return true;
+  if (len == 4 && strncmp(p, "init", 4) == 0) return true;
+  if (len == 7 && strncmp(p, "alignof", 7) == 0) return true;
   return false;
 }
 
@@ -928,14 +930,21 @@ Node* primary() {
     node.ident = token;
     token = token.next;
   } else if (is_type_expression_start(token)) {
-    bool is_sizeof = is_sizeof_expression(token);
+    bool is_prop = is_type_property_expression(token);
     
-    if (is_sizeof) {
+    if (is_prop) {
       Type t;
       parse_type(&t);
       expect(".");
-      expect("sizeof");
-      node = new_node_num(get_type_size(&t));
+      if (consume("sizeof")) {
+        node = new_node_num(get_type_size(&t));
+      } else if (consume("init")) {
+        node = new_node_num(0);
+      } else if (consume("alignof")) {
+        node = new_node_num(get_type_alignment(&t));
+      } else {
+        error_at(token.str, "unknown type property");
+      }
     } else {
       Type dummy;
       parse_type(&dummy);
@@ -1662,7 +1671,7 @@ bool is_type_expression_start(Token* tok) {
   return t && t.len == 1 && t.str[0] == '.';
 }
 
-bool is_sizeof_expression(Token* tok) {
+bool is_type_property_expression(Token* tok) {
   if (!is_type_start(tok)) return false;
   Token* t = tok;
   t = t.next;
@@ -1694,7 +1703,9 @@ bool is_sizeof_expression(Token* tok) {
   }
   if (t && t.len == 1 && t.str[0] == '.') {
     t = t.next;
-    if (t && t.len == 6 && strncmp(t.str, "sizeof", 6) == 0) {
+    if (t && (t.len == 6 && strncmp(t.str, "sizeof", 6) == 0 ||
+              t.len == 4 && strncmp(t.str, "init", 4) == 0 ||
+              t.len == 7 && strncmp(t.str, "alignof", 7) == 0)) {
       return true;
     }
   }
@@ -2301,6 +2312,17 @@ unittest {
   token = tokenize(user_input);
   Node* const_node = expr();
   assert(eval_const_expr(const_node) == 1);
+
+  // Test .init and .alignof properties
+  user_input = cast(char*) "int.init;";
+  token = tokenize(user_input);
+  Node* init_node = stmt();
+  assert(init_node != null && init_node.kind == NodeKind.NK_num && init_node.val == 0);
+
+  user_input = cast(char*) "int*.alignof;";
+  token = tokenize(user_input);
+  Node* align_node = stmt();
+  assert(align_node != null && align_node.kind == NodeKind.NK_num && align_node.val == 8);
 }
 
 
