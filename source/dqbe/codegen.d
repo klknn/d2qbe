@@ -42,7 +42,7 @@ int get_temp_offset(const char* name) {
   }
   
   // Allocate new slot
-  stack_offset_counter += 8; // 8 bytes for every temporary
+  stack_offset_counter = stack_offset_counter + 8; // 8 bytes for every temporary
   
   if (current_fn_name && strcmp(current_fn_name, "parse_function") == 0) {
     fprintf(get_stderr(), "MAP: %s -> %d (count=%d)\n", name, stack_offset_counter, temp_offsets_count);
@@ -65,7 +65,7 @@ int get_var_offset(const char* name, int size, int align_) {
   // Align stack counter
   stack_offset_counter = ((stack_offset_counter + align_ - 1) / align_) * align_;
   int ret_offset = stack_offset_counter + size;
-  stack_offset_counter += size;
+  stack_offset_counter = stack_offset_counter + size;
   
   assert(var_offsets_count < 5000);
   var_offsets[var_offsets_count].name = cast(char*) name;
