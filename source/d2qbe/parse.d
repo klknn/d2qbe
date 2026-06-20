@@ -26,6 +26,76 @@ enum NodeKind {
   defun, // f(...) { ... }
   addr, // &...
   deref, // *...
+  var_decl, // Type x; or Type x = init;
+  gvar_decl, // Type x; at global scope
+  cast_, // cast(Type) expr
+  index, // x[y]
+}
+
+struct Type {
+  const(char)* name;
+  int ptr_depth;
+  int array_size;
+}
+
+const(char)*[200] known_types;
+int known_types_count = 0;
+
+void register_type(const(char)* name) {
+  known_types[known_types_count++] = name;
+}
+
+bool is_type_name(const(char)* str, int len) {
+  if (len == 5 && strncmp(str, "const", 5) == 0) return true;
+  if (len == 6 && strncmp(str, "extern", 6) == 0) return true;
+  for (int i = 0; i < known_types_count; i++) {
+    if (strlen(known_types[i]) == len && strncmp(known_types[i], str, len) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void init_types() {
+  known_types_count = 0;
+  register_type("int");
+  register_type("char");
+  register_type("bool");
+  register_type("void");
+}
+
+Type parse_type() {
+  while (consume("const")) {
+    if (consume("(")) {
+      Type t = parse_type();
+      expect(")");
+      return t;
+    }
+  }
+  while (consume("extern")) {
+    if (consume("(")) {
+      consume("C");
+      expect(")");
+    }
+  }
+  Token* base_tok = consume_ident();
+  if (!base_tok) {
+    error_at(token.str, "type name expected");
+  }
+  char* name = cast(char*) calloc(1, base_tok.len + 1);
+  memcpy(name, base_tok.str, base_tok.len);
+  Type t;
+  t.name = name;
+  t.ptr_depth = 0;
+  t.array_size = 0;
+  while (consume("*")) {
+    t.ptr_depth++;
+  }
+  if (consume("[")) {
+    t.array_size = expect_number();
+    expect("]");
+  }
+  return t;
 }
 
 struct NodeList {
@@ -51,7 +121,14 @@ struct Node {
   Node* cond, then, else_; // for if/while statement.
   NodeList statements; // for block/funcdef.
   NodeList args; // for funcall.
-  const(Token)*[MAX_PARAM_SIZE] params; // for funcdef..
+  const(Token)*[MAX_PARAM_SIZE] params; // for funcdef.
+  
+  // New fields for D types
+  Type type; // for NodeKind.var_decl/gvar_decl
+  Type return_type; // for NodeKind.defun
+  Type[MAX_PARAM_SIZE] params_types; // for NodeKind.defun
+  bool is_decl_only; // for NodeKind.defun
+  bool is_variadic; // for NodeKind.defun
 }
 
 Node* new_node(NodeKind kind) {
@@ -73,11 +150,26 @@ Node* new_node_num(int val) {
   return node;
 }
 
-// ENBF: primary = num | ident ("(" expr* ")")? | "(" expr ")"
+// ENBF: primary = num | "true" | "false" | "cast" "(" Type ")" unary | ident ("(" expr* ")")? | "(" expr ")"
 Node* primary() {
   if (consume("(")) {
     Node* node = expr();
     expect(")");
+    return node;
+  }
+  if (consume("true")) {
+    return new_node_num(1);
+  }
+  if (consume("false")) {
+    return new_node_num(0);
+  }
+  if (consume("cast")) {
+    expect("(");
+    Type cast_type = parse_type();
+    expect(")");
+    Node* node = new_node(NodeKind.cast_);
+    node.type = cast_type;
+    node.lhs = unary();
     return node;
   }
   Token* tok = consume_ident();
@@ -154,7 +246,6 @@ Node* add() {
 }
 
 // EBNF: relational = add ("<" add | "<=" add | ">" add | ">=" add)*
-// e.g. x < y
 Node* relational() {
   Node* node = add();
   for (;;) {
@@ -177,7 +268,6 @@ Node* relational() {
 }
 
 // EBNF: equality = relational ("==" relational | "!=" relational)*
-// e.g. x == y
 Node* equality() {
   Node* node = relational();
   for (;;) {
@@ -213,6 +303,7 @@ Node* expr() {
 //            | "while" "(" expr ")" stmt
 //            | "for" "(" expr? ";" expr? ";" expr? ")" stmt
 //            | "return" expr ";"
+//            | Type ident ( "=" expr )? ";"
 Node* stmt() {
   if (consume("{")) {
     Node* block = cast(Node*) calloc(1, Node.sizeof);
@@ -222,6 +313,21 @@ Node* stmt() {
       stmts = push_back(stmts, stmt());
     }
     return block;
+  }
+  if (is_type_name(token.str, token.len)) {
+    Type t = parse_type();
+    Token* ident = consume_ident();
+    if (!ident) {
+      error_at(token.str, "variable name expected");
+    }
+    Node* node = new_node(NodeKind.var_decl);
+    node.type = t;
+    node.ident = ident;
+    if (consume("=")) {
+      node.lhs = expr();
+    }
+    expect(";");
+    return node;
   }
   if (consume("return")) {
     Node* node = new_node(NodeKind.return_);
@@ -252,7 +358,19 @@ Node* stmt() {
     Node* node = new_node(NodeKind.for_);
     expect("(");
     if (!consume(";")) {
-      node.begin = expr();
+      if (is_type_name(token.str, token.len)) {
+        Type t = parse_type();
+        Token* ident = consume_ident();
+        Node* decl = new_node(NodeKind.var_decl);
+        decl.type = t;
+        decl.ident = ident;
+        if (consume("=")) {
+          decl.lhs = expr();
+        }
+        node.begin = decl;
+      } else {
+        node.begin = expr();
+      }
       expect(";");
     }
     if (!consume(";")) {
@@ -271,30 +389,164 @@ Node* stmt() {
   return node;
 }
 
-// EBNF: defun = ident "(" ident* ")" stmt;
-Node* defun() {
+void parse_struct() {
+  expect("struct");
+  Token* name_tok = consume_ident();
+  if (!name_tok) error_at(token.str, "struct name expected");
+  char* name = cast(char*) calloc(1, name_tok.len + 1);
+  memcpy(name, name_tok.str, name_tok.len);
+  register_type(name);
+  expect("{");
+  while (!consume("}")) {
+    parse_type();
+    consume_ident();
+    expect(";");
+  }
+}
+
+void parse_enum() {
+  expect("enum");
+  Token* name_tok = consume_ident();
+  if (!name_tok) error_at(token.str, "enum name expected");
+  char* name = cast(char*) calloc(1, name_tok.len + 1);
+  memcpy(name, name_tok.str, name_tok.len);
+  register_type(name);
+  expect("{");
+  while (!consume("}")) {
+    consume_ident();
+    if (consume("=")) {
+      expect_number();
+    }
+    consume(",");
+  }
+}
+
+Node* parse_function(Type ret_type, Token* func_name) {
   Node* node = new_node(NodeKind.defun);
-  Token* func_name = consume_ident();
-  if (!func_name) {
-    error_at(token.str, "function name expected.");
-  }
   node.ident = func_name;
+  node.return_type = ret_type;
+  
   expect("(");
-  for (int i = 0; !consume(")"); ++i) {
+  int i = 0;
+  while (!consume(")")) {
+    if (consume("...")) {
+      node.is_variadic = true;
+      expect(")");
+      break;
+    }
     assert(i < MAX_PARAM_SIZE);
+    node.params_types[i] = parse_type();
     node.params[i] = consume_ident();
+    i++;
+    consume(",");
   }
-  node.then = stmt();
+  
+  if (consume(";")) {
+    node.is_decl_only = true;
+  } else {
+    node.then = stmt();
+    node.is_decl_only = false;
+  }
   return node;
 }
 
-Node*[100] code;
+Node*[500] code;
 
-// EBNF: program = defun*
+// EBNF: program = (struct_decl | enum_decl | global_decl | defun | untyped_defun)*
 void program() {
+  init_types();
   int i = 0;
   while (!at_eof()) {
-    code[i++] = defun();
+    if (consume(";")) {
+      continue;
+    }
+    if (consume("unittest")) {
+      stmt();
+      continue;
+    }
+    if (is_token("struct")) {
+      parse_struct();
+      continue;
+    }
+    if (is_token("enum")) {
+      parse_enum();
+      continue;
+    }
+    
+    if (is_type_name(token.str, token.len)) {
+      Type t = parse_type();
+      Token* ident = consume_ident();
+      if (!ident) {
+        error_at(token.str, "identifier expected at top level");
+      }
+      if (is_token("(")) {
+        code[i++] = parse_function(t, ident);
+      } else {
+        Node* gvar = new_node(NodeKind.gvar_decl);
+        gvar.type = t;
+        gvar.ident = ident;
+        if (consume("=")) {
+          gvar.lhs = expr();
+        }
+        expect(";");
+        code[i++] = gvar;
+      }
+    } else {
+      // Untyped function definition for legacy test support
+      Token* ident = consume_ident();
+      if (!ident) {
+        error_at(token.str, "identifier expected at top level");
+      }
+      Type t;
+      t.name = "int";
+      t.ptr_depth = 0;
+      t.array_size = 0;
+      
+      Node* node = new_node(NodeKind.defun);
+      node.ident = ident;
+      node.return_type = t;
+      expect("(");
+      int p_idx = 0;
+      while (!consume(")")) {
+        assert(p_idx < MAX_PARAM_SIZE);
+        Type pt;
+        pt.name = "int";
+        pt.ptr_depth = 0;
+        pt.array_size = 0;
+        node.params_types[p_idx] = pt;
+        node.params[p_idx] = consume_ident();
+        p_idx++;
+        consume(",");
+      }
+      node.then = stmt();
+      node.is_decl_only = false;
+      code[i++] = node;
+    }
   }
   code[i] = null;
 }
+
+unittest {
+  init_types();
+  
+  // Test 1: variable declaration parsing
+  user_input = cast(char*) "int x = 42;";
+  token = tokenize(user_input);
+  Node* node = stmt();
+  assert(node != null);
+  assert(node.kind == NodeKind.var_decl);
+  assert(strncmp(node.ident.str, "x", node.ident.len) == 0);
+  assert(strcmp(node.type.name, "int") == 0);
+  assert(node.lhs.kind == NodeKind.num);
+  assert(node.lhs.val == 42);
+  
+  // Test 2: typed function parsing
+  user_input = cast(char*) "int main() { return 0; }";
+  token = tokenize(user_input);
+  program();
+  assert(code[0] != null);
+  assert(code[0].kind == NodeKind.defun);
+  assert(strncmp(code[0].ident.str, "main", code[0].ident.len) == 0);
+  assert(strcmp(code[0].return_type.name, "int") == 0);
+}
+

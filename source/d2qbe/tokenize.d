@@ -129,7 +129,7 @@ unittest {
   assert(identifier_length("a0=1") == 2);
 }
 
-const(char)** keywords = ["return", "if", "else", "while", "for", ""];
+const(char)** keywords = ["return", "if", "else", "while", "for", "struct", "enum", "cast", "sizeof", "const", "extern", "unittest", "true", "false", ""];
 
 bool is_keyword(const char* p) {
   if (strlen(p) == 0) {
@@ -165,14 +165,16 @@ Token* tokenize(char* p) {
       continue;
     }
     // multi-punct reserved.
-    if (startswith(p, "==") || startswith(p, "!=") ||
+    if (startswith(p, "...") ||
+      startswith(p, "==") || startswith(p, "!=") ||
       startswith(p, "<=") || startswith(p, ">=")) {
-      cur = new_token(TokenKind.reserved, cur, p, 2);
-      p += 2;
+      int len = startswith(p, "...") ? 3 : 2;
+      cur = new_token(TokenKind.reserved, cur, p, len);
+      p += len;
       continue;
     }
     // single-punct reserved.
-    if (strchr("+-*/()<>=;{},&", *p)) {
+    if (strchr("+-*/()<>=;{},&.[]", *p)) {
       cur = new_token(TokenKind.reserved, cur, p++, 1);
       continue;
     }
