@@ -58,8 +58,12 @@ These features require significant restructuring of name resolution, type valida
 * **Implementation**: Automatically insert constructor calls during variable initialization, and destructor calls at every scope exit point (such as `return`, `break`, or block end).
 
 ### 3.3 Modules & Imports
-* **Syntax**: `import std.stdio;`
-* **Implementation**: Implement search path lookup to locate imported `.d` files, parse them, and support modular symbol tables/namespaces.
+* **Syntax**: `module my_module; import other_module;`
+* **Current Limitation**: Currently, `d2qbe` only supports compiling a single D source string. The self-hosting test script (`test/self_host.sh`) concatenates all modules (`tokenize.d`, `parse.d`, `codegen.d`, `app.d`) into a single file and strips the `module` and `import` lines to bypass this limitation.
+* **Implementation**:
+  - Update tokenizer/parser to accept `module` and `import` keywords without failing.
+  - Implement import path lookup to locate and parse dependent `.d` files dynamically.
+  - Support modular symbol tables and namespace scoping to prevent symbol conflicts.
 
 ### 3.4 Compile-Time Function Execution (CTFE)
 * **Syntax**: Evaluating arbitrary functions at compile-time.
