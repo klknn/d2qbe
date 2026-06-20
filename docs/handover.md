@@ -28,8 +28,12 @@ This document is for the next AI agent or developer taking over the development 
 - **Multidimensional Static Arrays**: Completed & Committed.
   - Supports nesting of static array dimensions, indexing, compile-time property `.sizeof` for both types and expressions, and recursive copying of nested arrays inside structs.
 - **Assertion Support**: Completed & Committed.
+- **Templates (Generics)**: Completed & Committed.
+  - Supports template block declarations `template Name(T) { ... }` and explicit eponymous instantiations `Name!Arg` (including complex parenthesized arguments like `Name!(char*)`).
+  - Implements token-level deep duplication, argument substitution, and eponymous member renaming/mangling.
+  - Integrates template type resolution into variable declaration checks (`is_decl_statement`) and type property expressions (e.g. `Stack!int.sizeof`).
 - **Classic Minic Snippet Tests**:
-  - `test/collatz_test.d` (collatz conjecture), `test/prime_test.d` (prime numbers), `test/queen_test.d` (eight queens), `test/switch_test.d` (switch/case branches), and `test/multidim_test.d` (multidimensional array indexing/sizing) are fully ported and verified under self-hosting.
+  - `test/collatz_test.d` (collatz conjecture), `test/prime_test.d` (prime numbers), `test/queen_test.d` (eight queens), `test/switch_test.d` (switch/case branches), `test/multidim_test.d` (multidimensional array indexing/sizing), and `test/template_test.d` (struct and function templates) are fully ported and verified under self-hosting.
 
 ---
 
@@ -61,12 +65,6 @@ This document is for the next AI agent or developer taking over the development 
 ---
 
 ## 4. Missing Features & BetterC Compatibility Next Steps
-
-To further increase betterC compatibility, the following are missing and should be implemented next:
-
-1. **Templates (Generics)**:
-   - D templates are instantiated at compile-time (e.g., `struct Stack(T) { ... }` or `void swap(T)(T* a, T* b)`).
-   - Implementing this requires adding a template symbol table to hold uninstantiated ASTs, and cloning/substituting types at the instantiation point (e.g., `Stack!int`).
 
 For a detailed roadmap of all remaining D `betterC` features (slices, RAII, CTFE, etc.) ordered by implementation complexity, refer to the [d2qbe_plan.md](file:///usr/local/google/home/karita/repos/d2qbe/docs/d2qbe_plan.md) document.
 
