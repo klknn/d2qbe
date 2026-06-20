@@ -186,6 +186,34 @@ bool is_local(const(Token)* ident) {
   return false;
 }
 
+bool has_local(const(Token)* ident) {
+  for (int i = 0; i < locals_count; i++) {
+    if (strlen(locals[i].name) == ident.len && strncmp(locals[i].name, ident.str, ident.len) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool get_local_type_silent(const(char)* name, Type* out_type) {
+  for (int i = 0; i < locals_count; i++) {
+    if (strcmp(locals[i].name, name) == 0) {
+      *out_type = locals[i].type;
+      return true;
+    }
+  }
+  return false;
+}
+
+Member* find_member_by_token(StructType* st, const(Token)* ident) {
+  for (int i = 0; i < st.members_count; i++) {
+    if (strlen(st.members[i].name) == ident.len && strncmp(st.members[i].name, ident.str, ident.len) == 0) {
+      return &st.members[i];
+    }
+  }
+  return null;
+}
+
 /**
  * Retrieves the type of a local (or global) variable.
  * Returns: the type of the variable, or default int if not found.
@@ -241,7 +269,22 @@ void infer_type(Node* node, Type* out_type) {
     return;
   }
   if (node.kind == NodeKind.NK_lvar) {
-    get_local_type(node.ident, out_type);
+    if (has_local(node.ident) || is_global(node.ident)) {
+      get_local_type(node.ident, out_type);
+    } else {
+      Type this_type;
+      if (get_local_type_silent("this", &this_type)) {
+        StructType* st = find_struct(this_type.name);
+        if (st) {
+          Member* m = find_member_by_token(st, node.ident);
+          if (m) {
+            *out_type = m.type;
+            return;
+          }
+        }
+      }
+      get_local_type(node.ident, out_type);
+    }
     return;
   }
   if (node.kind == NodeKind.NK_deref) {
@@ -300,19 +343,45 @@ void collect_locals(Node* node) {
     add_local(node.ident, &node.type);
   }
   else if (node.kind == NodeKind.NK_assign && node.lhs.kind == NodeKind.NK_lvar) {
-    if (!is_global(node.lhs.ident)) {
-      Type rhs_type;
-      infer_type(node.rhs, &rhs_type);
-      add_local(node.lhs.ident, &rhs_type);
+    if (!is_global(node.lhs.ident) && !has_local(node.lhs.ident)) {
+      bool is_implicit_member = false;
+      Type this_type;
+      if (get_local_type_silent("this", &this_type)) {
+        StructType* st = find_struct(this_type.name);
+        if (st) {
+          Member* m = find_member_by_token(st, node.lhs.ident);
+          if (m) {
+            is_implicit_member = true;
+          }
+        }
+      }
+      if (!is_implicit_member) {
+        Type rhs_type;
+        infer_type(node.rhs, &rhs_type);
+        add_local(node.lhs.ident, &rhs_type);
+      }
     }
   }
   else if (node.kind == NodeKind.NK_lvar) {
-    if (!is_global(node.ident)) {
-      Type t;
-      t.name = "int";
-      t.ptr_depth = 0;
-      t.array_dims = 0;
-      add_local(node.ident, &t);
+    if (!is_global(node.ident) && !has_local(node.ident)) {
+      bool is_implicit_member = false;
+      Type this_type;
+      if (get_local_type_silent("this", &this_type)) {
+        StructType* st = find_struct(this_type.name);
+        if (st) {
+          Member* m = find_member_by_token(st, node.ident);
+          if (m) {
+            is_implicit_member = true;
+          }
+        }
+      }
+      if (!is_implicit_member) {
+        Type t;
+        t.name = "int";
+        t.ptr_depth = 0;
+        t.array_dims = 0;
+        add_local(node.ident, &t);
+      }
     }
   }
   collect_locals(node.lhs);
@@ -543,6 +612,28 @@ void get_expr_type(Node* node, Type* out_type) {
  */
 int gen_addr(Node* node) {
   if (node.kind == NodeKind.NK_lvar) {
+    if (!has_local(node.ident) && !is_global(node.ident)) {
+      Type this_type;
+      if (get_local_type_silent("this", &this_type)) {
+        StructType* st = find_struct(this_type.name);
+        if (st) {
+          Member* m = find_member_by_token(st, node.ident);
+          if (m) {
+            int this_reg = next_reg();
+            printf("  %%t%d =l loadl %%this_addr\n", this_reg);
+            set_reg_type(this_reg, 'l');
+            if (m.offset == 0) {
+              return this_reg;
+            }
+            int res = next_reg();
+            printf("  %%t%d =l add %%t%d, %d\n", res, this_reg, m.offset);
+            set_reg_type(res, 'l');
+            return res;
+          }
+        }
+      }
+    }
+    
     int res = next_reg();
     if (!is_local(node.ident) && is_global(node.ident)) {
       printf("  %%t%d =l copy $%.*s\n", res, node.ident.len, node.ident.str);
@@ -1052,24 +1143,53 @@ int gen(Node* node) {
       return ret;
     }
   if (node.kind == NodeKind.NK_funcall) {
-      int[20] args_vars;
+      int[21] args_vars;
       int n_arg = 0;
+      FunctionSymbol* fs = null;
+      char* mangled_func_name = null;
+      int mangled_func_len = 0;
+
+      if (node.lhs) {
+        Type lt;
+        get_expr_type(node.lhs.lhs, &lt);
+        
+        int this_addr;
+        if (lt.ptr_depth > 0) {
+          this_addr = gen(node.lhs.lhs);
+        } else {
+          this_addr = gen_addr(node.lhs.lhs);
+        }
+        args_vars[0] = this_addr;
+        n_arg = 1;
+        
+        char[256] mangled;
+        snprintf(&mangled[0], 256, "_D_struct_%s_%.*s", lt.name, node.lhs.ident.len, node.lhs.ident.str);
+        mangled_func_name = cast(char*) calloc(1, strlen(&mangled[0]) + 1);
+        strcpy(mangled_func_name, &mangled[0]);
+        mangled_func_len = cast(int) strlen(mangled_func_name);
+        
+        fs = find_function(mangled_func_name);
+      } else {
+        char* name = cast(char*) calloc(1, node.ident.len + 1);
+        memcpy(name, node.ident.str, node.ident.len);
+        mangled_func_name = name;
+        mangled_func_len = node.ident.len;
+        fs = find_function(name);
+      }
+
       for (NodeList* args = &node.args; args.value; args = args.next) {
         args_vars[n_arg] = gen(args.value);
         n_arg++;
       }
-      assert(n_arg < 20);
+      assert(n_arg < 21);
       
-      char* name = cast(char*) calloc(1, node.ident.len + 1);
-      memcpy(name, node.ident.str, node.ident.len);
-      FunctionSymbol* fs = find_function(name);
       if (!fs) {
-        printf("# DEBUG: gen(funcall) '%s' NOT FOUND in registered_functions!\n", name);
+        printf("# DEBUG: gen(funcall) '%s' NOT FOUND in registered_functions!\n", mangled_func_name);
       } else {
         const(char)* ret_name = fs.return_type.name;
         if (!ret_name) ret_name = "null";
         printf("# DEBUG: gen(funcall) '%s' FOUND ret='%s' ptr_depth=%d\n",
-               name, ret_name, fs.return_type.ptr_depth);
+               mangled_func_name, ret_name, fs.return_type.ptr_depth);
       }
 
       char ret_type = 'w';
@@ -1077,7 +1197,7 @@ int gen(Node* node) {
         ret_type = 'l';
       }
       int res = next_reg();
-      printf("  %%t%d =%c call $%.*s(", res, ret_type, node.ident.len, node.ident.str);
+      printf("  %%t%d =%c call $%.*s(", res, ret_type, mangled_func_len, mangled_func_name);
       for (int i = 0; i < n_arg; ++i) {
         if (fs && fs.is_variadic && i == fs.num_params) {
           printf("..., ");
