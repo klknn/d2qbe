@@ -64,3 +64,40 @@ These features require significant restructuring of name resolution, type valida
 ### 3.4 Compile-Time Function Execution (CTFE)
 * **Syntax**: Evaluating arbitrary functions at compile-time.
 * **Implementation**: Write a lightweight AST interpreter inside the compiler to execute subset D code during compilation.
+
+---
+
+## Phase 4: Mini Template Support (Immediate Focus)
+
+We will support general template blocks (`template Name(T) { ... }`) and eponymous instantiations (`Name!int`) using a lightweight **token-level substitution and mangling** approach.
+
+### 4.1 Template Declaration Parsing
+* **Syntax**:
+  ```d
+  template MyTemplate(T) {
+      struct Point {
+          T x;
+          T y;
+      }
+  }
+  ```
+* **Implementation**:
+  - Introduce a `TemplateSymbol` table storing registered templates.
+  - When parsing `template Name(Params)`, capture the start token and end token of the template body (`{ ... }`), and the parameter names (e.g. `T`). We do *not* build an AST at this stage.
+
+### 4.2 Explicit Instantiation & Substitution
+* **Syntax**: `MyTemplate!int`
+* **Implementation**:
+  - When the parser encounters `Name!Arg` (e.g. `MyTemplate!int`):
+    1. Look up `MyTemplate` in the `TemplateSymbol` table.
+    2. Deep-copy the stored token sequence of the template body.
+    3. In the copied token list, replace all identifier tokens matching parameter `T` with the argument token `int`.
+    4. Save the current parser `token` stream pointer.
+    5. Point the parser `token` stream to the substituted token list.
+    6. Recursively parse the declarations inside the block (using the standard parser functions).
+    7. Restore the original parser `token` stream.
+
+### 4.3 Eponymous Renaming & Mangling
+* **Implementation**:
+  - Rename the eponymous member (the member matching the template name, e.g., `struct MyTemplate` or `void MyTemplate(...)`) inside the instantiated block to a mangled name `MyTemplate_int` or `MyTemplate_char` to avoid collisions across different instantiations.
+  - Resolve the instantiation expression `MyTemplate!int` directly to that mangled name.
