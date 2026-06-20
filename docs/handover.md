@@ -42,8 +42,15 @@ This document is for the next AI agent or developer taking over the development 
   - Supports template block declarations `template Name(T) { ... }` and explicit eponymous instantiations `Name!Arg` (including complex parenthesized arguments like `Name!(char*)`).
   - Implements token-level deep duplication, argument substitution, and eponymous member renaming/mangling.
   - Integrates template type resolution into variable declaration checks (`is_decl_statement`) and type property expressions (e.g. `Stack!int.sizeof`).
+- **Struct Member Functions**: Completed & Committed.
+  - Supports parsing member functions inside struct blocks, mangling them to `_D_struct_StructName_funcName`, and adding them as global top-level functions with an implicit `this` pointer parameter.
+  - Generates address resolution for implicit member variable lookups relative to `%this_addr` during code generation.
+- **Slices and Slicing**: Completed & Committed.
+  - Full support for `T[]` slice types (represented as a 16-byte structure `struct Slice { size_t length; T* ptr; }`).
+  - Support for compile-time/runtime slice property access (`.length` at offset 0, and `.ptr` at offset 8).
+  - Support for slice indexing (`slice[i]`) and slice creation expressions (`array[start .. end]` or pointer/slice slicing).
 - **Classic Minic Snippet Tests**:
-  - `test/collatz_test.d` (collatz conjecture), `test/prime_test.d` (prime numbers), `test/queen_test.d` (eight queens), `test/switch_test.d` (switch/case branches), `test/multidim_test.d` (multidimensional array indexing/sizing), and `test/template_test.d` (struct and function templates) are fully ported and verified under self-hosting.
+  - `test/collatz_test.d` (collatz conjecture), `test/prime_test.d` (prime numbers), `test/queen_test.d` (eight queens), `test/switch_test.d` (switch/case branches), `test/multidim_test.d` (multidimensional array indexing/sizing), `test/template_test.d` (struct and function templates), and structured slice/member function integration tests inside `test/arith_test.d` are fully verified under self-hosting.
 
 ---
 

@@ -134,6 +134,29 @@ int main() {
     c_ptr.increment();
     assert(c_ptr.get_count() == 12);
 
+    // Slices and slicing
+    int[5] arr;
+    arr[0] = 100;
+    arr[1] = 200;
+    arr[2] = 300;
+    arr[3] = 400;
+    arr[4] = 500;
+
+    int[] sl = arr[1 .. 4];
+    assert(sl.length == 3);
+    assert(sl[0] == 200);
+    assert(sl[1] == 300);
+    assert(sl[2] == 400);
+
+    // Slice assignment and modifications
+    sl[1] = 999;
+    assert(arr[2] == 999);
+
+    int[] sl2 = sl[1 .. 3];
+    assert(sl2.length == 2);
+    assert(sl2[0] == 999);
+    assert(sl2[1] == 400);
+
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;
 }

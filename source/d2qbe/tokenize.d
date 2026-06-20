@@ -261,6 +261,7 @@ Token* tokenize(char* p) {
     }
     // multi-punct reserved.
     if (startswith(p, "...") ||
+      startswith(p, "..") ||
       startswith(p, "==") || startswith(p, "!=") ||
       startswith(p, "<=") || startswith(p, ">=") ||
       startswith(p, "&&") || startswith(p, "||") ||
@@ -269,6 +270,8 @@ Token* tokenize(char* p) {
       int len = 2;
       if (startswith(p, "...")) {
         len = 3;
+      } else if (startswith(p, "..")) {
+        len = 2;
       }
       cur = new_token(TokenKind.TK_reserved, cur, p, len);
       p = p + len;
