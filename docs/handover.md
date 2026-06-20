@@ -25,9 +25,11 @@ This document is for the next AI agent or developer taking over the development 
   - Proper expression precedence parsing (e.g., equality binding tighter than bitwise AND).
 - **Switch Statements**: Completed & Committed.
   - Supports standard integer expressions, case/default labeled entry points, fallthrough behavior, and break handling.
+- **Multidimensional Static Arrays**: Completed & Committed.
+  - Supports nesting of static array dimensions, indexing, compile-time property `.sizeof` for both types and expressions, and recursive copying of nested arrays inside structs.
 - **Assertion Support**: Completed & Committed.
 - **Classic Minic Snippet Tests**:
-  - `test/collatz_test.d` (collatz conjecture), `test/prime_test.d` (prime numbers), `test/queen_test.d` (eight queens), and `test/switch_test.d` (switch/case branches) are fully ported and verified under self-hosting.
+  - `test/collatz_test.d` (collatz conjecture), `test/prime_test.d` (prime numbers), `test/queen_test.d` (eight queens), `test/switch_test.d` (switch/case branches), and `test/multidim_test.d` (multidimensional array indexing/sizing) are fully ported and verified under self-hosting.
 
 ---
 
@@ -62,10 +64,6 @@ This document is for the next AI agent or developer taking over the development 
 
 To further increase betterC compatibility, the following are missing and should be implemented next:
 
-1. **Multidimensional Static Arrays**:
-   - Currently, the parser only supports single-dimensional static arrays (e.g., `int[10] arr;`).
-   - Need to support multi-dimensional static array type declarations (e.g., `int[3][2] arr;`).
-
-2. **Templates (Generics)**:
+1. **Templates (Generics)**:
    - D templates are instantiated at compile-time (e.g., `struct Stack(T) { ... }` or `void swap(T)(T* a, T* b)`).
    - Implementing this requires adding a template symbol table to hold uninstantiated ASTs, and cloning/substituting types at the instantiation point (e.g., `Stack!int`).
