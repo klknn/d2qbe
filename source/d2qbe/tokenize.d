@@ -6,12 +6,14 @@ import core.stdc.stdio;
 import core.stdc.stdlib;
 import core.stdc.string;
 
+extern (C) FILE* get_stderr();
+
 enum TokenKind {
-  reserved,
-  ident,
-  num,
-  str_literal,
-  eof,
+  TK_reserved,
+  TK_identifier,
+  TK_num,
+  TK_str_literal,
+  TK_eof,
 }
 
 struct Token {
@@ -24,38 +26,50 @@ struct Token {
 
 Token* token;
 
-// Reports an error like printf.
-extern (C) void error(const char* fmt, ...) {
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(stderr, fmt, ap);
-  fprintf(stderr, "\n");
+/**
+ * Reports an error to stderr and exits the program.
+ * Params:
+ *   fmt = format string
+ */
+extern (C) void error(const char* msg) {
+  fprintf(get_stderr(), "%s\n", msg);
   exit(1);
 }
 
 char* user_input;
 
-extern (C) void error_at(const char* loc, const char* fmt, ...) {
-  // Display the error position in the line.
+void print_error_line(const char* loc) {
   int pos = cast(int)(loc - user_input);
-  fprintf(stderr, "%s\n", user_input);
-  fprintf(stderr, "%*s", pos, cast(const char*) " ");
-  fprintf(stderr, "^ ");
+  fprintf(get_stderr(), "Error at offset: %d\n", pos);
+  fprintf(get_stderr(), "%s\n", user_input);
+  fprintf(get_stderr(), "%*s", pos, cast(const char*) " ");
+  fprintf(get_stderr(), "^ ");
+}
 
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(stderr, fmt, ap);
-  fprintf(stderr, "\n");
+extern (C) void error_at(const char* loc, const char* msg) {
+  print_error_line(loc);
+  fprintf(get_stderr(), "%s\n", msg);
   exit(1);
 }
 
+/**
+ * Checks if the current token matches the given reserved token string.
+ * Params:
+ *   op = operator or keyword string to match
+ * Returns: true if the current token matches, false otherwise.
+ */
 bool is_token(const char* op) {
-  return token.kind == TokenKind.reserved &&
+  return token.kind == TokenKind.TK_reserved &&
     strlen(op) == token.len &&
     memcmp(token.str, op, token.len) == 0;
 }
 
-// Consumes one token and returns true if the token is op.
+/**
+ * Consumes the current token if it matches the given reserved token string.
+ * Params:
+ *   op = operator or keyword string to match
+ * Returns: true if the token was consumed, false otherwise.
+ */
 bool consume(const char* op) {
   if (is_token(op)) {
     token = token.next;
@@ -64,8 +78,12 @@ bool consume(const char* op) {
   return false;
 }
 
+/**
+ * Consumes the current token if it is an identifier.
+ * Returns: the consumed token if it was an identifier, null otherwise.
+ */
 Token* consume_ident() {
-  if (token.kind != TokenKind.ident) {
+  if (token.kind != TokenKind.TK_identifier) {
     return null;
   }
   Token* ret = token;
@@ -73,14 +91,27 @@ Token* consume_ident() {
   return ret;
 }
 
+/**
+ * Expects the current token to match the given reserved token string and consumes it.
+ * If it doesn't match, reports an error and exits.
+ * Params:
+ *   op = expected operator or keyword string
+ */
 void expect(const char* op) {
   if (!consume(op)) {
-    error_at(token.str, "Expected token %s", op);
+    print_error_line(token.str);
+    fprintf(get_stderr(), "Expected token: %s\n", op);
+    exit(1);
   }
 }
 
+/**
+ * Expects the current token to be a number, consumes it, and returns its value.
+ * If it is not a number, reports an error and exits.
+ * Returns: the value of the expected number.
+ */
 int expect_number() {
-  if (token.kind != TokenKind.num) {
+  if (token.kind != TokenKind.TK_num) {
     error_at(token.str, "Expected a number");
   }
   int val = token.val;
@@ -88,10 +119,23 @@ int expect_number() {
   return val;
 }
 
+/**
+ * Checks if we have reached the end of the input (EOF token).
+ * Returns: true if at EOF, false otherwise.
+ */
 bool at_eof() {
-  return token.kind == TokenKind.eof;
+  return token.kind == TokenKind.TK_eof;
 }
 
+/**
+ * Creates a new token and appends it to the current token list.
+ * Params:
+ *   kind = kind of the new token
+ *   cur = current token node (new token will be appended to cur.next)
+ *   str = pointer to token string in source
+ *   len = length of token string
+ * Returns: the newly created token.
+ */
 Token* new_token(TokenKind kind, Token* cur, char* str, int len) {
   Token* tok = cast(Token*) calloc(1, Token.sizeof);
   tok.kind = kind;
@@ -101,10 +145,18 @@ Token* new_token(TokenKind kind, Token* cur, char* str, int len) {
   return tok;
 }
 
+/**
+ * Helper function to check if string `a` starts with string `b`.
+ */
 bool startswith(const char* a, const char* b) {
   return strlen(a) >= strlen(b) && memcmp(a, b, strlen(b)) == 0;
 }
 
+/**
+ * Computes the length of the identifier starting at `p`.
+ * An identifier must start with a letter or underscore, followed by letters, digits, or underscores.
+ * Returns: length of the identifier in bytes, or 0 if not a valid identifier start.
+ */
 int identifier_length(const(char)* p) {
   int i = 0;
   if (isalpha(p[i]) || p[i] == '_') {
@@ -130,19 +182,25 @@ unittest {
   assert(identifier_length("a0=1") == 2);
 }
 
-const(char)** keywords = ["return", "if", "else", "while", "for", "struct", "enum", "cast", "sizeof", "const", "extern", "unittest", "true", "false", "assert", ""];
-
 bool is_keyword(const char* p) {
-  if (strlen(p) == 0) {
-    return false;
-  }
-  int ident_len = identifier_length(p);
-  for (int i = 0; keywords[i] != ""; i++) {
-    const(char)* k = keywords[i];
-    if (strlen(k) == ident_len && strncmp(p, k, ident_len) == 0) {
-      return true;
-    }
-  }
+  int len = identifier_length(p);
+  if (len == 6 && strncmp(p, "return", 6) == 0) return true;
+  if (len == 2 && strncmp(p, "if", 2) == 0) return true;
+  if (len == 4 && strncmp(p, "else", 4) == 0) return true;
+  if (len == 5 && strncmp(p, "while", 5) == 0) return true;
+  if (len == 3 && strncmp(p, "for", 3) == 0) return true;
+  if (len == 6 && strncmp(p, "struct", 6) == 0) return true;
+  if (len == 4 && strncmp(p, "enum", 4) == 0) return true;
+  if (len == 4 && strncmp(p, "cast", 4) == 0) return true;
+  if (len == 6 && strncmp(p, "sizeof", 6) == 0) return true;
+  if (len == 5 && strncmp(p, "const", 5) == 0) return true;
+  if (len == 6 && strncmp(p, "extern", 6) == 0) return true;
+  if (len == 8 && strncmp(p, "unittest", 8) == 0) return true;
+  if (len == 8 && strncmp(p, "continue", 8) == 0) return true;
+  if (len == 5 && strncmp(p, "break", 5) == 0) return true;
+  if (len == 4 && strncmp(p, "true", 4) == 0) return true;
+  if (len == 5 && strncmp(p, "false", 5) == 0) return true;
+  if (len == 6 && strncmp(p, "assert", 6) == 0) return true;
   return false;
 }
 
@@ -156,6 +214,12 @@ unittest {
   // assert(!is_keyword("f(){}"));
 }
 
+/**
+ * Tokenizes the input source string `p` and returns the head of the token list.
+ * Params:
+ *   p = null-terminated source code string
+ * Returns: pointer to the first token in the tokenized list.
+ */
 Token* tokenize(char* p) {
   Token head;
   head.next = null;
@@ -165,30 +229,81 @@ Token* tokenize(char* p) {
       p++;
       continue;
     }
+    // line comment.
+    if (p[0] == '/' && p[1] == '/') {
+      p = p + 2;
+      while (*p && *p != '\n') {
+        p++;
+      }
+      continue;
+    }
+    // block comment.
+    if (p[0] == '/' && p[1] == '*') {
+      p = p + 2;
+      while (*p && !(p[0] == '*' && p[1] == '/')) {
+        p++;
+      }
+      if (*p) {
+        p = p + 2;
+      }
+      continue;
+    }
     // multi-punct reserved.
     if (startswith(p, "...") ||
       startswith(p, "==") || startswith(p, "!=") ||
-      startswith(p, "<=") || startswith(p, ">=")) {
-      int len = startswith(p, "...") ? 3 : 2;
-      cur = new_token(TokenKind.reserved, cur, p, len);
-      p += len;
+      startswith(p, "<=") || startswith(p, ">=") ||
+      startswith(p, "&&") || startswith(p, "||") ||
+      startswith(p, "++") || startswith(p, "--")) {
+      int len = 2;
+      if (startswith(p, "...")) {
+        len = 3;
+      }
+      cur = new_token(TokenKind.TK_reserved, cur, p, len);
+      p = p + len;
       continue;
     }
     // single-punct reserved.
-    if (strchr("+-*/()<>=;{},&.[]", *p)) {
-      cur = new_token(TokenKind.reserved, cur, p++, 1);
+    if (strchr("+-*/()<>=;{},&.|[]!", *p)) {
+      cur = new_token(TokenKind.TK_reserved, cur, p++, 1);
       continue;
     }
 
     // identifier or ident-like reserved.
     int ident_len = identifier_length(p);
     if (ident_len) {
-      TokenKind kind = TokenKind.ident;
+      TokenKind kind = TokenKind.TK_identifier;
       if (is_keyword(p)) {
-        kind = TokenKind.reserved;
+        kind = TokenKind.TK_reserved;
       }
       cur = new_token(kind, cur, p, ident_len);
-      p += ident_len;
+      p = p + ident_len;
+      continue;
+    }
+
+    if (*p == '\'') {
+      char* start = p;
+      p++;
+      int val = 0;
+      if (*p == '\\') {
+        p++;
+        if (*p == 'n') val = 10;
+        else if (*p == 'r') val = 13;
+        else if (*p == 't') val = 9;
+        else if (*p == '0') val = 0;
+        else if (*p == '\'') val = 39;
+        else if (*p == '\\') val = 92;
+        else error_at(p, "unknown escape sequence");
+        p++;
+      } else {
+        val = *p;
+        p++;
+      }
+      if (*p != '\'') {
+        error_at(p, "unclosed character literal");
+      }
+      p++;
+      cur = new_token(TokenKind.TK_num, cur, start, cast(int)(p - start));
+      cur.val = val;
       continue;
     }
 
@@ -199,21 +314,23 @@ Token* tokenize(char* p) {
         p++;
       }
       if (!*p) error_at(start, "unclosed string literal");
-      cur = new_token(TokenKind.str_literal, cur, start, cast(int)(p - start));
+      cur = new_token(TokenKind.TK_str_literal, cur, start, cast(int)(p - start));
       p++;
       continue;
     }
 
     if (isdigit(*p)) {
-      cur = new_token(TokenKind.num, cur, p, 0);
+      cur = new_token(TokenKind.TK_num, cur, p, 0);
       cur.val = cast(int) strtol(p, &p, 10);
       cur.len = cast(int)(p - cur.str);
       continue;
     }
 
+    fprintf(get_stderr(), "Failed at char code: %d\n", cast(int)*p);
+    fflush(get_stderr());
     error_at(p, "Cannot tokenize.");
   }
 
-  Token* _ = new_token(TokenKind.eof, cur, p, 1);
+  Token* _ = new_token(TokenKind.TK_eof, cur, p, 1);
   return head.next;
 }

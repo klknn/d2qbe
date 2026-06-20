@@ -6,25 +6,34 @@ import d2qbe.codegen;
 import d2qbe.parse;
 import d2qbe.tokenize;
 
+extern (C) FILE* get_stderr();
+
 extern (C)
 int main(int argc, char** argv) {
   if (argc != 2) {
-    fprintf(stderr, "wrong number of args\n");
+    fprintf(get_stderr(), "wrong number of args\n");
     return 1;
   }
 
   user_input = argv[1];
   token = tokenize(argv[1]);
+  printf("# DEBUG: tokens:\n");
+  Token* tok = token;
+  while (tok) {
+    printf("# DEBUG:   token '%.*s' kind=%d\n", tok.len, tok.str, tok.kind);
+    tok = tok.next;
+  }
   program();
+  printf("# DEBUG: code_count=%d\n", code_count);
 
   int ret = 0;
   for (int i = 0; code[i]; i++) {
-    if (code[i].kind == NodeKind.gvar_decl) {
-      add_global(code[i].ident, code[i].type);
+    if (code[i].kind == NodeKind.NK_gvar_decl) {
+      add_global(code[i].ident, &code[i].type);
     }
   }
   for (int i = 0; code[i]; i++) {
-    ret = gen(code[i], ret);
+    gen(code[i]);
   }
   gen_strings();
 

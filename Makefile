@@ -6,8 +6,8 @@ OBJS=tokenize.o parse.o codegen.o app.o
 
 all: d2qbe qbe/qbe
 
-d2qbe: $(OBJS)
-	$(DC) $(DFLAGS) $(OBJS) -of=$@
+d2qbe: $(OBJS) ext.o
+	$(DC) $(DFLAGS) $(OBJS) ext.o -of=$@
 
 %.o: source/d2qbe/%.d
 	$(DC) $(DFLAGS) -c $<
