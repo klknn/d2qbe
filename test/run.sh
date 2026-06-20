@@ -181,4 +181,23 @@ assert_v2 0 "$(cat test/enum_test.d)"
 assert_v2 0 "$(cat test/struct_test.d)"
 assert_v2 0 "$(cat test/logical_test.d)"
 
+# ==============================================================================
+# Modulo and Bitwise Operators tests
+# ==============================================================================
+assert 2 "return 10 % 4;"
+assert 0 "return 10 % 2;"
+assert 1 "return 5 % 2;"
+assert 2 "return 2 & 3;"
+assert 0 "return 2 & 1;"
+assert 3 "return 1 | 2;"
+assert 2 "return 2 | 2;"
+assert 1 "return 2 ^ 3;"
+assert 0 "return 2 ^ 2;"
+assert 40 "return 10 << 2;"
+assert 2 "return 10 >> 2;"
+assert 1 "return 3 >> 1;"
+assert 1 "return ~-1 == 0;"
+assert 1 "return ~0 == -1;"
+assert 0 "return 2 & 1 == 0;"
+
 echo OK

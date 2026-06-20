@@ -45,6 +45,13 @@ enum NodeKind {
   NK_post_dec, // x--
   NK_continue_, // continue;
   NK_break_, // break;
+  NK_mod, // %
+  NK_bitwise_and, // &
+  NK_bitwise_or, // |
+  NK_bitwise_xor, // ^
+  NK_bitwise_not, // ~
+  NK_lshift, // <<
+  NK_rshift, // >>
 }
 
 struct Type {
@@ -514,6 +521,11 @@ Node* unary() {
     node.lhs = unary();
     return node;
   }
+  if (consume("~")) {
+    Node* node = new_node(NodeKind.NK_bitwise_not);
+    node.lhs = unary();
+    return node;
+  }
   return primary();
 }
 
@@ -531,6 +543,9 @@ Node* parse_mul() {
     }
     else if (consume("/")) {
       node = new_node_binop(NodeKind.NK_div, node, unary());
+    }
+    else if (consume("%")) {
+      node = new_node_binop(NodeKind.NK_mod, node, unary());
     }
     else {
       return node;
@@ -558,23 +573,42 @@ Node* parse_add() {
 }
 
 /**
- * Parses a relational expression (<, <=, >, >=).
- * EBNF: relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+ * Parses a shift expression (<<, >>).
+ * EBNF: shift = add ("<<" add | ">>" add)*
  */
-Node* relational() {
+Node* parse_shift() {
   Node* node = parse_add();
   for (;;) {
+    if (consume("<<")) {
+      node = new_node_binop(NodeKind.NK_lshift, node, parse_add());
+    }
+    else if (consume(">>")) {
+      node = new_node_binop(NodeKind.NK_rshift, node, parse_add());
+    }
+    else {
+      return node;
+    }
+  }
+}
+
+/**
+ * Parses a relational expression (<, <=, >, >=).
+ * EBNF: relational = shift ("<" shift | "<=" shift | ">" shift | ">=" shift)*
+ */
+Node* relational() {
+  Node* node = parse_shift();
+  for (;;) {
     if (consume("<")) {
-      node = new_node_binop(NodeKind.NK_lt_op, node, parse_add());
+      node = new_node_binop(NodeKind.NK_lt_op, node, parse_shift());
     }
     else if (consume("<=")) {
-      node = new_node_binop(NodeKind.NK_le, node, parse_add());
+      node = new_node_binop(NodeKind.NK_le, node, parse_shift());
     }
     else if (consume(">")) {
-      node = new_node_binop(NodeKind.NK_lt_op, parse_add(), node);
+      node = new_node_binop(NodeKind.NK_lt_op, parse_shift(), node);
     }
     else if (consume(">=")) {
-      node = new_node_binop(NodeKind.NK_le, parse_add(), node);
+      node = new_node_binop(NodeKind.NK_le, parse_shift(), node);
     }
     else {
       return node;
@@ -602,14 +636,59 @@ Node* equality() {
 }
 
 /**
- * Parses a logical AND expression (&&).
- * EBNF: logical_and = equality ("&&" equality)*
+ * Parses a bitwise AND expression (&).
+ * EBNF: bitwise_and = equality ("&" equality)*
  */
-Node* parse_logical_and() {
+Node* parse_bitwise_and() {
   Node* node = equality();
   for (;;) {
+    if (consume("&")) {
+      node = new_node_binop(NodeKind.NK_bitwise_and, node, equality());
+    } else {
+      return node;
+    }
+  }
+}
+
+/**
+ * Parses a bitwise XOR expression (^).
+ * EBNF: bitwise_xor = bitwise_and ("^" bitwise_and)*
+ */
+Node* parse_bitwise_xor() {
+  Node* node = parse_bitwise_and();
+  for (;;) {
+    if (consume("^")) {
+      node = new_node_binop(NodeKind.NK_bitwise_xor, node, parse_bitwise_and());
+    } else {
+      return node;
+    }
+  }
+}
+
+/**
+ * Parses a bitwise OR expression (|).
+ * EBNF: bitwise_or = bitwise_xor ("|" bitwise_xor)*
+ */
+Node* parse_bitwise_or() {
+  Node* node = parse_bitwise_xor();
+  for (;;) {
+    if (consume("|")) {
+      node = new_node_binop(NodeKind.NK_bitwise_or, node, parse_bitwise_xor());
+    } else {
+      return node;
+    }
+  }
+}
+
+/**
+ * Parses a logical AND expression (&&).
+ * EBNF: logical_and = bitwise_or ("&&" bitwise_or)*
+ */
+Node* parse_logical_and() {
+  Node* node = parse_bitwise_or();
+  for (;;) {
     if (consume("&&")) {
-      node = new_node_binop(NodeKind.NK_logical_and, node, equality());
+      node = new_node_binop(NodeKind.NK_logical_and, node, parse_bitwise_or());
     } else {
       return node;
     }
@@ -1178,6 +1257,32 @@ unittest {
   assert(num_node != null);
   assert(num_node.kind == NodeKind.NK_num);
   assert(num_node.val == 0);
+
+  // Test Modulo & Bitwise Operators parsing
+  user_input = cast(char*) "x % y;";
+  token = tokenize(user_input);
+  Node* mod_node = stmt();
+  assert(mod_node != null);
+  assert(mod_node.kind == NodeKind.NK_mod);
+
+  user_input = cast(char*) "~x;";
+  token = tokenize(user_input);
+  Node* not_node = stmt();
+  assert(not_node != null);
+  assert(not_node.kind == NodeKind.NK_bitwise_not);
+
+  user_input = cast(char*) "x << y;";
+  token = tokenize(user_input);
+  Node* shl_node = stmt();
+  assert(shl_node != null);
+  assert(shl_node.kind == NodeKind.NK_lshift);
+
+  user_input = cast(char*) "x & y == z;";
+  token = tokenize(user_input);
+  Node* prec_node = stmt();
+  assert(prec_node != null);
+  assert(prec_node.kind == NodeKind.NK_bitwise_and);
+  assert(prec_node.rhs.kind == NodeKind.NK_eq);
 }
 
 
