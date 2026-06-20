@@ -25,7 +25,9 @@ test: d2qbe qbe/qbe ext.o
 	./test/run.sh
 
 unittest:
-	$(DC) -unittest -main -run source/d2qbe/tokenize.d source/d2qbe/parse.d source/d2qbe/codegen.d
+	$(DC) -unittest -main source/d2qbe/tokenize.d source/d2qbe/parse.d source/d2qbe/codegen.d -of=unittest_runner
+	./unittest_runner
+	rm -f unittest_runner
 
 clean:
 	rm -f d2qbe *.o *.di tmp*

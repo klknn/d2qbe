@@ -19,8 +19,14 @@ int main(int argc, char** argv) {
 
   int ret = 0;
   for (int i = 0; code[i]; i++) {
+    if (code[i].kind == NodeKind.gvar_decl) {
+      add_global(code[i].ident, code[i].type);
+    }
+  }
+  for (int i = 0; code[i]; i++) {
     ret = gen(code[i], ret);
   }
+  gen_strings();
 
   return 0;
 }

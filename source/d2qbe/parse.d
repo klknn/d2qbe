@@ -30,6 +30,7 @@ enum NodeKind {
   gvar_decl, // Type x; at global scope
   cast_, // cast(Type) expr
   index, // x[y]
+  str_literal, // "hello"
 }
 
 struct Type {
@@ -62,6 +63,13 @@ void init_types() {
   register_type("char");
   register_type("bool");
   register_type("void");
+}
+
+int get_type_size(Type t) {
+  if (t.ptr_depth > 0) return 8;
+  if (strcmp(t.name, "int") == 0) return 4;
+  if (strcmp(t.name, "char") == 0 || strcmp(t.name, "bool") == 0) return 1;
+  return 4; // default
 }
 
 Type parse_type() {
@@ -167,6 +175,15 @@ Node* primary() {
     node = new_node(NodeKind.cast_);
     node.type = cast_type;
     node.lhs = unary();
+  } else if (token.kind == TokenKind.str_literal) {
+    node = new_node(NodeKind.str_literal);
+    node.ident = token;
+    token = token.next;
+  } else if (is_type_name(token.str, token.len)) {
+    Type t = parse_type();
+    expect(".");
+    expect("sizeof");
+    node = new_node_num(get_type_size(t));
   } else {
     Token* tok = consume_ident();
     if (tok) {
@@ -314,6 +331,35 @@ Node* expr() {
 //            | "for" "(" expr? ";" expr? ";" expr? ")" stmt
 //            | "return" expr ";"
 //            | Type ident ( "=" expr )? ";"
+bool is_decl_statement() {
+  Token* tok = token;
+  while (tok && (tok.len == 5 && strncmp(tok.str, "const", 5) == 0 ||
+                 tok.len == 6 && strncmp(tok.str, "extern", 6) == 0)) {
+    if (tok.next && tok.next.len == 1 && tok.next.str[0] == '(') {
+      tok = tok.next.next;
+      while (tok && !(tok.len == 1 && tok.str[0] == ')')) {
+        tok = tok.next;
+      }
+      if (tok) tok = tok.next;
+    } else {
+      tok = tok.next;
+    }
+  }
+  if (!tok || !is_type_name(tok.str, tok.len)) {
+    return false;
+  }
+  tok = tok.next;
+  while (tok && tok.len == 1 && tok.str[0] == '*') {
+    tok = tok.next;
+  }
+  if (tok && tok.len == 1 && tok.str[0] == '[') {
+    tok = tok.next;
+    if (tok && tok.kind == TokenKind.num) tok = tok.next;
+    if (tok && tok.len == 1 && tok.str[0] == ']') tok = tok.next;
+  }
+  return tok && tok.kind == TokenKind.ident;
+}
+
 Node* stmt() {
   if (consume("{")) {
     Node* block = cast(Node*) calloc(1, Node.sizeof);
@@ -324,7 +370,7 @@ Node* stmt() {
     }
     return block;
   }
-  if (is_type_name(token.str, token.len)) {
+  if (is_decl_statement()) {
     Type t = parse_type();
     Token* ident = consume_ident();
     if (!ident) {
@@ -368,7 +414,7 @@ Node* stmt() {
     Node* node = new_node(NodeKind.for_);
     expect("(");
     if (!consume(";")) {
-      if (is_type_name(token.str, token.len)) {
+      if (is_decl_statement()) {
         Type t = parse_type();
         Token* ident = consume_ident();
         Node* decl = new_node(NodeKind.var_decl);

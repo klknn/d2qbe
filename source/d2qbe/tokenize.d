@@ -10,6 +10,7 @@ enum TokenKind {
   reserved,
   ident,
   num,
+  str_literal,
   eof,
 }
 
@@ -188,6 +189,18 @@ Token* tokenize(char* p) {
       }
       cur = new_token(kind, cur, p, ident_len);
       p += ident_len;
+      continue;
+    }
+
+    if (*p == '"') {
+      char* start = ++p;
+      while (*p && *p != '"') {
+        if (*p == '\\') p++;
+        p++;
+      }
+      if (!*p) error_at(start, "unclosed string literal");
+      cur = new_token(TokenKind.str_literal, cur, start, cast(int)(p - start));
+      p++;
       continue;
     }
 

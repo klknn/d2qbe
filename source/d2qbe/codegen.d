@@ -7,6 +7,70 @@ import core.stdc.stdlib;
 import d2qbe.parse;
 import d2qbe.tokenize;
 
+const(char)*[500] string_pool;
+int string_pool_count = 0;
+
+int add_string_literal(const(Token)* tok) {
+  for (int i = 0; i < string_pool_count; i++) {
+    if (strlen(string_pool[i]) == tok.len && strncmp(string_pool[i], tok.str, tok.len) == 0) {
+      return i;
+    }
+  }
+  char* copy = cast(char*) calloc(1, tok.len + 1);
+  memcpy(copy, tok.str, tok.len);
+  string_pool[string_pool_count] = copy;
+  return string_pool_count++;
+}
+
+void gen_strings() {
+  for (int i = 0; i < string_pool_count; i++) {
+    printf("data $str%d = { b \"%.*s\", b 0 }\n", i, cast(int)strlen(string_pool[i]), string_pool[i]);
+  }
+}
+
+struct GlobalVar {
+  const(char)* name;
+  Type type;
+}
+
+GlobalVar[200] globals;
+int globals_count = 0;
+
+void add_global(const(Token)* ident, Type type) {
+  for (int i = 0; i < globals_count; i++) {
+    if (strlen(globals[i].name) == ident.len && strncmp(globals[i].name, ident.str, ident.len) == 0) {
+      return;
+    }
+  }
+  char* name = cast(char*) calloc(1, ident.len + 1);
+  memcpy(name, ident.str, ident.len);
+  globals[globals_count].name = name;
+  globals[globals_count].type = type;
+  globals_count++;
+}
+
+bool is_global(const(Token)* ident) {
+  for (int i = 0; i < globals_count; i++) {
+    if (strlen(globals[i].name) == ident.len && strncmp(globals[i].name, ident.str, ident.len) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Type get_global_type(const(Token)* ident) {
+  for (int i = 0; i < globals_count; i++) {
+    if (strlen(globals[i].name) == ident.len && strncmp(globals[i].name, ident.str, ident.len) == 0) {
+      return globals[i].type;
+    }
+  }
+  Type t;
+  t.name = "int";
+  t.ptr_depth = 0;
+  t.array_size = 0;
+  return t;
+}
+
 struct LocalVar {
   const(char)* name;
   Type type;
@@ -28,6 +92,15 @@ void add_local(const(Token)* ident, Type type) {
   locals_count++;
 }
 
+bool is_local(const(Token)* ident) {
+  for (int i = 0; i < locals_count; i++) {
+    if (strlen(locals[i].name) == ident.len && strncmp(locals[i].name, ident.str, ident.len) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 Type get_local_type(const(Token)* ident) {
   for (int i = 0; i < locals_count; i++) {
     if (strlen(locals[i].name) == ident.len && strncmp(locals[i].name, ident.str, ident.len) == 0) {
@@ -36,6 +109,9 @@ Type get_local_type(const(Token)* ident) {
       }
       return locals[i].type;
     }
+  }
+  if (is_global(ident)) {
+    return get_global_type(ident);
   }
   Type t;
   t.name = "int";
@@ -74,15 +150,19 @@ void collect_locals(Node* node) {
     add_local(node.ident, node.type);
   }
   else if (node.kind == NodeKind.assign && node.lhs.kind == NodeKind.lvar) {
-    Type rhs_type = infer_type(node.rhs);
-    add_local(node.lhs.ident, rhs_type);
+    if (!is_global(node.lhs.ident)) {
+      Type rhs_type = infer_type(node.rhs);
+      add_local(node.lhs.ident, rhs_type);
+    }
   }
   else if (node.kind == NodeKind.lvar) {
-    Type t;
-    t.name = "int";
-    t.ptr_depth = 0;
-    t.array_size = 0;
-    add_local(node.ident, t);
+    if (!is_global(node.ident)) {
+      Type t;
+      t.name = "int";
+      t.ptr_depth = 0;
+      t.array_size = 0;
+      add_local(node.ident, t);
+    }
   }
   collect_locals(node.lhs);
   collect_locals(node.rhs);
@@ -195,7 +275,11 @@ int gen(Node* node, int ret_var) {
     if (node.lhs.kind != NodeKind.lvar) {
       error("lvalue expected for &");
     }
-    printf("  %%t%d =l copy %%%.*s_addr\n", ret_var + 1, node.lhs.ident.len, node.lhs.ident.str);
+    if (!is_local(node.lhs.ident) && is_global(node.lhs.ident)) {
+      printf("  %%t%d =l copy $%.*s\n", ret_var + 1, node.lhs.ident.len, node.lhs.ident.str);
+    } else {
+      printf("  %%t%d =l copy %%%.*s_addr\n", ret_var + 1, node.lhs.ident.len, node.lhs.ident.str);
+    }
     reg_types[ret_var + 1] = 'l';
     return ret_var + 1;
   case NodeKind.deref: {
@@ -211,11 +295,20 @@ int gen(Node* node, int ret_var) {
     }
   case NodeKind.lvar: {
       Type t = get_local_type(node.ident);
+      bool is_glob = !is_local(node.ident) && is_global(node.ident);
       if (t.ptr_depth > 0) {
-        printf("  %%t%d =l loadl %%%.*s_addr\n", ret_var + 1, node.ident.len, node.ident.str);
+        if (is_glob) {
+          printf("  %%t%d =l loadl $%.*s\n", ret_var + 1, node.ident.len, node.ident.str);
+        } else {
+          printf("  %%t%d =l loadl %%%.*s_addr\n", ret_var + 1, node.ident.len, node.ident.str);
+        }
         reg_types[ret_var + 1] = 'l';
       } else {
-        printf("  %%t%d =w loadw %%%.*s_addr\n", ret_var + 1, node.ident.len, node.ident.str);
+        if (is_glob) {
+          printf("  %%t%d =w loadw $%.*s\n", ret_var + 1, node.ident.len, node.ident.str);
+        } else {
+          printf("  %%t%d =w loadw %%%.*s_addr\n", ret_var + 1, node.ident.len, node.ident.str);
+        }
         reg_types[ret_var + 1] = 'w';
       }
       return ret_var + 1;
@@ -224,10 +317,19 @@ int gen(Node* node, int ret_var) {
       int rhs = gen(node.rhs, ret_var);
       if (node.lhs.kind == NodeKind.lvar) {
         Type t = get_local_type(node.lhs.ident);
+        bool is_glob = !is_local(node.lhs.ident) && is_global(node.lhs.ident);
         if (t.ptr_depth > 0) {
-          printf("  storel %%t%d, %%%.*s_addr\n", rhs, node.lhs.ident.len, node.lhs.ident.str);
+          if (is_glob) {
+            printf("  storel %%t%d, $%.*s\n", rhs, node.lhs.ident.len, node.lhs.ident.str);
+          } else {
+            printf("  storel %%t%d, %%%.*s_addr\n", rhs, node.lhs.ident.len, node.lhs.ident.str);
+          }
         } else {
-          printf("  storew %%t%d, %%%.*s_addr\n", rhs, node.lhs.ident.len, node.lhs.ident.str);
+          if (is_glob) {
+            printf("  storew %%t%d, $%.*s\n", rhs, node.lhs.ident.len, node.lhs.ident.str);
+          } else {
+            printf("  storew %%t%d, %%%.*s_addr\n", rhs, node.lhs.ident.len, node.lhs.ident.str);
+          }
         }
         return rhs;
       }
@@ -277,7 +379,24 @@ int gen(Node* node, int ret_var) {
       return ret_var;
     }
   case NodeKind.gvar_decl: {
+      int size = get_type_size(node.type);
+      printf("data $%.*s = ", node.ident.len, node.ident.str);
+      if (node.lhs && node.lhs.kind == NodeKind.num) {
+        char c = (node.type.ptr_depth > 0) ? 'l' : 'w';
+        if (strcmp(node.type.name, "char") == 0 || strcmp(node.type.name, "bool") == 0) {
+          c = 'b';
+        }
+        printf("{ %c %d }\n", c, node.lhs.val);
+      } else {
+        printf("{ z %d }\n", size);
+      }
       return ret_var;
+    }
+  case NodeKind.str_literal: {
+      int idx = add_string_literal(node.ident);
+      printf("  %%t%d =l copy $str%d\n", ret_var + 1, idx);
+      reg_types[ret_var + 1] = 'l';
+      return ret_var + 1;
     }
   case NodeKind.cast_: {
       int lhs = gen(node.lhs, ret_var);
