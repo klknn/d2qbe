@@ -626,11 +626,33 @@ void copy_struct_members(const(char)* struct_name, int lhs_addr_reg, int rhs_add
     printf("  %%t%d =l add %%t%d, %d\n", mem_rhs_addr, rhs_addr_reg, m.offset);
     set_reg_type(mem_rhs_addr, 'l');
     
-    if (m.type.ptr_depth == 0 && find_struct(m.type.name)) {
-      copy_struct_members(m.type.name, mem_lhs_addr, mem_rhs_addr);
-    } else {
-      int val = emit_load(mem_rhs_addr, &m.type);
-      emit_store(val, mem_lhs_addr, &m.type);
+    int array_len = 1;
+    if (m.type.array_size > 0) {
+      array_len = m.type.array_size;
+    }
+    Type elem_type = m.type;
+    elem_type.array_size = 0;
+    int elem_size = get_type_size(&elem_type);
+    
+    for (int j = 0; j < array_len; j++) {
+      int elem_lhs_addr = mem_lhs_addr;
+      int elem_rhs_addr = mem_rhs_addr;
+      if (m.type.array_size > 0 && j > 0) {
+        elem_lhs_addr = next_reg();
+        printf("  %%t%d =l add %%t%d, %d\n", elem_lhs_addr, mem_lhs_addr, j * elem_size);
+        set_reg_type(elem_lhs_addr, 'l');
+        
+        elem_rhs_addr = next_reg();
+        printf("  %%t%d =l add %%t%d, %d\n", elem_rhs_addr, mem_rhs_addr, j * elem_size);
+        set_reg_type(elem_rhs_addr, 'l');
+      }
+      
+      if (elem_type.ptr_depth == 0 && find_struct(elem_type.name)) {
+        copy_struct_members(elem_type.name, elem_lhs_addr, elem_rhs_addr);
+      } else {
+        int val = emit_load(elem_rhs_addr, &elem_type);
+        emit_store(val, elem_lhs_addr, &elem_type);
+      }
     }
   }
 }
