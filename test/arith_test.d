@@ -52,6 +52,13 @@ int main() {
     assert(char.sizeof == 1);
     assert(bool.sizeof == 1);
 
+    // Aliases
+    alias myint = int;
+    alias pint = int*;
+    myint x_val = 100;
+    pint y_ptr = &x_val;
+    assert(*y_ptr == 100);
+
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;
 }
