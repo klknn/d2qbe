@@ -138,7 +138,7 @@ Token* tokenize(char* p) {
     // multi-punct reserved
     if (startswith(p, "...")) {
       cur = new_token(TokenKind.TK_reserved, cur, p, 3);
-      p += 3;
+      p = p + 3;
       continue;
     }
     // single-punct reserved
@@ -161,7 +161,7 @@ Token* tokenize(char* p) {
       if (len == 0) {
         error_at(start, "invalid temporary name");
       }
-      p += len;
+      p = p + len;
       cur = new_token(TokenKind.TK_temp, cur, start, cast(int)(p - start));
       continue;
     }
@@ -174,7 +174,7 @@ Token* tokenize(char* p) {
       if (len == 0) {
         error_at(start, "invalid global name");
       }
-      p += len;
+      p = p + len;
       cur = new_token(TokenKind.TK_global, cur, start, cast(int)(p - start));
       continue;
     }
@@ -187,7 +187,7 @@ Token* tokenize(char* p) {
       if (len == 0) {
         error_at(start, "invalid label name");
       }
-      p += len;
+      p = p + len;
       cur = new_token(TokenKind.TK_label, cur, start, cast(int)(p - start));
       continue;
     }
@@ -196,7 +196,7 @@ Token* tokenize(char* p) {
     int ident_len = identifier_length(p);
     if (ident_len) {
       cur = new_token(TokenKind.TK_ident, cur, p, ident_len);
-      p += ident_len;
+      p = p + ident_len;
       continue;
     }
 
