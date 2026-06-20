@@ -1,4 +1,5 @@
 extern (C) int printf(const char* format, ...);
+static assert(5 * 5 == 25);
 
 int main() {
     // Arithmetic & basic operations
@@ -58,6 +59,11 @@ int main() {
     myint x_val = 100;
     pint y_ptr = &x_val;
     assert(*y_ptr == 100);
+
+    // Static asserts
+    static assert(1 == 1);
+    static assert(10 * 2 == 20, "10 * 2 must be 20");
+    static assert(int.sizeof == 4);
 
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;
