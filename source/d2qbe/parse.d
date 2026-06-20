@@ -165,10 +165,10 @@ void add_constant(const(char)* name, int val) {
  * Looks up a compile-time constant by name.
  * Returns: true if found (value written to val), false otherwise.
  */
-bool lookup_constant(const(Token)* ident, ref int val) {
+bool lookup_constant(const(Token)* ident, int* val) {
   for (int i = 0; i < constants_count; i++) {
     if (strlen(constants[i].name) == ident.len && strncmp(constants[i].name, ident.str, ident.len) == 0) {
-      val = constants[i].val;
+      *val = constants[i].val;
       return true;
     }
   }
@@ -215,15 +215,19 @@ void init_types() {
  * Computes the size in bytes of a D type.
  */
 int get_type_size(Type* t) {
-  if (t.ptr_depth > 0) return 8;
-  int base_size = 4;
-  if (strcmp(t.name, "int") == 0) base_size = 4;
-  else if (strcmp(t.name, "char") == 0 || strcmp(t.name, "bool") == 0) base_size = 1;
-  else if (strcmp(t.name, "void") == 0) base_size = 1;
-  else {
-    StructType* st = find_struct(t.name);
-    if (st) {
-      base_size = st.size;
+  int base_size;
+  if (t.ptr_depth > 0) {
+    base_size = 8;
+  } else {
+    base_size = 4;
+    if (strcmp(t.name, "int") == 0) base_size = 4;
+    else if (strcmp(t.name, "char") == 0 || strcmp(t.name, "bool") == 0) base_size = 1;
+    else if (strcmp(t.name, "void") == 0) base_size = 1;
+    else {
+      StructType* st = find_struct(t.name);
+      if (st) {
+        base_size = st.size;
+      }
     }
   }
   if (t.array_size > 0) {
@@ -289,7 +293,7 @@ void parse_type(Type* out_type) {
     int size;
     Token* tok = consume_ident();
     if (tok) {
-      if (!lookup_constant(tok, size)) {
+      if (!lookup_constant(tok, &size)) {
         error_at(tok.str, "unknown constant for array size");
       }
     } else {
@@ -421,7 +425,7 @@ Node* primary() {
     Token* tok = consume_ident();
     if (tok) {
       int const_val;
-      if (lookup_constant(tok, const_val)) {
+      if (lookup_constant(tok, &const_val)) {
         node = new_node_num(const_val);
       } else {
         node = cast(Node*) calloc(1, Node.sizeof);
@@ -1153,7 +1157,7 @@ unittest {
   program();
   int val;
   Token tX; tX.str = cast(char*)"X"; tX.len = 1;
-  assert(lookup_constant(&tX, val));
+  assert(lookup_constant(&tX, &val));
   assert(val == 42);
 
   // Test Stage 4: Enum parsing (anonymous enum)
@@ -1163,9 +1167,9 @@ unittest {
   Token tA; tA.str = cast(char*)"A"; tA.len = 1;
   Token tB; tB.str = cast(char*)"B"; tB.len = 1;
   Token tC; tC.str = cast(char*)"C"; tC.len = 1;
-  assert(lookup_constant(&tA, val)); assert(val == 0);
-  assert(lookup_constant(&tB, val)); assert(val == 10);
-  assert(lookup_constant(&tC, val)); assert(val == 11);
+  assert(lookup_constant(&tA, &val)); assert(val == 0);
+  assert(lookup_constant(&tB, &val)); assert(val == 10);
+  assert(lookup_constant(&tC, &val)); assert(val == 11);
 
   // Test Stage 4: Constant resolution in parser
   user_input = cast(char*) "A;";
