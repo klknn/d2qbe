@@ -127,6 +127,65 @@ int gen_binop(Node* node, int ret_var, const char* binop) {
   return r + 1;
 }
 
+int get_type_size(Type t) {
+  if (t.ptr_depth > 0) {
+    return 8;
+  }
+  if (strcmp(t.name, "int") == 0) {
+    return 4;
+  }
+  if (strcmp(t.name, "char") == 0 || strcmp(t.name, "bool") == 0) {
+    return 1;
+  }
+  return 4;
+}
+
+Type get_expr_type(Node* node) {
+  Type t;
+  t.name = "int";
+  t.ptr_depth = 0;
+  t.array_size = 0;
+  if (!node) return t;
+  if (node.kind == NodeKind.num) {
+    return t;
+  }
+  if (node.kind == NodeKind.lvar) {
+    return get_local_type(node.ident);
+  }
+  if (node.kind == NodeKind.addr) {
+    Type base = get_expr_type(node.lhs);
+    t.name = base.name;
+    t.ptr_depth = base.ptr_depth + 1;
+    return t;
+  }
+  if (node.kind == NodeKind.deref) {
+    Type base = get_expr_type(node.lhs);
+    t.name = base.name;
+    t.ptr_depth = (base.ptr_depth > 0) ? base.ptr_depth - 1 : 0;
+    return t;
+  }
+  if (node.kind == NodeKind.cast_) {
+    return node.type;
+  }
+  if (node.kind == NodeKind.index) {
+    Type base = get_expr_type(node.lhs);
+    t.name = base.name;
+    t.ptr_depth = (base.ptr_depth > 0) ? base.ptr_depth - 1 : 0;
+    return t;
+  }
+  if (node.kind == NodeKind.assign) {
+    return get_expr_type(node.lhs);
+  }
+  if (node.kind == NodeKind.add || node.kind == NodeKind.sub) {
+    Type lt = get_expr_type(node.lhs);
+    Type rt = get_expr_type(node.rhs);
+    if (lt.ptr_depth > 0) return lt;
+    if (rt.ptr_depth > 0) return rt;
+    return lt;
+  }
+  return t;
+}
+
 int gen(Node* node, int ret_var) {
   if (!node) {
     return ret_var;
@@ -177,6 +236,30 @@ int gen(Node* node, int ret_var) {
         printf("  storew %%t%d, %%t%d\n", rhs, addr);
         return addr;
       }
+      if (node.lhs.kind == NodeKind.index) {
+        Type lt = get_expr_type(node.lhs.lhs);
+        int l = gen(node.lhs.lhs, rhs);
+        int r = gen(node.lhs.rhs, l);
+        int scale = get_type_size(Type(lt.name, lt.ptr_depth - 1, 0));
+        int offset_reg = r;
+        int cur = r;
+        if (scale > 1) {
+          printf("  %%t%d =w mul %%t%d, %d\n", cur + 1, r, scale);
+          cur++;
+          offset_reg = cur;
+        }
+        printf("  %%t%d =l extsw %%t%d\n", cur + 1, offset_reg);
+        cur++;
+        printf("  %%t%d =l add %%t%d, %%t%d\n", cur + 1, l, cur);
+        cur++;
+        Type elem_type = Type(lt.name, lt.ptr_depth - 1, 0);
+        if (elem_type.ptr_depth > 0) {
+          printf("  storel %%t%d, %%t%d\n", rhs, cur);
+        } else {
+          printf("  storew %%t%d, %%t%d\n", rhs, cur);
+        }
+        return cur;
+      }
       error("Variable expected in lhs");
       return rhs;
     }
@@ -198,12 +281,44 @@ int gen(Node* node, int ret_var) {
     }
   case NodeKind.cast_: {
       int lhs = gen(node.lhs, ret_var);
-      printf("  %%t%d =w copy %%t%d\n", lhs + 1, lhs);
-      reg_types[lhs + 1] = 'w';
+      char tgt_char = (node.type.ptr_depth > 0) ? 'l' : 'w';
+      char src_char = reg_types[lhs];
+      if (src_char != 'w' && src_char != 'l') src_char = 'w';
+      if (tgt_char == src_char) {
+        printf("  %%t%d =%c copy %%t%d\n", lhs + 1, tgt_char, lhs);
+      } else if (tgt_char == 'l') {
+        printf("  %%t%d =l extsw %%t%d\n", lhs + 1, lhs);
+      } else {
+        printf("  %%t%d =w copy %%t%d\n", lhs + 1, lhs);
+      }
+      reg_types[lhs + 1] = tgt_char;
       return lhs + 1;
     }
   case NodeKind.index: {
-      return ret_var;
+      Type lt = get_expr_type(node.lhs);
+      int l = gen(node.lhs, ret_var);
+      int r = gen(node.rhs, l);
+      int scale = get_type_size(Type(lt.name, lt.ptr_depth - 1, 0));
+      int offset_reg = r;
+      int cur = r;
+      if (scale > 1) {
+        printf("  %%t%d =w mul %%t%d, %d\n", cur + 1, r, scale);
+        cur++;
+        offset_reg = cur;
+      }
+      printf("  %%t%d =l extsw %%t%d\n", cur + 1, offset_reg);
+      cur++;
+      printf("  %%t%d =l add %%t%d, %%t%d\n", cur + 1, l, cur);
+      cur++;
+      Type elem_type = Type(lt.name, lt.ptr_depth - 1, 0);
+      if (elem_type.ptr_depth > 0) {
+        printf("  %%t%d =l loadl %%t%d\n", cur + 1, cur);
+        reg_types[cur + 1] = 'l';
+      } else {
+        printf("  %%t%d =w loadw %%t%d\n", cur + 1, cur);
+        reg_types[cur + 1] = 'w';
+      }
+      return cur + 1;
     }
   case NodeKind.return_: {
       int lhs = gen(node.lhs, ret_var);
@@ -333,10 +448,81 @@ int gen(Node* node, int ret_var) {
       printf("}\n");
       return ret_var;
     }
-  case NodeKind.add:
-    return gen_binop(node, ret_var, "add");
-  case NodeKind.sub:
-    return gen_binop(node, ret_var, "sub");
+  case NodeKind.add: {
+      Type lt = get_expr_type(node.lhs);
+      Type rt = get_expr_type(node.rhs);
+      if (lt.ptr_depth > 0) {
+        int l = gen(node.lhs, ret_var);
+        int r = gen(node.rhs, l);
+        int scale = get_type_size(Type(lt.name, lt.ptr_depth - 1, 0));
+        int offset_reg = r;
+        int cur = r;
+        if (scale > 1) {
+          printf("  %%t%d =w mul %%t%d, %d\n", cur + 1, r, scale);
+          cur++;
+          offset_reg = cur;
+        }
+        printf("  %%t%d =l extsw %%t%d\n", cur + 1, offset_reg);
+        cur++;
+        printf("  %%t%d =l add %%t%d, %%t%d\n", cur + 1, l, cur);
+        reg_types[cur + 1] = 'l';
+        return cur + 1;
+      }
+      if (rt.ptr_depth > 0) {
+        int l = gen(node.lhs, ret_var);
+        int r = gen(node.rhs, l);
+        int scale = get_type_size(Type(rt.name, rt.ptr_depth - 1, 0));
+        int offset_reg = l;
+        int cur = r;
+        if (scale > 1) {
+          printf("  %%t%d =w mul %%t%d, %d\n", cur + 1, l, scale);
+          cur++;
+          offset_reg = cur;
+        }
+        printf("  %%t%d =l extsw %%t%d\n", cur + 1, offset_reg);
+        cur++;
+        printf("  %%t%d =l add %%t%d, %%t%d\n", cur + 1, r, cur);
+        reg_types[cur + 1] = 'l';
+        return cur + 1;
+      }
+      return gen_binop(node, ret_var, "add");
+    }
+  case NodeKind.sub: {
+      Type lt = get_expr_type(node.lhs);
+      Type rt = get_expr_type(node.rhs);
+      if (lt.ptr_depth > 0 && rt.ptr_depth > 0) {
+        int l = gen(node.lhs, ret_var);
+        int r = gen(node.rhs, l);
+        printf("  %%t%d =l sub %%t%d, %%t%d\n", r + 1, l, r);
+        int scale = get_type_size(Type(lt.name, lt.ptr_depth - 1, 0));
+        int cur = r + 1;
+        if (scale > 1) {
+          printf("  %%t%d =l div %%t%d, %d\n", cur + 1, cur, scale);
+          cur++;
+        }
+        printf("  %%t%d =w copy %%t%d\n", cur + 1, cur);
+        reg_types[cur + 1] = 'w';
+        return cur + 1;
+      }
+      if (lt.ptr_depth > 0) {
+        int l = gen(node.lhs, ret_var);
+        int r = gen(node.rhs, l);
+        int scale = get_type_size(Type(lt.name, lt.ptr_depth - 1, 0));
+        int offset_reg = r;
+        int cur = r;
+        if (scale > 1) {
+          printf("  %%t%d =w mul %%t%d, %d\n", cur + 1, r, scale);
+          cur++;
+          offset_reg = cur;
+        }
+        printf("  %%t%d =l extsw %%t%d\n", cur + 1, offset_reg);
+        cur++;
+        printf("  %%t%d =l sub %%t%d, %%t%d\n", cur + 1, l, cur);
+        reg_types[cur + 1] = 'l';
+        return cur + 1;
+      }
+      return gen_binop(node, ret_var, "sub");
+    }
   case NodeKind.mul:
     return gen_binop(node, ret_var, "mul");
   case NodeKind.div:

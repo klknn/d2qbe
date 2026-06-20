@@ -152,44 +152,54 @@ Node* new_node_num(int val) {
 
 // ENBF: primary = num | "true" | "false" | "cast" "(" Type ")" unary | ident ("(" expr* ")")? | "(" expr ")"
 Node* primary() {
+  Node* node;
   if (consume("(")) {
-    Node* node = expr();
+    node = expr();
     expect(")");
-    return node;
-  }
-  if (consume("true")) {
-    return new_node_num(1);
-  }
-  if (consume("false")) {
-    return new_node_num(0);
-  }
-  if (consume("cast")) {
+  } else if (consume("true")) {
+    node = new_node_num(1);
+  } else if (consume("false")) {
+    node = new_node_num(0);
+  } else if (consume("cast")) {
     expect("(");
     Type cast_type = parse_type();
     expect(")");
-    Node* node = new_node(NodeKind.cast_);
+    node = new_node(NodeKind.cast_);
     node.type = cast_type;
     node.lhs = unary();
-    return node;
-  }
-  Token* tok = consume_ident();
-  if (tok) {
-    Node* node = cast(Node*) calloc(1, Node.sizeof);
-    if (consume("(")) {
-      node.kind = NodeKind.funcall;
-      NodeList* args = &node.args;
-      while (!consume(")")) {
-        args = push_back(args, expr());
-        bool _ = consume(","); // TODO: more strict syntax check.
+  } else {
+    Token* tok = consume_ident();
+    if (tok) {
+      node = cast(Node*) calloc(1, Node.sizeof);
+      if (consume("(")) {
+        node.kind = NodeKind.funcall;
+        NodeList* args = &node.args;
+        while (!consume(")")) {
+          args = push_back(args, expr());
+          bool _ = consume(","); // TODO: more strict syntax check.
+        }
       }
+      else {
+        node.kind = NodeKind.lvar;
+      }
+      node.ident = tok;
     }
     else {
-      node.kind = NodeKind.lvar;
+      node = new_node_num(expect_number());
     }
-    node.ident = tok;
-    return node;
   }
-  return new_node_num(expect_number());
+
+  // Parse postfix index operator x[y]
+  while (is_token("[")) {
+    if (consume("[")) {
+      Node* idx = new_node(NodeKind.index);
+      idx.lhs = node;
+      idx.rhs = expr();
+      expect("]");
+      node = idx;
+    }
+  }
+  return node;
 }
 
 // ENBF: unary ="+"? primary | "-"? unary | ("*" | "&") unary
@@ -560,15 +570,13 @@ unittest {
   assert(cast_node.lhs.kind == NodeKind.lvar);
 
   // Test 4: index parsing
-  // Wait, does our parser already parse index?
-  // Let's check: EBNF: primary = num | ... | ident ("(" expr* ")")? | "(" expr ")"
-  // Wait! Does primary() parse y[0] currently?
-  // No! primary() does not parse '[' after the identifier!
-  // In Stage 2 we must parse y[0]! So this test will fail as expected!
-  // Let's add the test:
-  // user_input = cast(char*) "y[0];";
-  // token = tokenize(user_input);
-  // Node* idx_node = stmt();
-  // assert(idx_node.kind == NodeKind.index);
+  user_input = cast(char*) "y[0];";
+  token = tokenize(user_input);
+  Node* idx_node = stmt();
+  assert(idx_node != null);
+  assert(idx_node.kind == NodeKind.index);
+  assert(idx_node.lhs.kind == NodeKind.lvar);
+  assert(idx_node.rhs.kind == NodeKind.num);
+  assert(idx_node.rhs.val == 0);
 }
 
