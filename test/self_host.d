@@ -218,6 +218,7 @@ bool is_keyword(const char* p) {
   if (len == 7 && strncmp(p, "default", 7) == 0) return true;
   if (len == 8 && strncmp(p, "template", 8) == 0) return true;
   if (len == 5 && strncmp(p, "alias", 5) == 0) return true;
+  if (len == 6 && strncmp(p, "static", 6) == 0) return true;
   return false;
 }
 
@@ -787,6 +788,91 @@ struct Node {
   bool is_variadic; // for NodeKind.NK_defun
 }
 
+Node* expr();
+
+int eval_const_expr(Node* node) {
+  if (!node) {
+    error("null node in constant evaluation");
+  }
+  if (node.kind == NodeKind.NK_num) {
+    return node.val;
+  }
+  if (node.kind == NodeKind.NK_add) {
+    return eval_const_expr(node.lhs) + eval_const_expr(node.rhs);
+  }
+  if (node.kind == NodeKind.NK_sub) {
+    return eval_const_expr(node.lhs) - eval_const_expr(node.rhs);
+  }
+  if (node.kind == NodeKind.NK_mul) {
+    return eval_const_expr(node.lhs) * eval_const_expr(node.rhs);
+  }
+  if (node.kind == NodeKind.NK_div) {
+    int r = eval_const_expr(node.rhs);
+    if (r == 0) error("division by zero in compile-time constant expression");
+    return eval_const_expr(node.lhs) / r;
+  }
+  if (node.kind == NodeKind.NK_mod) {
+    int r = eval_const_expr(node.rhs);
+    if (r == 0) error("modulo by zero in compile-time constant expression");
+    return eval_const_expr(node.lhs) % r;
+  }
+  if (node.kind == NodeKind.NK_eq) {
+    return eval_const_expr(node.lhs) == eval_const_expr(node.rhs);
+  }
+  if (node.kind == NodeKind.NK_ne) {
+    return eval_const_expr(node.lhs) != eval_const_expr(node.rhs);
+  }
+  if (node.kind == NodeKind.NK_lt_op) {
+    return eval_const_expr(node.lhs) < eval_const_expr(node.rhs);
+  }
+  if (node.kind == NodeKind.NK_le) {
+    return eval_const_expr(node.lhs) <= eval_const_expr(node.rhs);
+  }
+  if (node.kind == NodeKind.NK_bitwise_and) {
+    return eval_const_expr(node.lhs) & eval_const_expr(node.rhs);
+  }
+  if (node.kind == NodeKind.NK_bitwise_or) {
+    return eval_const_expr(node.lhs) | eval_const_expr(node.rhs);
+  }
+  if (node.kind == NodeKind.NK_bitwise_xor) {
+    return eval_const_expr(node.lhs) ^ eval_const_expr(node.rhs);
+  }
+  if (node.kind == NodeKind.NK_lshift) {
+    return eval_const_expr(node.lhs) << eval_const_expr(node.rhs);
+  }
+  if (node.kind == NodeKind.NK_rshift) {
+    return eval_const_expr(node.lhs) >> eval_const_expr(node.rhs);
+  }
+  if (node.kind == NodeKind.NK_bitwise_not) {
+    return ~eval_const_expr(node.lhs);
+  }
+  if (node.kind == NodeKind.NK_logical_not) {
+    return !eval_const_expr(node.lhs);
+  }
+  error("expression is not a compile-time constant");
+  return 0;
+}
+
+void parse_static_assert() {
+  expect("static");
+  expect("assert");
+  expect("(");
+  Node* cond = expr();
+  if (consume(",")) {
+    if (token.kind != TokenKind.TK_str_literal) {
+      error_at(token.str, "string literal expected for static assert message");
+    }
+    token = token.next;
+  }
+  expect(")");
+  expect(";");
+  
+  int val = eval_const_expr(cond);
+  if (!val) {
+    error("static assert failure");
+  }
+}
+
 /**
  * Creates a new AST node of the given kind.
  */
@@ -1257,6 +1343,12 @@ bool is_decl_statement() {
 Node* stmt() {
   if (is_token("alias")) {
     parse_alias();
+    Node* dummy = cast(Node*) calloc(1, Node.sizeof);
+    dummy.kind = NodeKind.NK_block;
+    return dummy;
+  }
+  if (is_token("static")) {
+    parse_static_assert();
     Node* dummy = cast(Node*) calloc(1, Node.sizeof);
     dummy.kind = NodeKind.NK_block;
     return dummy;
@@ -1945,6 +2037,10 @@ void program() {
       parse_alias();
       continue;
     }
+    if (is_token("static")) {
+      parse_static_assert();
+      continue;
+    }
     
     if (is_type_name(token.str, token.len) || is_type_start(token)) {
       Type t;
@@ -2195,6 +2291,16 @@ unittest {
   assert(alias_var2 != null);
   assert(strcmp(alias_var2.type.name, "int") == 0);
   assert(alias_var2.type.ptr_depth == 2);
+
+  // Test static assert parsing and evaluation
+  user_input = cast(char*) "static assert(1 == 1); static assert(2 * 3 == 6, \"error msg\");";
+  token = tokenize(user_input);
+  program();
+
+  user_input = cast(char*) "5 * 5 - 20 == 5";
+  token = tokenize(user_input);
+  Node* const_node = expr();
+  assert(eval_const_expr(const_node) == 1);
 }
 
 
