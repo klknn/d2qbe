@@ -60,7 +60,8 @@ enum NodeKind {
 struct Type {
   const(char)* name;
   int ptr_depth;
-  int array_size;
+  int[5] array_sizes;
+  int array_dims;
 }
 
 struct Member {
@@ -240,8 +241,12 @@ int get_type_size(Type* t) {
       }
     }
   }
-  if (t.array_size > 0) {
-    return t.array_size * base_size;
+  if (t.array_dims > 0) {
+    int total_size = base_size;
+    for (int i = 0; i < t.array_dims; i++) {
+      total_size = total_size * t.array_sizes[i];
+    }
+    return total_size;
   }
   return base_size;
 }
@@ -293,13 +298,13 @@ void parse_type(Type* out_type) {
     memcpy(name, base_tok.str, base_tok.len);
     t.name = name;
     t.ptr_depth = 0;
-    t.array_size = 0;
+    t.array_dims = 0;
   }
   
   while (consume("*")) {
     t.ptr_depth++;
   }
-  if (consume("[")) {
+  while (consume("[")) {
     int size;
     Token* tok = consume_ident();
     if (tok) {
@@ -309,7 +314,11 @@ void parse_type(Type* out_type) {
     } else {
       size = expect_number();
     }
-    t.array_size = size;
+    for (int i = t.array_dims; i > 0; i--) {
+      t.array_sizes[i] = t.array_sizes[i - 1];
+    }
+    t.array_sizes[0] = size;
+    t.array_dims++;
     expect("]");
   }
   *out_type = t;
@@ -467,8 +476,16 @@ Node* primary() {
       expect("]");
       node = idx;
     } else if (consume(".")) {
-      Token* mem_tok = consume_ident();
-      if (!mem_tok) error_at(token.str, "member name expected");
+      Token* mem_tok;
+      if (consume("sizeof")) {
+        mem_tok = cast(Token*) calloc(1, Token.sizeof);
+        mem_tok.kind = TokenKind.TK_identifier;
+        mem_tok.str = cast(char*) "sizeof";
+        mem_tok.len = 6;
+      } else {
+        mem_tok = consume_ident();
+        if (!mem_tok) error_at(token.str, "member name expected");
+      }
       Node* dot_node = new_node(NodeKind.NK_dot);
       dot_node.lhs = node;
       dot_node.ident = mem_tok;
@@ -772,10 +789,14 @@ bool is_decl_statement() {
   while (tok && tok.len == 1 && tok.str[0] == '*') {
     tok = tok.next;
   }
-  if (tok && tok.len == 1 && tok.str[0] == '[') {
+  while (tok && tok.len == 1 && tok.str[0] == '[') {
     tok = tok.next;
     if (tok && (tok.kind == TokenKind.TK_num || tok.kind == TokenKind.TK_identifier)) tok = tok.next;
-    if (tok && tok.len == 1 && tok.str[0] == ']') tok = tok.next;
+    if (tok && tok.len == 1 && tok.str[0] == ']') {
+      tok = tok.next;
+    } else {
+      break;
+    }
   }
   return tok && tok.kind == TokenKind.TK_identifier;
 }
@@ -1129,7 +1150,7 @@ void program() {
       Type t;
       t.name = "int";
       t.ptr_depth = 0;
-      t.array_size = 0;
+      t.array_dims = 0;
       
       Node* node = new_node(NodeKind.NK_defun);
       node.ident = ident;
@@ -1141,7 +1162,7 @@ void program() {
         Type pt;
         pt.name = "int";
         pt.ptr_depth = 0;
-        pt.array_size = 0;
+        pt.array_dims = 0;
         node.params_types[p_idx] = pt;
         node.params[p_idx] = consume_ident();
         p_idx++;

@@ -87,7 +87,7 @@ void get_global_type(const(Token)* ident, Type* out_type) {
   Type t;
   t.name = "int";
   t.ptr_depth = 0;
-  t.array_size = 0;
+  t.array_dims = 0;
   *out_type = t;
 }
 
@@ -169,8 +169,8 @@ void add_local(const(Token)* ident, Type* type) {
   locals[locals_count].type = *type;
   const(char)* type_name = type.name;
   if (!type_name) type_name = "null";
-  printf("# DEBUG: add_local '%.*s' type '%s' ptr_depth=%d array_size=%d\n",
-         ident.len, ident.str, type_name, type.ptr_depth, type.array_size);
+  printf("# DEBUG: add_local '%.*s' type '%s' ptr_depth=%d array_dims=%d outer_size=%d\n",
+         ident.len, ident.str, type_name, type.ptr_depth, type.array_dims, type.array_sizes[0]);
   locals_count++;
 }
 
@@ -215,7 +215,7 @@ void get_local_type(const(Token)* ident, Type* out_type) {
   Type t;
   t.name = "int";
   t.ptr_depth = 0;
-  t.array_size = 0;
+  t.array_dims = 0;
   printf("# DEBUG: get_local_type '%.*s' -> DEFAULT 'int'\n", ident.len, ident.str);
   *out_type = t;
 }
@@ -227,7 +227,7 @@ void infer_type(Node* node, Type* out_type) {
   Type t;
   t.name = "int";
   t.ptr_depth = 0;
-  t.array_size = 0;
+  t.array_dims = 0;
   if (!node) {
     *out_type = t;
     return;
@@ -277,7 +277,7 @@ void collect_locals(Node* node) {
       Type t;
       t.name = "int";
       t.ptr_depth = 0;
-      t.array_size = 0;
+      t.array_dims = 0;
       add_local(node.ident, &t);
     }
   }
@@ -390,7 +390,7 @@ void get_expr_type(Node* node, Type* out_type) {
   Type t;
   t.name = "int";
   t.ptr_depth = 0;
-  t.array_size = 0;
+  t.array_dims = 0;
   if (!node) {
     *out_type = t;
     return;
@@ -440,14 +440,17 @@ void get_expr_type(Node* node, Type* out_type) {
     Type base;
     get_expr_type(node.lhs, &base);
     t.name = base.name;
-    if (base.array_size > 0) {
+    if (base.array_dims > 0) {
       t.ptr_depth = base.ptr_depth;
-      t.array_size = 0;
+      t.array_dims = base.array_dims - 1;
+      for (int i = 0; i < t.array_dims; i++) {
+        t.array_sizes[i] = base.array_sizes[i + 1];
+      }
     } else {
       int depth = 0;
       if (base.ptr_depth > 0) depth = base.ptr_depth - 1;
       t.ptr_depth = depth;
-      t.array_size = 0;
+      t.array_dims = 0;
     }
     *out_type = t;
     return;
@@ -457,6 +460,13 @@ void get_expr_type(Node* node, Type* out_type) {
     return;
   }
   if (node.kind == NodeKind.NK_dot) {
+    if (node.ident.len == 6 && strncmp(node.ident.str, "sizeof", 6) == 0) {
+      t.name = "int";
+      t.ptr_depth = 0;
+      t.array_dims = 0;
+      *out_type = t;
+      return;
+    }
     Type lt;
     get_expr_type(node.lhs, &lt);
     StructType* st = find_struct(lt.name);
@@ -515,7 +525,7 @@ int gen_addr(Node* node) {
       Type lt;
       get_expr_type(node.lhs, &lt);
       int l;
-      if (lt.array_size > 0) {
+      if (lt.array_dims > 0) {
         l = gen_addr(node.lhs);
       } else {
         l = gen(node.lhs);
@@ -523,12 +533,16 @@ int gen_addr(Node* node) {
       int r = gen(node.rhs);
       Type tmp_type;
       tmp_type.name = lt.name;
-      if (lt.array_size > 0) {
+      if (lt.array_dims > 0) {
         tmp_type.ptr_depth = lt.ptr_depth;
+        tmp_type.array_dims = lt.array_dims - 1;
+        for (int i = 0; i < tmp_type.array_dims; i++) {
+          tmp_type.array_sizes[i] = lt.array_sizes[i + 1];
+        }
       } else {
         tmp_type.ptr_depth = lt.ptr_depth - 1;
+        tmp_type.array_dims = 0;
       }
-      tmp_type.array_size = 0;
       int scale = get_type_size(&tmp_type);
       int offset_reg = r;
       if (scale > 1) {
@@ -544,6 +558,9 @@ int gen_addr(Node* node) {
       return add_res;
   }
   if (node.kind == NodeKind.NK_dot) {
+    if (node.ident.len == 6 && strncmp(node.ident.str, "sizeof", 6) == 0) {
+      error("sizeof property has no address");
+    }
     Type lt;
     get_expr_type(node.lhs, &lt);
     StructType* st = find_struct(lt.name);
@@ -647,17 +664,19 @@ void copy_struct_members(const(char)* struct_name, int lhs_addr_reg, int rhs_add
     set_reg_type(mem_rhs_addr, 'l');
     
     int array_len = 1;
-    if (m.type.array_size > 0) {
-      array_len = m.type.array_size;
+    if (m.type.array_dims > 0) {
+      for (int j = 0; j < m.type.array_dims; j++) {
+        array_len = array_len * m.type.array_sizes[j];
+      }
     }
     Type elem_type = m.type;
-    elem_type.array_size = 0;
+    elem_type.array_dims = 0;
     int elem_size = get_type_size(&elem_type);
     
     for (int j = 0; j < array_len; j++) {
       int elem_lhs_addr = mem_lhs_addr;
       int elem_rhs_addr = mem_rhs_addr;
-      if (m.type.array_size > 0 && j > 0) {
+      if (m.type.array_dims > 0 && j > 0) {
         elem_lhs_addr = next_reg();
         printf("  %%t%d =l add %%t%d, %d\n", elem_lhs_addr, mem_lhs_addr, j * elem_size);
         set_reg_type(elem_lhs_addr, 'l');
@@ -688,7 +707,7 @@ int gen_inc_dec(Node* node, bool is_inc, bool is_prefix) {
     Type tmp_type;
     tmp_type.name = t.name;
     tmp_type.ptr_depth = t.ptr_depth - 1;
-    tmp_type.array_size = 0;
+    tmp_type.array_dims = 0;
     scale = get_type_size(&tmp_type);
   }
   
@@ -1114,7 +1133,7 @@ int gen(Node* node) {
         Type tmp_type;
         tmp_type.name = lt.name;
         tmp_type.ptr_depth = lt.ptr_depth - 1;
-        tmp_type.array_size = 0;
+        tmp_type.array_dims = 0;
         int scale = get_type_size(&tmp_type);
         int offset_reg = r;
         if (scale > 1) {
@@ -1135,7 +1154,7 @@ int gen(Node* node) {
         Type tmp_type;
         tmp_type.name = rt.name;
         tmp_type.ptr_depth = rt.ptr_depth - 1;
-        tmp_type.array_size = 0;
+        tmp_type.array_dims = 0;
         int scale = get_type_size(&tmp_type);
         int offset_reg = l;
         if (scale > 1) {
@@ -1163,7 +1182,7 @@ int gen(Node* node) {
         Type tmp_type;
         tmp_type.name = lt.name;
         tmp_type.ptr_depth = lt.ptr_depth - 1;
-        tmp_type.array_size = 0;
+        tmp_type.array_dims = 0;
         int scale = get_type_size(&tmp_type);
         int div_res = sub_res;
         if (scale > 1) {
@@ -1181,7 +1200,7 @@ int gen(Node* node) {
         Type tmp_type;
         tmp_type.name = lt.name;
         tmp_type.ptr_depth = lt.ptr_depth - 1;
-        tmp_type.array_size = 0;
+        tmp_type.array_dims = 0;
         int scale = get_type_size(&tmp_type);
         int offset_reg = r;
         if (scale > 1) {
@@ -1311,6 +1330,14 @@ int gen(Node* node) {
       return res;
     }
   if (node.kind == NodeKind.NK_dot) {
+      if (node.ident.len == 6 && strncmp(node.ident.str, "sizeof", 6) == 0) {
+        int res = next_reg();
+        Type t;
+        get_expr_type(node.lhs, &t);
+        printf("  %%t%d =w copy %d\n", res, get_type_size(&t));
+        set_reg_type(res, 'w');
+        return res;
+      }
       int addr = gen_addr(node);
       Type t;
       get_expr_type(node, &t);
