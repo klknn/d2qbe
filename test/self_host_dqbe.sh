@@ -34,12 +34,15 @@ for f in source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/codegen.d source
   grep -v '^import ' "$f" | grep -v '^module ' >> test/self_host_dqbe.d
 done
 
+# Compile stream helper functions
+ldc2 -betterC -c test/tmp_ext_dqbe.d -of=test/tmp_ext_dqbe.o
+
 echo "Compiling self_host_dqbe.d using bootstrap compiler..."
 ./d2qbe "$(cat test/self_host_dqbe.d)" > test/self_host_dqbe.s
 
 echo "Assembling self_host_dqbe.s using dqbe..."
 ./dqbe < test/self_host_dqbe.s > test/self_host_dqbe_qbe.s
-cc -o test/dqbe_self_hosted test/self_host_dqbe_qbe.s test/ext_dqbe.o
+cc -o test/dqbe_self_hosted test/self_host_dqbe_qbe.s test/tmp_ext_dqbe.o
 
 echo "Verifying self-hosted compiler using dqbe backend..."
 
@@ -48,7 +51,7 @@ assert_dqbe() {
   input="$2"
   echo "Testing: $input => $expected"
   ./d2qbe "$input" | ./test/dqbe_self_hosted > tmp.s
-  cc -o tmp tmp.s test/ext_dqbe.o
+  cc -o tmp tmp.s test/tmp_ext_dqbe.o
   ./tmp
   actual="$?"
   if [ "$actual" -ne "$expected" ]; then
