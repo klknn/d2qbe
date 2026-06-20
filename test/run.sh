@@ -154,4 +154,15 @@ assert 10 "int x = 5; int* y = &x; y[0] = 10; return x;"
 assert 42 "int x = 42; return cast(int) x;"
 assert 97 "char x = 97; return cast(int) x;"
 
+# ==============================================================================
+# Stage 3 tests (Active)
+# ==============================================================================
+assert 4 "return int.sizeof;"
+assert 8 "return int*.sizeof;"
+assert 1 "return char.sizeof;"
+assert 1 "return bool.sizeof;"
+assert_v2 42 "int g; int main() { g = 42; return g; }"
+assert_v2 5 "int g = 5; int main() { return g; }"
+assert_v2 104 "int main() { char* p = \"hello\\n\"; return p[0]; }"
+
 echo OK

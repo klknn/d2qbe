@@ -578,5 +578,22 @@ unittest {
   assert(idx_node.lhs.kind == NodeKind.lvar);
   assert(idx_node.rhs.kind == NodeKind.num);
   assert(idx_node.rhs.val == 0);
+
+  // Test 5: sizeof parsing
+  user_input = cast(char*) "int.sizeof;";
+  token = tokenize(user_input);
+  Node* sz_node = stmt();
+  assert(sz_node != null);
+  assert(sz_node.kind == NodeKind.num);
+  assert(sz_node.val == 4);
+
+  // Test 6: string literal tokenization and parsing
+  user_input = cast(char*) "\"hello\";";
+  token = tokenize(user_input);
+  assert(token.kind == TokenKind.str_literal);
+  Node* str_node = stmt();
+  assert(str_node != null);
+  assert(str_node.kind == NodeKind.str_literal);
+  assert(strncmp(str_node.ident.str, "hello", str_node.ident.len) == 0);
 }
 
