@@ -36,6 +36,8 @@ This document is for the next AI agent or developer taking over the development 
   - Supports compile-time properties `Type.init` (default type initialization value, evaluates to 0 for scalars/pointers) and `Type.alignof` (type alignment in bytes).
 - **Conditional Compilation (`version` & `debug` blocks)**: Completed & Committed.
   - Supports `version(Identifier) { ... } else { ... }` and `debug { ... }` conditional blocks at both top-level and statement scopes. Performs token-level block skipping using brace nesting checks.
+- **Type Inference (`auto` declarations)**: Completed & Committed.
+  - Supports `auto ident = initializer;` at both top-level and statement scopes. Performs type inference (supporting variables, literals, pointers, casts, indexing, and function calls) during local/global variable collection at the beginning of code generation.
 - **Templates (Generics)**: Completed & Committed.
   - Supports template block declarations `template Name(T) { ... }` and explicit eponymous instantiations `Name!Arg` (including complex parenthesized arguments like `Name!(char*)`).
   - Implements token-level deep duplication, argument substitution, and eponymous member renaming/mangling.
