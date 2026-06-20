@@ -2,7 +2,6 @@
     "authors": [
         "klknn"
     ],
-    "buildOptions": ["betterC"],
     "copyright": "Copyright © 2026, klknn",
     "description": "A minimal D application.",
     "license": "BSL-1.0",

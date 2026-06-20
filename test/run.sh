@@ -1,11 +1,13 @@
 #!/bin/bash
 
+D2QBE=${D2QBE:-./d2qbe}
+
 assert_v2() {
   expected="$1"
   input="$2"
   output="$3"
 
-  ./d2qbe "$input" | ./qbe/qbe > tmp.s
+  $D2QBE "$input" | ./qbe/qbe > tmp.s
   cc -o tmp tmp.s ext.o
   actual_output=$(./tmp)
   actual="$?"
@@ -88,6 +90,10 @@ assert 0 "for (a=10;a>0;a=a-1) a= a;return a;"
 assert 5 "for(a=0;a<10;a=a+1) if (a>5) return 5;return a;"
 assert 10 "a=0;for (;a<10;) a=a+1;return a;"
 assert 1 "a=0;for (;;) if (a<10)return 1;return 0;"
+assert 5 "int i = 0; while (i < 10) { i = i + 1; if (i == 5) break; } return i;"
+assert 15 "int i = 0; int sum = 0; while (i < 10) { i = i + 1; if (i > 5) continue; sum = sum + i; } return sum;"
+assert 40 "int sum = 0; for (int i = 0; i < 10; i = i + 1) { if (i == 5) continue; sum = sum + i; } return sum;"
+assert 10 "int sum = 0; for (int i = 0; i < 10; i = i + 1) { if (i == 5) break; sum = sum + i; } return sum;"
 
 assert 1 "{ return 1; }"
 assert 1 "{ a=1;return 1; }"
@@ -170,5 +176,9 @@ assert_v2 104 "int main() { char* p = \"hello\\n\"; return p[0]; }"
 # ==============================================================================
 assert 0 "assert(1 == 1); return 0;"
 assert 1 "assert(1 == 0); return 0;"
+
+assert_v2 0 "$(cat test/enum_test.d)"
+assert_v2 0 "$(cat test/struct_test.d)"
+assert_v2 0 "$(cat test/logical_test.d)"
 
 echo OK
