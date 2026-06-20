@@ -28,6 +28,8 @@ This document is for the next AI agent or developer taking over the development 
 - **Multidimensional Static Arrays**: Completed & Committed.
   - Supports nesting of static array dimensions, indexing, compile-time property `.sizeof` for both types and expressions, and recursive copying of nested arrays inside structs.
 - **Assertion Support**: Completed & Committed.
+- **Alias Declarations**: Completed & Committed.
+  - Supports `alias AliasName = ExistingType;` at both top-level and local block/statement scope levels. Resolves and substitutes nested pointer types (e.g. `pint*` resolving to `int**` if `pint` is `int*`).
 - **Templates (Generics)**: Completed & Committed.
   - Supports template block declarations `template Name(T) { ... }` and explicit eponymous instantiations `Name!Arg` (including complex parenthesized arguments like `Name!(char*)`).
   - Implements token-level deep duplication, argument substitution, and eponymous member renaming/mangling.
