@@ -64,6 +64,11 @@ int main() {
     static assert(1 == 1);
     static assert(10 * 2 == 20, "10 * 2 must be 20");
     static assert(int.sizeof == 4);
+    static assert(int.init == 0);
+    static assert(int*.alignof == 8);
+
+    assert(char.init == 0);
+    assert(char.alignof == 1);
 
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;
