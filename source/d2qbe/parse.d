@@ -81,6 +81,15 @@ struct StructType {
 StructType[50] registered_structs;
 int registered_structs_count = 0;
 
+struct TemplateSymbol {
+  const(char)* name;
+  const(char)* param_name;
+  Token* body_start;
+  Token* body_end;
+}
+TemplateSymbol[50] registered_templates;
+int registered_templates_count = 0;
+
 struct FunctionSymbol {
   const(char)* name;
   bool is_variadic;
@@ -998,6 +1007,59 @@ void parse_struct() {
 }
 
 /**
+ * Parses a template block declaration.
+ */
+void parse_template() {
+  expect("template");
+  Token* name_tok = consume_ident();
+  if (!name_tok) {
+    error_at(token.str, "template name expected");
+  }
+  expect("(");
+  Token* param_tok = consume_ident();
+  if (!param_tok) {
+    error_at(token.str, "template parameter name expected");
+  }
+  expect(")");
+  expect("{");
+  
+  Token* start = token;
+  Token* end = null;
+  int nest = 1;
+  while (token && token.kind != TokenKind.TK_eof) {
+    if (token.len == 1 && token.str[0] == '{') {
+      nest++;
+    } else if (token.len == 1 && token.str[0] == '}') {
+      nest--;
+      if (nest == 0) {
+        end = token;
+        token = token.next;
+        break;
+      }
+    }
+    token = token.next;
+  }
+  
+  if (nest != 0) {
+    error_at(start.str, "unclosed template body");
+  }
+  
+  assert(registered_templates_count < 50, "registered_templates overflow");
+  
+  char* name = cast(char*) calloc(1, name_tok.len + 1);
+  memcpy(name, name_tok.str, name_tok.len);
+  
+  char* param_name = cast(char*) calloc(1, param_tok.len + 1);
+  memcpy(param_name, param_tok.str, param_tok.len);
+  
+  registered_templates[registered_templates_count].name = name;
+  registered_templates[registered_templates_count].param_name = param_name;
+  registered_templates[registered_templates_count].body_start = start;
+  registered_templates[registered_templates_count].body_end = end;
+  registered_templates_count++;
+}
+
+/**
  * Parses an enum declaration (manifest constants, anonymous, or named).
  * EBNF: enum_decl = "enum" "{" (ident ("=" num)? ",")* "}"
  *                 | "enum" ident "=" num ";"
@@ -1119,6 +1181,10 @@ void program() {
     }
     if (is_token("enum")) {
       parse_enum();
+      continue;
+    }
+    if (is_token("template")) {
+      parse_template();
       continue;
     }
     
@@ -1342,6 +1408,17 @@ unittest {
   Node* sw_node = stmt();
   assert(sw_node != null);
   assert(sw_node.kind == NodeKind.NK_switch_);
+
+  // Test template declaration parsing
+  registered_templates_count = 0;
+  user_input = cast(char*) "template Stack(T) { struct Stack { T[10] data; } }";
+  token = tokenize(user_input);
+  program();
+  assert(registered_templates_count == 1);
+  assert(strcmp(registered_templates[0].name, "Stack") == 0);
+  assert(strcmp(registered_templates[0].param_name, "T") == 0);
+  assert(registered_templates[0].body_start != null);
+  assert(registered_templates[0].body_end != null);
 }
 
 
