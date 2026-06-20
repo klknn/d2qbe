@@ -74,7 +74,7 @@ int get_var_offset(const char* name, int size, int align_) {
   return ret_offset;
 }
 
-void load_arg(const char* arg, const char* reg, char type, FILE* f) {
+void load_arg(const char* arg, const char* reg, int type, FILE* f) {
   if (arg[0] == '%') {
     int offset = get_temp_offset(arg);
     if (type == 'w') {
@@ -95,7 +95,7 @@ void load_arg(const char* arg, const char* reg, char type, FILE* f) {
   }
 }
 
-void store_reg(const char* dest, const char* reg, char type, FILE* f) {
+void store_reg(const char* dest, const char* reg, int type, FILE* f) {
   int offset = get_temp_offset(dest);
   if (type == 'w') {
     fprintf(f, "  movl %s, -%d(%%rbp)\n", reg, offset);
@@ -126,7 +126,7 @@ const(char)* get_arg_reg_64(int idx) {
 
 const(char)* current_fn_name;
 
-void gen_instruction(Instruction* inst, char fn_ret_type, FILE* f) {
+void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
   if (inst.kind == InstKind.IK_label) {
     fprintf(f, ".L%s_%s:\n", current_fn_name, inst.label + 1);
     return;
