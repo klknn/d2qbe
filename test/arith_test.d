@@ -7,6 +7,19 @@ static if (int.sizeof == 4) {
   int get_static_if_val() { return 888; }
 }
 
+struct Counter {
+  int count;
+  void init_val(int start) {
+    count = start;
+  }
+  void increment() {
+    count = count + 1;
+  }
+  int get_count() {
+    return count;
+  }
+}
+
 auto global_auto_val = 500;
 
 version(Posix) {
@@ -108,6 +121,18 @@ int main() {
     } else {
       assert(get_static_if_val() == 888);
     }
+
+    // Struct member functions
+    Counter c;
+    c.init_val(10);
+    assert(c.get_count() == 10);
+    c.increment();
+    assert(c.get_count() == 11);
+
+    // Member function with pointers
+    Counter* c_ptr = &c;
+    c_ptr.increment();
+    assert(c_ptr.get_count() == 12);
 
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;

@@ -762,10 +762,24 @@ Node* primary() {
         mem_tok = consume_ident();
         if (!mem_tok) error_at(token.str, "member name expected");
       }
-      Node* dot_node = new_node(NodeKind.NK_dot);
-      dot_node.lhs = node;
-      dot_node.ident = mem_tok;
-      node = dot_node;
+      
+      if (consume("(")) {
+        Node* call = new_node(NodeKind.NK_funcall);
+        call.lhs = new_node(NodeKind.NK_dot);
+        call.lhs.lhs = node;
+        call.lhs.ident = mem_tok;
+        NodeList* args = &call.args;
+        while (!consume(")")) {
+          args = push_back(args, expr());
+          bool _ = consume(",");
+        }
+        node = call;
+      } else {
+        Node* dot_node = new_node(NodeKind.NK_dot);
+        dot_node.lhs = node;
+        dot_node.ident = mem_tok;
+        node = dot_node;
+      }
     } else if (consume("++")) {
       Node* inc = new_node(NodeKind.NK_post_inc);
       inc.lhs = node;
@@ -1301,6 +1315,23 @@ void parse_struct() {
     parse_type(&t);
     Token* mem_ident = consume_ident();
     if (!mem_ident) error_at(token.str, "member name expected");
+    
+    if (is_token("(")) {
+      char[256] mangled;
+      snprintf(&mangled[0], 256, "_D_struct_%s_%.*s", name, mem_ident.len, mem_ident.str);
+      char* mangled_name = cast(char*) calloc(1, strlen(&mangled[0]) + 1);
+      strcpy(mangled_name, &mangled[0]);
+      
+      Token* fn_tok = cast(Token*) calloc(1, Token.sizeof);
+      fn_tok.kind = TokenKind.TK_identifier;
+      fn_tok.str = mangled_name;
+      fn_tok.len = cast(int) strlen(mangled_name);
+      
+      Node* fn = parse_function(&t, fn_tok, name);
+      add_to_code(fn);
+      continue;
+    }
+    
     expect(";");
     
     char* mem_name = cast(char*) calloc(1, mem_ident.len + 1);
@@ -1673,7 +1704,7 @@ char* resolve_template_instantiation(const(char)* base_name) {
           Token* decl_ident = consume_ident();
           if (!decl_ident) error_at(token.str, "identifier expected in template body");
           if (is_token("(")) {
-            add_to_code(parse_function(&decl_type, decl_ident));
+            add_to_code(parse_function(&decl_type, decl_ident, null));
           } else {
             Node* gvar = new_node(NodeKind.NK_gvar_decl);
             gvar.type = decl_type;
@@ -1754,13 +1785,25 @@ void parse_enum() {
  * Parses a function declaration or definition.
  * EBNF: defun = Type ident "(" parameters? ")" (stmt | ";")
  */
-Node* parse_function(Type* ret_type, Token* func_name) {
+Node* parse_function(Type* ret_type, Token* func_name, const(char)* struct_name) {
   Node* node = new_node(NodeKind.NK_defun);
   node.ident = func_name;
   node.return_type = *ret_type;
   
   expect("(");
   int i = 0;
+  if (struct_name) {
+    Token* this_tok = cast(Token*) calloc(1, Token.sizeof);
+    this_tok.kind = TokenKind.TK_identifier;
+    this_tok.str = cast(char*) "this";
+    this_tok.len = 4;
+    node.params[0] = this_tok;
+    node.params_types[0].name = struct_name;
+    node.params_types[0].ptr_depth = 1;
+    node.params_types[0].array_dims = 0;
+    i = 1;
+  }
+  
   while (!consume(")")) {
     if (consume("...")) {
       node.is_variadic = true;
@@ -1869,7 +1912,7 @@ void parse_top_level() {
       error_at(token.str, "identifier expected at top level");
     }
     if (is_token("(")) {
-      add_to_code(parse_function(&t, ident));
+      add_to_code(parse_function(&t, ident, null));
     } else {
       Node* gvar = new_node(NodeKind.NK_gvar_decl);
       gvar.type = t;
@@ -2168,6 +2211,15 @@ unittest {
   program();
   assert(registered_functions_count == 1);
   assert(strcmp(registered_functions[0].name, "false_func") == 0);
+
+  // Test member function parsing inside struct
+  registered_functions_count = 0;
+  user_input = cast(char*) "struct MyStruct { int val; int get_val() { return val; } }";
+  token = tokenize(user_input);
+  program();
+  assert(registered_functions_count == 1);
+  assert(strcmp(registered_functions[0].name, "_D_struct_MyStruct_get_val") == 0);
+  assert(registered_functions[0].num_params == 1);
 }
 
 
