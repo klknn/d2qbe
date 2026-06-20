@@ -52,8 +52,8 @@ assert_dqbe() {
   echo "Testing: $input => $expected"
   ./d2qbe "$input" | ./test/dqbe_self_hosted > tmp.s
   cc -o tmp tmp.s test/tmp_ext_dqbe.o
-  ./tmp
-  actual="$?"
+  actual=0
+  ./tmp || actual="$?"
   if [ "$actual" -ne "$expected" ]; then
     echo "FAILED: Expected $expected, but got $actual"
     exit 1
