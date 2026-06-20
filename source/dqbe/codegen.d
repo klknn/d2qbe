@@ -104,8 +104,25 @@ void store_reg(const char* dest, const char* reg, char type, FILE* f) {
   }
 }
 
-const char*[6] arg_regs_32 = ["%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d"];
-const char*[6] arg_regs_64 = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
+const(char)* get_arg_reg_32(int idx) {
+  if (idx == 0) return "%edi";
+  if (idx == 1) return "%esi";
+  if (idx == 2) return "%edx";
+  if (idx == 3) return "%ecx";
+  if (idx == 4) return "%r8d";
+  if (idx == 5) return "%r9d";
+  return null;
+}
+
+const(char)* get_arg_reg_64(int idx) {
+  if (idx == 0) return "%rdi";
+  if (idx == 1) return "%rsi";
+  if (idx == 2) return "%rdx";
+  if (idx == 3) return "%rcx";
+  if (idx == 4) return "%r8";
+  if (idx == 5) return "%r9";
+  return null;
+}
 
 const(char)* current_fn_name;
 
@@ -165,9 +182,9 @@ void gen_instruction(Instruction* inst, char fn_ret_type, FILE* f) {
     // Set up parameters
     for (int i = 0; i < inst.call_args_count && i < 6; i++) {
       if (inst.call_args[i].type == 'w') {
-        load_arg(inst.call_args[i].name, arg_regs_32[i], 'w', f);
+        load_arg(inst.call_args[i].name, get_arg_reg_32(i), 'w', f);
       } else {
-        load_arg(inst.call_args[i].name, arg_regs_64[i], 'l', f);
+        load_arg(inst.call_args[i].name, get_arg_reg_64(i), 'l', f);
       }
     }
     fprintf(f, "  call %s\n", inst.arg1 + 1);
@@ -225,9 +242,9 @@ void gen_instruction(Instruction* inst, char fn_ret_type, FILE* f) {
       // Function call with assignment
       for (int i = 0; i < inst.call_args_count && i < 6; i++) {
         if (inst.call_args[i].type == 'w') {
-          load_arg(inst.call_args[i].name, arg_regs_32[i], 'w', f);
+          load_arg(inst.call_args[i].name, get_arg_reg_32(i), 'w', f);
         } else {
-          load_arg(inst.call_args[i].name, arg_regs_64[i], 'l', f);
+          load_arg(inst.call_args[i].name, get_arg_reg_64(i), 'l', f);
         }
       }
       fprintf(f, "  call %s\n", inst.arg1 + 1);
@@ -420,9 +437,9 @@ void gen_function(FunctionDef* fn, FILE* f) {
   for (int i = 0; i < fn.params_count && i < 6; i++) {
     int offset = get_temp_offset(fn.params[i].name);
     if (fn.params[i].type == 'w') {
-      fprintf(f, "  movl %s, -%d(%%rbp)\n", arg_regs_32[i], offset);
+      fprintf(f, "  movl %s, -%d(%%rbp)\n", get_arg_reg_32(i), offset);
     } else {
-      fprintf(f, "  movq %s, -%d(%%rbp)\n", arg_regs_64[i], offset);
+      fprintf(f, "  movq %s, -%d(%%rbp)\n", get_arg_reg_64(i), offset);
     }
   }
   
