@@ -130,7 +130,7 @@ unittest {
   assert(identifier_length("a0=1") == 2);
 }
 
-const(char)** keywords = ["return", "if", "else", "while", "for", "struct", "enum", "cast", "sizeof", "const", "extern", "unittest", "true", "false", ""];
+const(char)** keywords = ["return", "if", "else", "while", "for", "struct", "enum", "cast", "sizeof", "const", "extern", "unittest", "true", "false", "assert", ""];
 
 bool is_keyword(const char* p) {
   if (strlen(p) == 0) {

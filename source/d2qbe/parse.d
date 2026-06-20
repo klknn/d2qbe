@@ -2,6 +2,7 @@ module d2qbe.parse;
 
 import core.stdc.string;
 import core.stdc.stdlib;
+import core.stdc.stdio;
 
 import d2qbe.tokenize;
 
@@ -31,6 +32,7 @@ enum NodeKind {
   cast_, // cast(Type) expr
   index, // x[y]
   str_literal, // "hello"
+  assert_, // assert(x)
 }
 
 struct Type {
@@ -382,6 +384,14 @@ Node* stmt() {
     if (consume("=")) {
       node.lhs = expr();
     }
+    expect(";");
+    return node;
+  }
+  if (consume("assert")) {
+    Node* node = new_node(NodeKind.assert_);
+    expect("(");
+    node.cond = expr();
+    expect(")");
     expect(";");
     return node;
   }

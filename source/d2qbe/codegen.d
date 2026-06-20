@@ -439,6 +439,14 @@ int gen(Node* node, int ret_var) {
       }
       return cur + 1;
     }
+  case NodeKind.assert_: {
+      int cond = gen(node.cond, ret_var);
+      printf("  jnz %%t%d, @assert_ok%d, @assert_fail%d\n", cond, ret_var, ret_var);
+      printf("@assert_fail%d\n", ret_var);
+      printf("  call $exit(w 1)\n");
+      printf("@assert_ok%d\n", ret_var);
+      return cond;
+    }
   case NodeKind.return_: {
       int lhs = gen(node.lhs, ret_var);
       printf("  ret %%t%d\n", lhs);

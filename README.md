@@ -20,11 +20,11 @@ cc a.s -o a.out
   - [x] control statements (if-else, for, while)
   - [x] external call of functions precompiled with ldc2
   - [x] multi-int to single int function def and call
-  - [ ] pointer
-  - [ ] sizeof
-  - [ ] array
-  - [ ] global variables
-  - [ ] string
+  - [x] pointer
+  - [x] sizeof
+  - [x] array (pointer arithmetic and indexing)
+  - [x] global variables
+  - [x] string
   - [ ] struct
   - [ ] initializer
 - [ ] full set of betterC D language https://dlang.org/spec/betterc.html#consequences

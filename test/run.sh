@@ -165,4 +165,10 @@ assert_v2 42 "int g; int main() { g = 42; return g; }"
 assert_v2 5 "int g = 5; int main() { return g; }"
 assert_v2 104 "int main() { char* p = \"hello\\n\"; return p[0]; }"
 
+# ==============================================================================
+# Stage 4 tests (Active)
+# ==============================================================================
+assert 0 "assert(1 == 1); return 0;"
+assert 1 "assert(1 == 0); return 0;"
+
 echo OK
