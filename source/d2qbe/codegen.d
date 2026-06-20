@@ -1122,6 +1122,24 @@ int gen(Node* node) {
   if (node.kind == NodeKind.NK_div) {
       return gen_binop(node, "div");
     }
+  if (node.kind == NodeKind.NK_mod) {
+      return gen_binop(node, "rem");
+    }
+  if (node.kind == NodeKind.NK_bitwise_and) {
+      return gen_binop(node, "and");
+    }
+  if (node.kind == NodeKind.NK_bitwise_or) {
+      return gen_binop(node, "or");
+    }
+  if (node.kind == NodeKind.NK_bitwise_xor) {
+      return gen_binop(node, "xor");
+    }
+  if (node.kind == NodeKind.NK_lshift) {
+      return gen_binop(node, "shl");
+    }
+  if (node.kind == NodeKind.NK_rshift) {
+      return gen_binop(node, "sar");
+    }
   if (node.kind == NodeKind.NK_lt_op) {
       return gen_binop(node, "csltw");
     }
@@ -1200,6 +1218,13 @@ int gen(Node* node) {
       char c = get_reg_type(val);
       if (c != 'w' && c != 'l') c = 'w';
       printf("  %%t%d =w ceq%c %%t%d, 0\n", res, c, val);
+      set_reg_type(res, 'w');
+      return res;
+    }
+  if (node.kind == NodeKind.NK_bitwise_not) {
+      int val = gen(node.lhs);
+      int res = next_reg();
+      printf("  %%t%d =w xor %%t%d, -1\n", res, val);
       set_reg_type(res, 'w');
       return res;
     }
