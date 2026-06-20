@@ -338,6 +338,7 @@ void parse_instruction_list(FunctionDef* fn) {
     Token* label_tok = consume_kind(TokenKind.TK_label);
     if (label_tok) {
       Instruction inst;
+      memset(&inst, 0, inst.sizeof);
       inst.kind = InstKind.IK_label;
       inst.label = token_to_str(label_tok);
       fn.instructions[fn.inst_count++] = inst;
@@ -352,6 +353,7 @@ void parse_instruction_list(FunctionDef* fn) {
       if (!type_tok) error("Expected assignment type");
       
       Instruction inst;
+      memset(&inst, 0, inst.sizeof);
       inst.kind = InstKind.IK_assign;
       inst.dest = token_to_str(temp_tok);
       inst.dest_type = type_tok.str[0];
@@ -424,6 +426,7 @@ void parse_instruction_list(FunctionDef* fn) {
     
     if (strncmp(op_tok.str, "store", 5) == 0) {
       Instruction inst;
+      memset(&inst, 0, inst.sizeof);
       inst.kind = InstKind.IK_store;
       inst.op = token_to_str(op_tok);
       
@@ -446,6 +449,7 @@ void parse_instruction_list(FunctionDef* fn) {
     
     if (op_tok.len == 3 && strncmp(op_tok.str, "jmp", 3) == 0) {
       Instruction inst;
+      memset(&inst, 0, inst.sizeof);
       inst.kind = InstKind.IK_jmp;
       
       Token* label_target = consume_kind(TokenKind.TK_label);
@@ -460,6 +464,7 @@ void parse_instruction_list(FunctionDef* fn) {
     
     if (op_tok.len == 3 && strncmp(op_tok.str, "jnz", 3) == 0) {
       Instruction inst;
+      memset(&inst, 0, inst.sizeof);
       inst.kind = InstKind.IK_jnz;
       
       Token* cond_tok = consume_kind(TokenKind.TK_temp);
@@ -486,6 +491,7 @@ void parse_instruction_list(FunctionDef* fn) {
     
     if (op_tok.len == 3 && strncmp(op_tok.str, "ret", 3) == 0) {
       Instruction inst;
+      memset(&inst, 0, inst.sizeof);
       inst.kind = InstKind.IK_ret;
       
       Token* ret_val_tok = consume_kind(TokenKind.TK_temp);
@@ -502,6 +508,7 @@ void parse_instruction_list(FunctionDef* fn) {
     
     if (op_tok.len == 4 && strncmp(op_tok.str, "call", 4) == 0) {
       Instruction inst;
+      memset(&inst, 0, inst.sizeof);
       inst.kind = InstKind.IK_call;
       inst.op = token_to_str(op_tok);
       
