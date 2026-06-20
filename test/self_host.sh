@@ -32,7 +32,7 @@ echo "Compiling self_host.d using bootstrap compiler..."
 ./d2qbe "$(cat test/self_host.d)" > test/self_host.s
 
 echo "Assembling self_host.s..."
-./dqbe < test/self_host.s > test/self_host_qbe.s
+./qbe/qbe < test/self_host.s > test/self_host_qbe.s
 cc -o test/d2qbe_self_hosted test/self_host_qbe.s ext.o
 
 echo "Running tests using self-hosted compiler..."
