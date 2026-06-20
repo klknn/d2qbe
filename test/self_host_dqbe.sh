@@ -33,7 +33,7 @@ echo "Compiling self_host_dqbe.d using bootstrap compiler..."
 
 echo "Assembling self_host_dqbe.s using dqbe..."
 ./dqbe < test/self_host_dqbe.s > test/self_host_dqbe_qbe.s
-cc -o test/dqbe_self_hosted test/self_host_dqbe_qbe.s ext.o
+cc -o test/dqbe_self_hosted test/self_host_dqbe_qbe.s test/ext_dqbe.o
 
 echo "Verifying self-hosted compiler using dqbe backend..."
 
@@ -42,7 +42,7 @@ assert_dqbe() {
   input="$2"
   echo "Testing: $input => $expected"
   ./d2qbe "$input" | ./test/dqbe_self_hosted > tmp.s
-  cc -o tmp tmp.s ext.o
+  cc -o tmp tmp.s test/ext_dqbe.o
   ./tmp
   actual="$?"
   if [ "$actual" -ne "$expected" ]; then
