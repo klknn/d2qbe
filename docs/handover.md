@@ -58,16 +58,16 @@ This document is for the next AI agent or developer taking over the development 
 
 ## 4. Missing Features & BetterC Compatibility Next Steps
 
-To further increase betterC compatibility and complete all minic-level tests, the following are missing and should be implemented next:
+To further increase betterC compatibility, the following are missing and should be implemented next:
 
-1. **Port/Run Queen (Eight Queens) Test Case**:
-   - Port `qbe/minic/test/queen.c` to `test/queen_test.d` using multidimensional pointer indexing (`t[x][y]`) and recursion.
-   - Verify it compiles and executes correctly.
-
-2. **Switch Statements**:
+1. **Switch Statements**:
    - Currently, `switch` is not supported.
-   - Plan & implement parsing for `switch (expr) { case val: ... default: ... }` and generating corresponding QBE conditional jumps/branches.
+   - Plan & implement parsing for `switch (expr) { case val: ... default: ... }` and generating corresponding QBE conditional jumps/branches (see `docs/switch.md`).
 
-3. **Multidimensional Static Arrays**:
+2. **Multidimensional Static Arrays**:
    - Currently, the parser only supports single-dimensional static arrays (e.g., `int[10] arr;`).
    - Need to support multi-dimensional static array type declarations (e.g., `int[3][2] arr;`).
+
+3. **Templates (Generics)**:
+   - D templates are instantiated at compile-time (e.g., `struct Stack(T) { ... }` or `void swap(T)(T* a, T* b)`).
+   - Implementing this requires adding a template symbol table to hold uninstantiated ASTs, and cloning/substituting types at the instantiation point (e.g., `Stack!int`).

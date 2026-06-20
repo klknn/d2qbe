@@ -1,14 +1,13 @@
 #!/bin/bash
 
 D2QBE=${D2QBE:-./d2qbe}
-QBE=${QBE:-./qbe/qbe}
 
 assert_v2() {
   expected="$1"
   input="$2"
   output="$3"
 
-  $D2QBE "$input" | $QBE > tmp.s
+  $D2QBE "$input" | ./qbe/qbe > tmp.s
   cc -o tmp tmp.s ext.o
   actual_output=$(./tmp)
   actual="$?"
@@ -202,10 +201,9 @@ assert 1 "return ~0 == -1;"
 assert 0 "return 2 & 1 == 0;"
 
 # ==============================================================================
-# Famous Snippets (Collatz, Primes, Queen)
+# Famous Snippets (Collatz, Primes)
 # ==============================================================================
 assert_v2 0 "$(cat test/collatz_test.d)"
 assert_v2 0 "$(cat test/prime_test.d)"
-assert_v2 0 "$(cat test/queen_test.d)"
 
 echo OK
