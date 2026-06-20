@@ -221,6 +221,8 @@ bool is_keyword(const char* p) {
   if (len == 6 && strncmp(p, "static", 6) == 0) return true;
   if (len == 4 && strncmp(p, "init", 4) == 0) return true;
   if (len == 7 && strncmp(p, "alignof", 7) == 0) return true;
+  if (len == 7 && strncmp(p, "version", 7) == 0) return true;
+  if (len == 5 && strncmp(p, "debug", 5) == 0) return true;
   return false;
 }
 
@@ -875,6 +877,101 @@ void parse_static_assert() {
   }
 }
 
+Node* stmt();
+void parse_top_level();
+
+bool is_version_active(Token* ident) {
+  if (ident.len == 5 && strncmp(ident.str, "Posix", 5) == 0) return true;
+  if (ident.len == 5 && strncmp(ident.str, "Linux", 5) == 0) return true;
+  return false;
+}
+
+bool is_debug_active() {
+  return false;
+}
+
+void skip_statement() {
+  if (consume("{")) {
+    int nest = 1;
+    while (nest > 0 && token.kind != TokenKind.TK_eof) {
+      if (is_token("{")) nest++;
+      else if (is_token("}")) nest--;
+      token = token.next;
+    }
+  } else {
+    while (token.kind != TokenKind.TK_eof && !consume(";")) {
+      token = token.next;
+    }
+  }
+}
+
+Node* parse_conditional_block(bool is_top_level, bool active) {
+  Node* block = null;
+  if (!is_top_level) {
+    block = cast(Node*) calloc(1, Node.sizeof);
+    block.kind = NodeKind.NK_block;
+  }
+  NodeList* stmts = null;
+  if (block) {
+    stmts = &block.statements;
+  }
+
+  if (active) {
+    if (consume("{")) {
+      while (!consume("}")) {
+        if (is_top_level) {
+          parse_top_level();
+        } else {
+          stmts = push_back(stmts, stmt());
+        }
+      }
+    } else {
+      if (is_top_level) {
+        parse_top_level();
+      } else {
+        stmts = push_back(stmts, stmt());
+      }
+    }
+    if (consume("else")) {
+      skip_statement();
+    }
+  } else {
+    skip_statement();
+    if (consume("else")) {
+      if (consume("{")) {
+        while (!consume("}")) {
+          if (is_top_level) {
+            parse_top_level();
+          } else {
+            stmts = push_back(stmts, stmt());
+          }
+        }
+      } else {
+        if (is_top_level) {
+          parse_top_level();
+        } else {
+          stmts = push_back(stmts, stmt());
+        }
+      }
+    }
+  }
+  return block;
+}
+
+Node* parse_version(bool is_top_level) {
+  expect("version");
+  expect("(");
+  Token* ident = consume_ident();
+  if (!ident) error_at(token.str, "version identifier expected");
+  expect(")");
+  return parse_conditional_block(is_top_level, is_version_active(ident));
+}
+
+Node* parse_debug(bool is_top_level) {
+  expect("debug");
+  return parse_conditional_block(is_top_level, is_debug_active());
+}
+
 /**
  * Creates a new AST node of the given kind.
  */
@@ -1361,6 +1458,12 @@ Node* stmt() {
     Node* dummy = cast(Node*) calloc(1, Node.sizeof);
     dummy.kind = NodeKind.NK_block;
     return dummy;
+  }
+  if (is_token("version")) {
+    return parse_version(false);
+  }
+  if (is_token("debug")) {
+    return parse_debug(false);
   }
   if (consume("{")) {
     Node* block_node = cast(Node*) calloc(1, Node.sizeof);
@@ -2022,59 +2125,71 @@ void add_to_code(Node* n) {
  * Parses the entire program.
  * EBNF: program = (struct_decl | enum_decl | global_decl | defun | untyped_defun)*
  */
+void parse_top_level() {
+  if (consume(";")) {
+    return;
+  }
+  if (consume("unittest")) {
+    stmt();
+    return;
+  }
+  if (is_token("struct")) {
+    parse_struct();
+    return;
+  }
+  if (is_token("enum")) {
+    parse_enum();
+    return;
+  }
+  if (is_token("template")) {
+    parse_template();
+    return;
+  }
+  if (is_token("alias")) {
+    parse_alias();
+    return;
+  }
+  if (is_token("static")) {
+    parse_static_assert();
+    return;
+  }
+  if (is_token("version")) {
+    parse_version(true);
+    return;
+  }
+  if (is_token("debug")) {
+    parse_debug(true);
+    return;
+  }
+  
+  if (is_type_name(token.str, token.len) || is_type_start(token)) {
+    Type t;
+    parse_type(&t);
+    Token* ident = consume_ident();
+    if (!ident) {
+      error_at(token.str, "identifier expected at top level");
+    }
+    if (is_token("(")) {
+      add_to_code(parse_function(&t, ident));
+    } else {
+      Node* gvar = new_node(NodeKind.NK_gvar_decl);
+      gvar.type = t;
+      gvar.ident = ident;
+      if (consume("=")) {
+        gvar.lhs = expr();
+      }
+      expect(";");
+      add_to_code(gvar);
+    }
+  } else {
+    error_at(token.str, "type name expected at top level");
+  }
+}
+
 void program() {
   init_types();
   while (!at_eof()) {
-    if (consume(";")) {
-      continue;
-    }
-    if (consume("unittest")) {
-      stmt();
-      continue;
-    }
-    if (is_token("struct")) {
-      parse_struct();
-      continue;
-    }
-    if (is_token("enum")) {
-      parse_enum();
-      continue;
-    }
-    if (is_token("template")) {
-      parse_template();
-      continue;
-    }
-    if (is_token("alias")) {
-      parse_alias();
-      continue;
-    }
-    if (is_token("static")) {
-      parse_static_assert();
-      continue;
-    }
-    
-    if (is_type_name(token.str, token.len) || is_type_start(token)) {
-      Type t;
-      parse_type(&t);
-      Token* ident = consume_ident();
-      if (!ident) {
-        error_at(token.str, "identifier expected at top level");
-      }
-      if (is_token("(")) {
-        add_to_code(parse_function(&t, ident));
-      } else {
-        Node* gvar = new_node(NodeKind.NK_gvar_decl);
-        gvar.type = t;
-        gvar.ident = ident;
-        if (consume("=")) {
-          gvar.lhs = expr();
-        }
-        expect(";");
-        add_to_code(gvar);
-      }
-    } else {
-      error_at(token.str, "type name expected at top level");
-    }
+    parse_top_level();
   }
   code[code_count] = null;
 }
@@ -2323,6 +2438,15 @@ unittest {
   token = tokenize(user_input);
   Node* align_node = stmt();
   assert(align_node != null && align_node.kind == NodeKind.NK_num && align_node.val == 8);
+
+  // Test conditional compilation version & debug
+  registered_functions_count = 0;
+  user_input = cast(char*) "version(Posix) { void posix_func() {} } version(Windows) { void win_func() {} } else { void other_func() {} }";
+  token = tokenize(user_input);
+  program();
+  assert(registered_functions_count == 2);
+  assert(strcmp(registered_functions[0].name, "posix_func") == 0);
+  assert(strcmp(registered_functions[1].name, "other_func") == 0);
 }
 
 
