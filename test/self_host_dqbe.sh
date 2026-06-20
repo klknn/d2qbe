@@ -35,14 +35,14 @@ for f in source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/codegen.d source
 done
 
 # Compile stream helper functions
-ldc2 -betterC -c test/tmp_ext_dqbe.d -of=test/tmp_ext_dqbe.o
+ldc2 -betterC -c test/tmp_ext_all.d -of=test/tmp_ext_all.o
 
 echo "Compiling self_host_dqbe.d using bootstrap compiler..."
 ./d2qbe "$(cat test/self_host_dqbe.d)" > test/self_host_dqbe.s
 
 echo "Assembling self_host_dqbe.s using dqbe..."
 ./dqbe < test/self_host_dqbe.s > test/self_host_dqbe_qbe.s
-cc -o test/dqbe_self_hosted test/self_host_dqbe_qbe.s test/tmp_ext_dqbe.o
+cc -o test/dqbe_self_hosted test/self_host_dqbe_qbe.s test/tmp_ext_all.o
 
 echo "Verifying self-hosted compiler using dqbe backend..."
 
@@ -51,7 +51,21 @@ assert_dqbe() {
   input="$2"
   echo "Testing: $input => $expected"
   ./d2qbe "$input" | ./test/dqbe_self_hosted > tmp.s
-  cc -o tmp tmp.s test/tmp_ext_dqbe.o
+  cc -o tmp tmp.s test/tmp_ext_all.o
+  actual=0
+  ./tmp || actual="$?"
+  if [ "$actual" -ne "$expected" ]; then
+    echo "FAILED: Expected $expected, but got $actual"
+    exit 1
+  fi
+}
+
+assert_dqbe_file() {
+  expected="$1"
+  file_path="$2"
+  echo "Testing file: $file_path => $expected"
+  ./d2qbe "$(cat $file_path)" | ./test/dqbe_self_hosted > tmp.s
+  cc -o tmp tmp.s test/tmp_ext_all.o
   actual=0
   ./tmp || actual="$?"
   if [ "$actual" -ne "$expected" ]; then
@@ -74,6 +88,19 @@ assert_dqbe 12 "int main() { int a=12; int* b=&a; return *b; }"
 assert_dqbe 2 "int main() { return 10 % 4; }"
 assert_dqbe 2 "int main() { return 2 & 3; }"
 assert_dqbe 40 "int main() { return 10 << 2; }"
+
+# Run full integration test files
+assert_dqbe_file 0 "test/arith_test.d"
+assert_dqbe_file 0 "test/control_test.d"
+assert_dqbe_file 0 "test/logical_test.d"
+assert_dqbe_file 0 "test/enum_test.d"
+assert_dqbe_file 0 "test/struct_test.d"
+assert_dqbe_file 0 "test/collatz_test.d"
+assert_dqbe_file 0 "test/prime_test.d"
+assert_dqbe_file 0 "test/queen_test.d"
+assert_dqbe_file 0 "test/switch_test.d"
+assert_dqbe_file 0 "test/multidim_test.d"
+assert_dqbe_file 0 "test/template_test.d"
 
 # Clean up temp files
 rm -f tmp tmp.s
