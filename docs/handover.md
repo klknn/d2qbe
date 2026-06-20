@@ -67,3 +67,5 @@ To further increase betterC compatibility, the following are missing and should 
 1. **Templates (Generics)**:
    - D templates are instantiated at compile-time (e.g., `struct Stack(T) { ... }` or `void swap(T)(T* a, T* b)`).
    - Implementing this requires adding a template symbol table to hold uninstantiated ASTs, and cloning/substituting types at the instantiation point (e.g., `Stack!int`).
+
+For a detailed roadmap of all remaining D `betterC` features (slices, RAII, CTFE, etc.) ordered by implementation complexity, refer to the [d2qbe_plan.md](file:///usr/local/google/home/karita/repos/d2qbe/docs/d2qbe_plan.md) document.
