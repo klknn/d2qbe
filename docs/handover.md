@@ -116,3 +116,27 @@ For developers building or verifying a backend QBE clone (like `dqbe`), the `d2q
 ### 5.6 Declarations
 * `export function [type] $name([params]) { ... }` (function definition)
 * `data $name = { [items] }` (global data definition using `b`, `w`, `l`, or string literals)
+
+---
+
+## 6. [dqbe] requests
+
+To ensure the backend compiler `dqbe` compiles successfully under self-hosting (when compiled by `d2qbe`), the codebase must conform to the following bootstrap compiler limitations:
+
+### 6.1 Avoid `extern` Global Variables
+* **Limitation**: The bootstrap compiler `d2qbe` does not support `extern` global variables (e.g. `extern (C) extern FILE* stderr;`). It compiles them as unallocated local stack variables, causing immediate segmentation faults when dereferenced.
+* **Request**: Do not declare or use direct `extern` global variables. Instead, wrap them in `extern (C)` helper functions (e.g. `extern (C) void* get_stderr();`) and compile/link them via an external helper object like `test/tmp_ext_dqbe.d`.
+
+### 6.2 Avoid Byte-Sized (`char` / `byte`) Function Parameters
+* **Limitation**: The bootstrap compiler allocates function parameters sequentially on the stack without padding or alignment. When a byte-sized parameter (like `char`) is stored via a 4-byte QBE `storew` instruction, it overwrites the lowest 3 bytes of the adjacent variable on the stack, causing stack corruption.
+* **Request**: In function signatures, use `int` instead of `char` for scalar parameters.
+
+### 6.3 Avoid Copying Large Structs by Value
+* **Limitation**: The frontend code generator has a hard-coded limit of 9,999 temporary registers (`reg_counter < 9999`). Copying large structs (e.g., a 1.9MB `FunctionDef`) by value inside loops creates thousands of intermediate QBE registers, causing a compilation crash.
+* **Request**: Pass large structs by pointer, or parse/write directly into global/heap memory array slots instead of performing struct copies.
+
+### 6.4 Syntax Constraints
+* **No Backticks**: Do not use backtick strings (`` ` ``); they are not supported by the bootstrap parser. Use double quotes (`"`) instead.
+* **No Self-Assignments**: Self-assignments (e.g. `+=`, `-=`, `*=`) are not supported. Use full expansions (e.g. `x = x + 1`) instead.
+* **No Global Array Literals**: Global array literal initializers (e.g. `const char*[6] arr = [...]`) cannot be parsed by the bootstrap compiler. Use helper functions with `if/else` or `switch` to return the values instead.
+
