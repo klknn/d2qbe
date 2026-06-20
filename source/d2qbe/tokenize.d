@@ -209,6 +209,8 @@ bool is_keyword(const char* p) {
   if (len == 6 && strncmp(p, "static", 6) == 0) return true;
   if (len == 4 && strncmp(p, "init", 4) == 0) return true;
   if (len == 7 && strncmp(p, "alignof", 7) == 0) return true;
+  if (len == 7 && strncmp(p, "version", 7) == 0) return true;
+  if (len == 5 && strncmp(p, "debug", 5) == 0) return true;
   return false;
 }
 

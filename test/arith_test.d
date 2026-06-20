@@ -1,6 +1,13 @@
 extern (C) int printf(const char* format, ...);
 static assert(5 * 5 == 25);
 
+version(Posix) {
+  int get_os_val() { return 100; }
+}
+version(Windows) {
+  int get_os_val() { return 200; }
+}
+
 int main() {
     // Arithmetic & basic operations
     assert(5+20-4 == 21);
@@ -69,6 +76,16 @@ int main() {
 
     assert(char.init == 0);
     assert(char.alignof == 1);
+
+    // Conditional compilation
+    version(Posix) {
+      assert(get_os_val() == 100);
+    }
+    version(Windows) {
+      assert(get_os_val() == 200);
+    } else {
+      assert(get_os_val() == 100);
+    }
 
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;
