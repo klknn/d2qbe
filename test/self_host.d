@@ -223,6 +223,7 @@ bool is_keyword(const char* p) {
   if (len == 7 && strncmp(p, "alignof", 7) == 0) return true;
   if (len == 7 && strncmp(p, "version", 7) == 0) return true;
   if (len == 5 && strncmp(p, "debug", 5) == 0) return true;
+  if (len == 4 && strncmp(p, "auto", 4) == 0) return true;
   return false;
 }
 
@@ -1382,6 +1383,12 @@ Node* expr() {
  * Returns: true if it is a declaration, false otherwise.
  */
 bool is_decl_statement() {
+  if (token && token.len == 4 && strncmp(token.str, "auto", 4) == 0) {
+    Token* t = token.next;
+    if (t && t.kind == TokenKind.TK_identifier && t.next && t.next.len == 1 && t.next.str[0] == '=') {
+      return true;
+    }
+  }
   Token* tok = token;
   bool has_type_name = false;
   while (tok && (tok.len == 5 && strncmp(tok.str, "const", 5) == 0 ||
@@ -1476,7 +1483,13 @@ Node* stmt() {
   }
   if (is_decl_statement()) {
     Type t;
-    parse_type(&t);
+    if (consume("auto")) {
+      t.name = "auto";
+      t.ptr_depth = 0;
+      t.array_dims = 0;
+    } else {
+      parse_type(&t);
+    }
     Token* ident = consume_ident();
     if (!ident) {
       error_at(token.str, "variable name expected");
@@ -2162,6 +2175,24 @@ void parse_top_level() {
     return;
   }
   
+  if (is_token("auto")) {
+    expect("auto");
+    Token* ident = consume_ident();
+    if (!ident) {
+      error_at(token.str, "identifier expected at top level");
+    }
+    Node* gvar = new_node(NodeKind.NK_gvar_decl);
+    gvar.type.name = "auto";
+    gvar.type.ptr_depth = 0;
+    gvar.type.array_dims = 0;
+    gvar.ident = ident;
+    expect("=");
+    gvar.lhs = expr();
+    expect(";");
+    add_to_code(gvar);
+    return;
+  }
+  
   if (is_type_name(token.str, token.len) || is_type_start(token)) {
     Type t;
     parse_type(&t);
@@ -2447,6 +2478,13 @@ unittest {
   assert(registered_functions_count == 2);
   assert(strcmp(registered_functions[0].name, "posix_func") == 0);
   assert(strcmp(registered_functions[1].name, "other_func") == 0);
+
+  // Test auto declaration parsing
+  user_input = cast(char*) "auto val = 123;";
+  token = tokenize(user_input);
+  Node* auto_node = stmt();
+  assert(auto_node != null && auto_node.kind == NodeKind.NK_var_decl);
+  assert(strcmp(auto_node.type.name, "auto") == 0);
 }
 
 
@@ -2700,6 +2738,35 @@ void infer_type(Node* node, Type* out_type) {
     *out_type = t;
     return;
   }
+  if (node.kind == NodeKind.NK_str_literal) {
+    t.name = "char";
+    t.ptr_depth = 1;
+    *out_type = t;
+    return;
+  }
+  if (node.kind == NodeKind.NK_cast_) {
+    *out_type = node.type;
+    return;
+  }
+  if (node.kind == NodeKind.NK_index) {
+    Type base;
+    infer_type(node.lhs, &base);
+    t.name = base.name;
+    int depth = 0;
+    if (base.ptr_depth > 0) depth = base.ptr_depth - 1;
+    t.ptr_depth = depth;
+    *out_type = t;
+    return;
+  }
+  if (node.kind == NodeKind.NK_funcall) {
+    char* name = cast(char*) calloc(1, node.ident.len + 1);
+    memcpy(name, node.ident.str, node.ident.len);
+    FunctionSymbol* fs = find_function(name);
+    if (fs) {
+      *out_type = fs.return_type;
+    }
+    return;
+  }
   *out_type = t;
 }
 
@@ -2709,6 +2776,11 @@ void infer_type(Node* node, Type* out_type) {
 void collect_locals(Node* node) {
   if (!node) return;
   if (node.kind == NodeKind.NK_var_decl) {
+    if (node.type.name && strcmp(node.type.name, "auto") == 0) {
+      Type inferred;
+      infer_type(node.lhs, &inferred);
+      node.type = inferred;
+    }
     add_local(node.ident, &node.type);
   }
   else if (node.kind == NodeKind.NK_assign && node.lhs.kind == NodeKind.NK_lvar) {
@@ -3848,6 +3920,22 @@ unittest {
   get_local_type(&t2, &b_type);
   assert(strcmp(b_type.name, "int") == 0);
   assert(b_type.ptr_depth == 1); // should be int*
+
+  // Test auto local variable type inference in collect_locals
+  Token t_auto;
+  t_auto.str = cast(char*) "auto_var";
+  t_auto.len = 8;
+  
+  Node* auto_decl = new_node(NodeKind.NK_var_decl);
+  auto_decl.ident = &t_auto;
+  auto_decl.type.name = "auto";
+  auto_decl.lhs = new_node_num(42); // auto auto_var = 42;
+
+  collect_locals(auto_decl);
+  Type auto_type;
+  get_local_type(&t_auto, &auto_type);
+  assert(strcmp(auto_type.name, "int") == 0);
+  assert(auto_type.ptr_depth == 0);
 }
 
 
@@ -3877,6 +3965,11 @@ int main(int argc, char** argv) {
   int ret = 0;
   for (int i = 0; code[i]; i++) {
     if (code[i].kind == NodeKind.NK_gvar_decl) {
+      if (code[i].type.name && strcmp(code[i].type.name, "auto") == 0) {
+        Type inferred;
+        infer_type(code[i].lhs, &inferred);
+        code[i].type = inferred;
+      }
       add_global(code[i].ident, &code[i].type);
     }
   }
