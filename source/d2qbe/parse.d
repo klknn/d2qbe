@@ -90,6 +90,13 @@ struct TemplateSymbol {
 TemplateSymbol[50] registered_templates;
 int registered_templates_count = 0;
 
+struct TypeAlias {
+  const(char)* alias_name;
+  Type target_type;
+}
+TypeAlias[100] registered_aliases;
+int registered_aliases_count = 0;
+
 struct FunctionSymbol {
   const(char)* name;
   bool is_variadic;
@@ -217,6 +224,11 @@ bool is_type_name(const(char)* str, int len) {
       return true;
     }
   }
+  for (int i = 0; i < registered_aliases_count; i++) {
+    if (strlen(registered_aliases[i].alias_name) == len && strncmp(registered_aliases[i].alias_name, str, len) == 0) {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -274,6 +286,44 @@ int get_type_alignment(Type* t) {
   return 4;
 }
 
+TypeAlias* find_alias(const(char)* name) {
+  for (int i = 0; i < registered_aliases_count; i++) {
+    if (strcmp(registered_aliases[i].alias_name, name) == 0) {
+      return &registered_aliases[i];
+    }
+  }
+  return null;
+}
+
+void register_alias(const(char)* name, Type* target) {
+  for (int i = 0; i < registered_aliases_count; i++) {
+    if (strcmp(registered_aliases[i].alias_name, name) == 0) {
+      error("duplicate alias definition");
+    }
+  }
+  assert(registered_aliases_count < 100, "registered_aliases overflow");
+  registered_aliases[registered_aliases_count].alias_name = name;
+  registered_aliases[registered_aliases_count].target_type = *target;
+  registered_aliases_count++;
+}
+
+void parse_alias() {
+  expect("alias");
+  Token* alias_tok = consume_ident();
+  if (!alias_tok) {
+    error_at(token.str, "alias name expected");
+  }
+  expect("=");
+  Type target_type;
+  parse_type(&target_type);
+  expect(";");
+  
+  char* alias_name = cast(char*) calloc(1, alias_tok.len + 1);
+  memcpy(alias_name, alias_tok.str, alias_tok.len);
+  
+  register_alias(alias_name, &target_type);
+}
+
 /**
  * Parses a type declaration (e.g. const(int)*[10]).
  */
@@ -312,9 +362,20 @@ void parse_type(Type* out_type) {
     } else {
       name = base_name;
     }
-    t.name = name;
-    t.ptr_depth = 0;
-    t.array_dims = 0;
+    
+    TypeAlias* al = find_alias(name);
+    if (al) {
+      t.name = al.target_type.name;
+      t.ptr_depth = al.target_type.ptr_depth;
+      t.array_dims = al.target_type.array_dims;
+      for (int i = 0; i < t.array_dims; i++) {
+        t.array_sizes[i] = al.target_type.array_sizes[i];
+      }
+    } else {
+      t.name = name;
+      t.ptr_depth = 0;
+      t.array_dims = 0;
+    }
   }
   
   while (consume("*")) {
@@ -845,6 +906,12 @@ bool is_decl_statement() {
  * EBNF: stmt = expr ";" | "{" stmt* "}" | "if" "(" expr ")" stmt ("else" stmt)? | "while" "(" expr ")" stmt | "for" "(" expr? ";" expr? ";" expr? ")" stmt | "return" expr ";" | Type ident ( "=" expr )? ";"
  */
 Node* stmt() {
+  if (is_token("alias")) {
+    parse_alias();
+    Node* dummy = cast(Node*) calloc(1, Node.sizeof);
+    dummy.kind = NodeKind.NK_block;
+    return dummy;
+  }
   if (consume("{")) {
     Node* block_node = cast(Node*) calloc(1, Node.sizeof);
     block_node.kind = NodeKind.NK_block;
@@ -1525,6 +1592,10 @@ void program() {
       parse_template();
       continue;
     }
+    if (is_token("alias")) {
+      parse_alias();
+      continue;
+    }
     
     if (is_type_name(token.str, token.len) || is_type_start(token)) {
       Type t;
@@ -1749,6 +1820,32 @@ unittest {
   assert(strncmp(call_node.ident.str, "swap_char", call_node.ident.len) == 0);
   assert(registered_functions_count == 1);
   assert(strcmp(registered_functions[0].name, "swap_char") == 0);
+  // Test alias parsing and resolution
+  registered_aliases_count = 0;
+  user_input = cast(char*) "alias myint = int; alias pint = int*;";
+  token = tokenize(user_input);
+  program();
+  assert(registered_aliases_count == 2);
+  assert(strcmp(registered_aliases[0].alias_name, "myint") == 0);
+  assert(strcmp(registered_aliases[0].target_type.name, "int") == 0);
+  assert(registered_aliases[0].target_type.ptr_depth == 0);
+  assert(strcmp(registered_aliases[1].alias_name, "pint") == 0);
+  assert(strcmp(registered_aliases[1].target_type.name, "int") == 0);
+  assert(registered_aliases[1].target_type.ptr_depth == 1);
+
+  user_input = cast(char*) "myint x;";
+  token = tokenize(user_input);
+  Node* alias_var1 = stmt();
+  assert(alias_var1 != null);
+  assert(strcmp(alias_var1.type.name, "int") == 0);
+  assert(alias_var1.type.ptr_depth == 0);
+
+  user_input = cast(char*) "pint* y;";
+  token = tokenize(user_input);
+  Node* alias_var2 = stmt();
+  assert(alias_var2 != null);
+  assert(strcmp(alias_var2.type.name, "int") == 0);
+  assert(alias_var2.type.ptr_depth == 2);
 }
 
 
