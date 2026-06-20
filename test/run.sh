@@ -201,12 +201,13 @@ assert 1 "return ~0 == -1;"
 assert 0 "return 2 & 1 == 0;"
 
 # ==============================================================================
-# Famous Snippets (Collatz, Primes, Queen, Switch, Multidim)
+# Famous Snippets (Collatz, Primes, Queen, Switch, Multidim, Template)
 # ==============================================================================
 assert_v2 0 "$(cat test/collatz_test.d)"
 assert_v2 0 "$(cat test/prime_test.d)"
 assert_v2 0 "$(cat test/queen_test.d)"
 assert_v2 0 "$(cat test/switch_test.d)"
 assert_v2 0 "$(cat test/multidim_test.d)"
+assert_v2 0 "$(cat test/template_test.d)"
 
 echo OK

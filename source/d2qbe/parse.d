@@ -303,8 +303,15 @@ void parse_type(Type* out_type) {
     if (!base_tok) {
       error_at(token.str, "type name expected");
     }
-    char* name = cast(char*) calloc(1, base_tok.len + 1);
-    memcpy(name, base_tok.str, base_tok.len);
+    char* base_name = cast(char*) calloc(1, base_tok.len + 1);
+    memcpy(base_name, base_tok.str, base_tok.len);
+    
+    char* name;
+    if (is_token("!")) {
+      name = resolve_template_instantiation(base_name);
+    } else {
+      name = base_name;
+    }
     t.name = name;
     t.ptr_depth = 0;
     t.array_dims = 0;
@@ -424,18 +431,8 @@ Node* primary() {
     node = new_node(NodeKind.NK_str_literal);
     node.ident = token;
     token = token.next;
-  } else if (is_type_name(token.str, token.len)) {
-    Token* next = token.next;
-    while (next && next.kind == TokenKind.TK_reserved && next.len == 1 && next.str[0] == '*') {
-      next = next.next;
-    }
-    bool is_sizeof = false;
-    if (next && next.kind == TokenKind.TK_reserved && next.len == 1 && next.str[0] == '.') {
-      Token* next2 = next.next;
-      if (next2 && next2.kind == TokenKind.TK_reserved && next2.len == 6 && strncmp(next2.str, "sizeof", 6) == 0) {
-        is_sizeof = true;
-      }
-    }
+  } else if (is_type_expression_start(token)) {
+    bool is_sizeof = is_sizeof_expression(token);
     
     if (is_sizeof) {
       Type t;
@@ -456,6 +453,18 @@ Node* primary() {
       if (lookup_constant(tok, &const_val)) {
         node = new_node_num(const_val);
       } else {
+        char* base_name = cast(char*) calloc(1, tok.len + 1);
+        memcpy(base_name, tok.str, tok.len);
+        
+        Token* final_tok = tok;
+        if (is_token("!")) {
+          char* mangled = resolve_template_instantiation(base_name);
+          final_tok = cast(Token*) calloc(1, Token.sizeof);
+          final_tok.kind = TokenKind.TK_identifier;
+          final_tok.str = mangled;
+          final_tok.len = cast(int) strlen(mangled);
+        }
+        
         node = cast(Node*) calloc(1, Node.sizeof);
         if (consume("(")) {
           node.kind = NodeKind.NK_funcall;
@@ -468,7 +477,7 @@ Node* primary() {
         else {
           node.kind = NodeKind.NK_lvar;
         }
-        node.ident = tok;
+        node.ident = final_tok;
       }
     }
     else {
@@ -790,10 +799,31 @@ bool is_decl_statement() {
     }
   }
   if (!has_type_name) {
-    if (!tok || !is_type_name(tok.str, tok.len)) {
-      return false;
-    }
+    if (!tok || !is_type_start(tok)) return false;
     tok = tok.next;
+    if (tok && tok.len == 1 && tok.str[0] == '!') {
+      tok = tok.next;
+      if (tok && tok.len == 1 && tok.str[0] == '(') {
+        int nest = 1;
+        tok = tok.next;
+        while (tok && tok.kind != TokenKind.TK_eof) {
+          if (tok.len == 1 && tok.str[0] == '(') nest++;
+          else if (tok.len == 1 && tok.str[0] == ')') {
+            nest--;
+            if (nest == 0) {
+              tok = tok.next;
+              break;
+            }
+          }
+          tok = tok.next;
+        }
+      } else {
+        if (tok) tok = tok.next;
+        while (tok && tok.len == 1 && tok.str[0] == '*') {
+          tok = tok.next;
+        }
+      }
+    }
   }
   while (tok && tok.len == 1 && tok.str[0] == '*') {
     tok = tok.next;
@@ -1057,6 +1087,314 @@ void parse_template() {
   registered_templates[registered_templates_count].body_start = start;
   registered_templates[registered_templates_count].body_end = end;
   registered_templates_count++;
+}
+
+TemplateSymbol* find_template(const(char)* name) {
+  for (int i = 0; i < registered_templates_count; i++) {
+    if (strcmp(registered_templates[i].name, name) == 0) {
+      return &registered_templates[i];
+    }
+  }
+  return null;
+}
+
+bool is_type_start(Token* tok) {
+  if (!tok) return false;
+  if (is_type_name(tok.str, tok.len)) return true;
+  Token* next = tok.next;
+  if (next && next.len == 1 && next.str[0] == '!') {
+    char* name = cast(char*) calloc(1, tok.len + 1);
+    memcpy(name, tok.str, tok.len);
+    if (find_template(name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool is_type_expression_start(Token* tok) {
+  if (!is_type_start(tok)) return false;
+  Token* t = tok;
+  t = t.next;
+  if (t && t.len == 1 && t.str[0] == '!') {
+    t = t.next;
+    if (t && t.len == 1 && t.str[0] == '(') {
+      int nest = 1;
+      t = t.next;
+      while (t && t.kind != TokenKind.TK_eof) {
+        if (t.len == 1 && t.str[0] == '(') nest++;
+        else if (t.len == 1 && t.str[0] == ')') {
+          nest--;
+          if (nest == 0) {
+            t = t.next;
+            break;
+          }
+        }
+        t = t.next;
+      }
+    } else {
+      if (t) t = t.next;
+      while (t && t.len == 1 && t.str[0] == '*') {
+        t = t.next;
+      }
+    }
+  }
+  while (t && t.len == 1 && t.str[0] == '*') {
+    t = t.next;
+  }
+  while (t && t.len == 1 && t.str[0] == '[') {
+    t = t.next;
+    if (t && (t.kind == TokenKind.TK_num || t.kind == TokenKind.TK_identifier)) t = t.next;
+    if (t && t.len == 1 && t.str[0] == ']') {
+      t = t.next;
+    } else {
+      break;
+    }
+  }
+  return t && t.len == 1 && t.str[0] == '.';
+}
+
+bool is_sizeof_expression(Token* tok) {
+  if (!is_type_start(tok)) return false;
+  Token* t = tok;
+  t = t.next;
+  if (t && t.len == 1 && t.str[0] == '!') {
+    t = t.next;
+    if (t && t.len == 1 && t.str[0] == '(') {
+      int nest = 1;
+      t = t.next;
+      while (t && t.kind != TokenKind.TK_eof) {
+        if (t.len == 1 && t.str[0] == '(') nest++;
+        else if (t.len == 1 && t.str[0] == ')') {
+          nest--;
+          if (nest == 0) {
+            t = t.next;
+            break;
+          }
+        }
+        t = t.next;
+      }
+    } else {
+      if (t) t = t.next;
+      while (t && t.len == 1 && t.str[0] == '*') {
+        t = t.next;
+      }
+    }
+  }
+  while (t && t.len == 1 && t.str[0] == '*') {
+    t = t.next;
+  }
+  if (t && t.len == 1 && t.str[0] == '.') {
+    t = t.next;
+    if (t && t.len == 6 && strncmp(t.str, "sizeof", 6) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Token* type_to_tokens(Type* t) {
+  Token* head = cast(Token*) calloc(1, Token.sizeof);
+  head.kind = TokenKind.TK_identifier;
+  head.str = cast(char*) t.name;
+  head.len = cast(int) strlen(t.name);
+  
+  Token* curr = head;
+  for (int i = 0; i < t.ptr_depth; i++) {
+    Token* p = cast(Token*) calloc(1, Token.sizeof);
+    p.kind = TokenKind.TK_reserved;
+    p.str = cast(char*) "*";
+    p.len = 1;
+    curr.next = p;
+    curr = p;
+  }
+  for (int i = 0; i < t.array_dims; i++) {
+    Token* ob = cast(Token*) calloc(1, Token.sizeof);
+    ob.kind = TokenKind.TK_reserved;
+    ob.str = cast(char*) "[";
+    ob.len = 1;
+    curr.next = ob;
+    curr = ob;
+    
+    char[20] buf;
+    sprintf(&buf[0], "%d", t.array_sizes[i]);
+    char* size_str = cast(char*) calloc(1, strlen(&buf[0]) + 1);
+    strcpy(size_str, &buf[0]);
+    
+    Token* sz = cast(Token*) calloc(1, Token.sizeof);
+    sz.kind = TokenKind.TK_num;
+    sz.str = size_str;
+    sz.len = cast(int) strlen(size_str);
+    curr.next = sz;
+    curr = sz;
+    
+    Token* cb = cast(Token*) calloc(1, Token.sizeof);
+    cb.kind = TokenKind.TK_reserved;
+    cb.str = cast(char*) "]";
+    cb.len = 1;
+    curr.next = cb;
+    curr = cb;
+  }
+  return head;
+}
+
+char* mangle_template_name(const(char)* tmpl_name, Type* arg_type) {
+  char[200] buf;
+  char[100] type_mangled;
+  int len = 0;
+  for (int i = 0; arg_type.name[i]; i++) {
+    char c = arg_type.name[i];
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+      type_mangled[len++] = c;
+    } else {
+      type_mangled[len++] = '_';
+    }
+  }
+  for (int i = 0; i < arg_type.ptr_depth; i++) {
+    type_mangled[len++] = 'p';
+  }
+  for (int i = 0; i < arg_type.array_dims; i++) {
+    type_mangled[len++] = 'a';
+    int sz = arg_type.array_sizes[i];
+    char[20] sz_buf;
+    sprintf(&sz_buf[0], "%d", sz);
+    for (int j = 0; sz_buf[j]; j++) {
+      type_mangled[len++] = sz_buf[j];
+    }
+  }
+  type_mangled[len] = '\0';
+  
+  sprintf(&buf[0], "%s_%s", tmpl_name, &type_mangled[0]);
+  char* res = cast(char*) calloc(1, strlen(&buf[0]) + 1);
+  strcpy(res, &buf[0]);
+  return res;
+}
+
+Token* copy_and_substitute(TemplateSymbol* tmpl, Type* arg_type) {
+  Token* arg_tokens = type_to_tokens(arg_type);
+  char* mangled_name = mangle_template_name(tmpl.name, arg_type);
+  int mangled_len = cast(int) strlen(mangled_name);
+  
+  Token* new_head = null;
+  Token* prev = null;
+  
+  for (Token* curr = tmpl.body_start; curr && curr != tmpl.body_end; curr = curr.next) {
+    Token* p;
+    if (curr.kind == TokenKind.TK_identifier && curr.len == strlen(tmpl.param_name) && strncmp(curr.str, tmpl.param_name, curr.len) == 0) {
+      Token* arg_head = null;
+      Token* arg_prev = null;
+      for (Token* ac = arg_tokens; ac; ac = ac.next) {
+        Token* at = cast(Token*) calloc(1, Token.sizeof);
+        at.kind = ac.kind;
+        at.str = ac.str;
+        at.len = ac.len;
+        if (!arg_head) arg_head = at;
+        if (arg_prev) arg_prev.next = at;
+        arg_prev = at;
+      }
+      p = arg_head;
+      if (!new_head) new_head = p;
+      if (prev) prev.next = p;
+      prev = arg_prev;
+    } 
+    else if (curr.kind == TokenKind.TK_identifier && curr.len == strlen(tmpl.name) && strncmp(curr.str, tmpl.name, curr.len) == 0) {
+      p = cast(Token*) calloc(1, Token.sizeof);
+      p.kind = TokenKind.TK_identifier;
+      p.str = mangled_name;
+      p.len = mangled_len;
+      p.val = curr.val;
+      if (!new_head) new_head = p;
+      if (prev) prev.next = p;
+      prev = p;
+    } 
+    else {
+      p = cast(Token*) calloc(1, Token.sizeof);
+      p.kind = curr.kind;
+      p.str = curr.str;
+      p.len = curr.len;
+      p.val = curr.val;
+      if (!new_head) new_head = p;
+      if (prev) prev.next = p;
+      prev = p;
+    }
+  }
+  return new_head;
+}
+
+char* resolve_template_instantiation(const(char)* base_name) {
+  TemplateSymbol* tmpl = find_template(base_name);
+  if (!tmpl) return cast(char*) base_name;
+  
+  expect("!");
+  Type arg_type;
+  if (consume("(")) {
+    parse_type(&arg_type);
+    expect(")");
+  } else {
+    Token* tok = consume_ident();
+    if (!tok) error_at(token.str, "template argument type expected");
+    arg_type.name = cast(char*) calloc(1, tok.len + 1);
+    memcpy(cast(char*)arg_type.name, tok.str, tok.len);
+    arg_type.ptr_depth = 0;
+    arg_type.array_dims = 0;
+    while (consume("*")) {
+      arg_type.ptr_depth++;
+    }
+  }
+  
+  char* name = mangle_template_name(tmpl.name, &arg_type);
+  if (!is_type_name(name, cast(int) strlen(name))) {
+    bool func_registered = false;
+    for (int i = 0; i < registered_functions_count; i++) {
+      if (strcmp(registered_functions[i].name, name) == 0) {
+        func_registered = true;
+        break;
+      }
+    }
+    
+    if (!func_registered) {
+      Token* inst_tokens = copy_and_substitute(tmpl, &arg_type);
+      Token* tail = inst_tokens;
+      while (tail.next) {
+        tail = tail.next;
+      }
+      tail.next = token;
+      
+      token = inst_tokens;
+      while (token && token != tail.next) {
+        if (consume(";")) continue;
+        if (is_token("struct")) {
+          parse_struct();
+          continue;
+        }
+        if (is_token("enum")) {
+          parse_enum();
+          continue;
+        }
+        if (is_type_name(token.str, token.len)) {
+          Type decl_type;
+          parse_type(&decl_type);
+          Token* decl_ident = consume_ident();
+          if (!decl_ident) error_at(token.str, "identifier expected in template body");
+          if (is_token("(")) {
+            add_to_code(parse_function(&decl_type, decl_ident));
+          } else {
+            Node* gvar = new_node(NodeKind.NK_gvar_decl);
+            gvar.type = decl_type;
+            gvar.ident = decl_ident;
+            if (consume("=")) {
+              gvar.lhs = expr();
+            }
+            expect(";");
+            add_to_code(gvar);
+          }
+        } else {
+          error_at(token.str, "invalid declaration in template body");
+        }
+      }
+    }
+  }
+  return name;
 }
 
 /**
@@ -1411,14 +1749,39 @@ unittest {
 
   // Test template declaration parsing
   registered_templates_count = 0;
+  registered_structs_count = 0;
+  registered_functions_count = 0;
   user_input = cast(char*) "template Stack(T) { struct Stack { T[10] data; } }";
   token = tokenize(user_input);
   program();
   assert(registered_templates_count == 1);
   assert(strcmp(registered_templates[0].name, "Stack") == 0);
   assert(strcmp(registered_templates[0].param_name, "T") == 0);
-  assert(registered_templates[0].body_start != null);
-  assert(registered_templates[0].body_end != null);
+
+  // Test type instantiation
+  user_input = cast(char*) "Stack!int s;";
+  token = tokenize(user_input);
+  Node* var_decl = stmt();
+  assert(var_decl != null);
+  assert(var_decl.kind == NodeKind.NK_var_decl);
+  assert(strcmp(var_decl.type.name, "Stack_int") == 0);
+  assert(registered_structs_count == 1);
+  assert(strcmp(registered_structs[0].name, "Stack_int") == 0);
+
+  // Test template function instantiation
+  user_input = cast(char*) "template swap(T) { void swap(T* a, T* b) {} }";
+  token = tokenize(user_input);
+  program();
+  assert(registered_templates_count == 2);
+  
+  user_input = cast(char*) "swap!char(x, y);";
+  token = tokenize(user_input);
+  Node* call_node = stmt();
+  assert(call_node != null);
+  assert(call_node.kind == NodeKind.NK_funcall);
+  assert(strncmp(call_node.ident.str, "swap_char", call_node.ident.len) == 0);
+  assert(registered_functions_count == 1);
+  assert(strcmp(registered_functions[0].name, "swap_char") == 0);
 }
 
 
