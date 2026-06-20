@@ -618,6 +618,16 @@ Node* parse_debug(bool is_top_level) {
   return parse_conditional_block(is_top_level, is_debug_active());
 }
 
+Node* parse_static_if(bool is_top_level) {
+  expect("static");
+  expect("if");
+  expect("(");
+  Node* cond = expr();
+  expect(")");
+  int val = eval_const_expr(cond);
+  return parse_conditional_block(is_top_level, val != 0);
+}
+
 /**
  * Creates a new AST node of the given kind.
  */
@@ -1106,10 +1116,16 @@ Node* stmt() {
     return dummy;
   }
   if (is_token("static")) {
-    parse_static_assert();
-    Node* dummy = cast(Node*) calloc(1, Node.sizeof);
-    dummy.kind = NodeKind.NK_block;
-    return dummy;
+    if (token.next && token.next.len == 6 && strncmp(token.next.str, "assert", 6) == 0) {
+      parse_static_assert();
+      Node* dummy = cast(Node*) calloc(1, Node.sizeof);
+      dummy.kind = NodeKind.NK_block;
+      return dummy;
+    }
+    if (token.next && token.next.len == 2 && strncmp(token.next.str, "if", 2) == 0) {
+      return parse_static_if(false);
+    }
+    error_at(token.str, "static assert or static if expected");
   }
   if (is_token("version")) {
     return parse_version(false);
@@ -1808,8 +1824,15 @@ void parse_top_level() {
     return;
   }
   if (is_token("static")) {
-    parse_static_assert();
-    return;
+    if (token.next && token.next.len == 6 && strncmp(token.next.str, "assert", 6) == 0) {
+      parse_static_assert();
+      return;
+    }
+    if (token.next && token.next.len == 2 && strncmp(token.next.str, "if", 2) == 0) {
+      parse_static_if(true);
+      return;
+    }
+    error_at(token.str, "static assert or static if expected");
   }
   if (is_token("version")) {
     parse_version(true);
@@ -2130,6 +2153,21 @@ unittest {
   Node* auto_node = stmt();
   assert(auto_node != null && auto_node.kind == NodeKind.NK_var_decl);
   assert(strcmp(auto_node.type.name, "auto") == 0);
+
+  // Test static if parsing
+  registered_functions_count = 0;
+  user_input = cast(char*) "static if (5 * 2 == 10) { void true_func() {} } else { void false_func() {} }";
+  token = tokenize(user_input);
+  program();
+  assert(registered_functions_count == 1);
+  assert(strcmp(registered_functions[0].name, "true_func") == 0);
+
+  registered_functions_count = 0;
+  user_input = cast(char*) "static if (3 > 5) { void true_func() {} } else { void false_func() {} }";
+  token = tokenize(user_input);
+  program();
+  assert(registered_functions_count == 1);
+  assert(strcmp(registered_functions[0].name, "false_func") == 0);
 }
 
 

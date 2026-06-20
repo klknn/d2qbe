@@ -1,6 +1,12 @@
 extern (C) int printf(const char* format, ...);
 static assert(5 * 5 == 25);
 
+static if (int.sizeof == 4) {
+  int get_static_if_val() { return 777; }
+} else {
+  int get_static_if_val() { return 888; }
+}
+
 auto global_auto_val = 500;
 
 version(Posix) {
@@ -95,6 +101,13 @@ int main() {
 
     auto local_auto_ptr = &local_auto_val;
     assert(*local_auto_ptr == 250);
+
+    // Static if
+    static if (char.sizeof == 1) {
+      assert(get_static_if_val() == 777);
+    } else {
+      assert(get_static_if_val() == 888);
+    }
 
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;
