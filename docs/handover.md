@@ -49,8 +49,10 @@ This document is for the next AI agent or developer taking over the development 
   - Full support for `T[]` slice types (represented as a 16-byte structure `struct Slice { size_t length; T* ptr; }`).
   - Support for compile-time/runtime slice property access (`.length` at offset 0, and `.ptr` at offset 8).
   - Support for slice indexing (`slice[i]`) and slice creation expressions (`array[start .. end]` or pointer/slice slicing).
+- **Ternary Operator (`cond ? then : else`)**: Completed & Committed.
+  - Supports parsing and compiling ternary expressions for scalars, slices, and structs. Allocates a temporary variable on the stack to hold the result of the evaluated branch and returns its address.
 - **Classic Minic Snippet Tests**:
-  - `test/collatz_test.d` (collatz conjecture), `test/prime_test.d` (prime numbers), `test/queen_test.d` (eight queens), `test/switch_test.d` (switch/case branches), `test/multidim_test.d` (multidimensional array indexing/sizing), `test/template_test.d` (struct and function templates), and structured slice/member function integration tests inside `test/arith_test.d` are fully verified under self-hosting.
+  - `test/collatz_test.d` (collatz conjecture), `test/prime_test.d` (prime numbers), `test/queen_test.d` (eight queens), `test/switch_test.d` (switch/case branches), `test/multidim_test.d` (multidimensional array indexing/sizing), `test/template_test.d` (struct and function templates), and structured slice/member function/ternary integration tests inside `test/arith_test.d` are fully verified under self-hosting.
 
 ---
 

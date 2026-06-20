@@ -157,6 +157,19 @@ int main() {
     assert(sl2[0] == 999);
     assert(sl2[1] == 400);
 
+    // Ternary operator tests
+    int val1 = 10;
+    int val2 = 20;
+    int res1 = (val1 < val2) ? 100 : 200;
+    assert(res1 == 100);
+    int res2 = (val1 > val2) ? 300 : 400;
+    assert(res2 == 400);
+
+    // Ternary with slices
+    int[] tern_sl = (val1 < val2) ? sl : sl2;
+    assert(tern_sl.length == 3);
+    assert(tern_sl[0] == 200);
+
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;
 }

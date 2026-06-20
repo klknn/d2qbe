@@ -278,7 +278,7 @@ Token* tokenize(char* p) {
       continue;
     }
     // single-punct reserved.
-    if (strchr("+-*/()<>=;{},&.|[]!^~%:", *p)) {
+    if (strchr("+-*/()<>=;{},&.|[]!^~%:?", *p)) {
       cur = new_token(TokenKind.TK_reserved, cur, p++, 1);
       continue;
     }
