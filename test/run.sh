@@ -144,4 +144,14 @@ assert 1 "bool x = true; return x;"
 assert 0 "bool x = false; return x;"
 assert 97 "char x = 97; return x;"
 
+# ==============================================================================
+# Stage 2 tests (Active)
+# ==============================================================================
+assert 5 "int x = 5; int* y = &x; return *(y + 0);"
+assert 1 "int x = 5; int* y = &x; int* z = y + 1; return z - y;"
+assert 5 "int x = 5; int* y = &x; return y[0];"
+assert 10 "int x = 5; int* y = &x; y[0] = 10; return x;"
+assert 42 "int x = 42; return cast(int) x;"
+assert 97 "char x = 97; return cast(int) x;"
+
 echo OK

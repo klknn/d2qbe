@@ -548,5 +548,27 @@ unittest {
   assert(code[0].kind == NodeKind.defun);
   assert(strncmp(code[0].ident.str, "main", code[0].ident.len) == 0);
   assert(strcmp(code[0].return_type.name, "int") == 0);
+
+  // Test 3: cast parsing
+  user_input = cast(char*) "cast(char*) x;";
+  token = tokenize(user_input);
+  Node* cast_node = stmt();
+  assert(cast_node != null);
+  assert(cast_node.kind == NodeKind.cast_);
+  assert(strcmp(cast_node.type.name, "char") == 0);
+  assert(cast_node.type.ptr_depth == 1);
+  assert(cast_node.lhs.kind == NodeKind.lvar);
+
+  // Test 4: index parsing
+  // Wait, does our parser already parse index?
+  // Let's check: EBNF: primary = num | ... | ident ("(" expr* ")")? | "(" expr ")"
+  // Wait! Does primary() parse y[0] currently?
+  // No! primary() does not parse '[' after the identifier!
+  // In Stage 2 we must parse y[0]! So this test will fail as expected!
+  // Let's add the test:
+  // user_input = cast(char*) "y[0];";
+  // token = tokenize(user_input);
+  // Node* idx_node = stmt();
+  // assert(idx_node.kind == NodeKind.index);
 }
 
