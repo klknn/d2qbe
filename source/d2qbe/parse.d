@@ -56,6 +56,7 @@ enum NodeKind {
   NK_case_, // case val:
   NK_default_, // default:
   NK_slice, // x[start .. end]
+  NK_ternary, // cond ? then : else
 }
 
 struct Type {
@@ -1048,11 +1049,28 @@ Node* parse_logical_or() {
 }
 
 /**
+ * Parses a ternary expression (cond ? then : else).
+ * EBNF: ternary = logical_or ("?" expr ":" ternary)?
+ */
+Node* parse_ternary() {
+  Node* cond = parse_logical_or();
+  if (consume("?")) {
+    Node* node = new_node(NodeKind.NK_ternary);
+    node.cond = cond;
+    node.then = expr();
+    expect(":");
+    node.else_ = parse_ternary();
+    return node;
+  }
+  return cond;
+}
+
+/**
  * Parses an assignment expression (=).
- * EBNF: assign = logical_or ("=" assign)?
+ * EBNF: assign = ternary ("=" assign)?
  */
 Node* parse_assign() {
-  Node* node = parse_logical_or();
+  Node* node = parse_ternary();
   if (consume("=")) {
     node = new_node_binop(NodeKind.NK_assign, node, parse_assign());
   }
@@ -2261,6 +2279,15 @@ unittest {
   assert(strncmp(s2.rhs.lhs.ident.str, "arr", 3) == 0);
   assert(s2.rhs.rhs.kind == NodeKind.NK_num && s2.rhs.rhs.val == 1);
   assert(s2.rhs.cond.kind == NodeKind.NK_num && s2.rhs.cond.val == 5);
+
+  // Test ternary operator parsing
+  user_input = cast(char*) "val = cond ? 10 : 20;";
+  token = tokenize(user_input);
+  Node* tern = stmt();
+  assert(tern != null && tern.kind == NodeKind.NK_assign && tern.rhs.kind == NodeKind.NK_ternary);
+  assert(strncmp(tern.rhs.cond.ident.str, "cond", 4) == 0);
+  assert(tern.rhs.then.kind == NodeKind.NK_num && tern.rhs.then.val == 10);
+  assert(tern.rhs.else_.kind == NodeKind.NK_num && tern.rhs.else_.val == 20);
 }
 
 

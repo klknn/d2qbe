@@ -586,6 +586,10 @@ void get_expr_type(Node* node, Type* out_type) {
     *out_type = t;
     return;
   }
+  if (node.kind == NodeKind.NK_ternary) {
+    get_expr_type(node.then, out_type);
+    return;
+  }
   if (node.kind == NodeKind.NK_assign) {
     get_expr_type(node.lhs, out_type);
     return;
@@ -1082,7 +1086,7 @@ int gen(Node* node) {
       if ((lt.ptr_depth == 0 && find_struct(lt.name)) || lt.is_slice) {
         int lhs_addr = gen_addr(node.lhs);
         int rhs_addr;
-        if (node.rhs.kind == NodeKind.NK_slice) {
+        if (node.rhs.kind == NodeKind.NK_slice || node.rhs.kind == NodeKind.NK_ternary) {
           rhs_addr = gen(node.rhs);
         } else {
           rhs_addr = gen_addr(node.rhs);
@@ -1125,7 +1129,7 @@ int gen(Node* node) {
         int lhs_addr = gen_addr(&lvar_node);
         if ((t.ptr_depth == 0 && find_struct(t.name)) || t.is_slice) {
           int rhs_addr;
-          if (node.lhs.kind == NodeKind.NK_slice) {
+          if (node.lhs.kind == NodeKind.NK_slice || node.lhs.kind == NodeKind.NK_ternary) {
             rhs_addr = gen(node.lhs);
           } else {
             rhs_addr = gen_addr(node.lhs);
@@ -1685,6 +1689,85 @@ int gen(Node* node) {
       printf("  %%t%d =w loadw %%t%d\n", res, addr);
       set_reg_type(res, 'w');
       return res;
+    }
+  if (node.kind == NodeKind.NK_ternary) {
+      Type t;
+      get_expr_type(node, &t);
+      int size = get_type_size(&t);
+      int align_ = get_type_alignment(&t);
+      int qbe_align = 4;
+      if (align_ > 8) qbe_align = 16;
+      else if (align_ > 4) qbe_align = 8;
+      
+      int addr = next_reg();
+      printf("  %%t%d =l alloc%d %d\n", addr, qbe_align, size);
+      set_reg_type(addr, 'l');
+      
+      int cond = gen(node.cond);
+      int label_id = next_reg();
+      printf("  jnz %%t%d, @ternary_then%d, @ternary_else%d\n", cond, label_id, label_id);
+      
+      printf("@ternary_then%d\n", label_id);
+      if (size == 16 && t.is_slice) {
+        int val_addr;
+        if (node.then.kind == NodeKind.NK_slice) val_addr = gen(node.then);
+        else val_addr = gen_addr(node.then);
+        int len_reg = next_reg();
+        printf("  %%t%d =l loadl %%t%d\n", len_reg, val_addr);
+        set_reg_type(len_reg, 'l');
+        printf("  storel %%t%d, %%t%d\n", len_reg, addr);
+        int ptr_src = next_reg();
+        printf("  %%t%d =l add %%t%d, 8\n", ptr_src, val_addr);
+        set_reg_type(ptr_src, 'l');
+        int ptr_val = next_reg();
+        printf("  %%t%d =l loadl %%t%d\n", ptr_val, ptr_src);
+        set_reg_type(ptr_val, 'l');
+        int ptr_dst = next_reg();
+        printf("  %%t%d =l add %%t%d, 8\n", ptr_dst, addr);
+        set_reg_type(ptr_dst, 'l');
+        printf("  storel %%t%d, %%t%d\n", ptr_val, ptr_dst);
+      } else if (size > 8) {
+        int val_addr = gen_addr(node.then);
+        copy_struct_members(t.name, addr, val_addr);
+      } else {
+        int val = gen(node.then);
+        emit_store(val, addr, &t);
+      }
+      printf("  jmp @ternary_end%d\n", label_id);
+      
+      printf("@ternary_else%d\n", label_id);
+      if (size == 16 && t.is_slice) {
+        int val_addr;
+        if (node.else_.kind == NodeKind.NK_slice) val_addr = gen(node.else_);
+        else val_addr = gen_addr(node.else_);
+        int len_reg = next_reg();
+        printf("  %%t%d =l loadl %%t%d\n", len_reg, val_addr);
+        set_reg_type(len_reg, 'l');
+        printf("  storel %%t%d, %%t%d\n", len_reg, addr);
+        int ptr_src = next_reg();
+        printf("  %%t%d =l add %%t%d, 8\n", ptr_src, val_addr);
+        set_reg_type(ptr_src, 'l');
+        int ptr_val = next_reg();
+        printf("  %%t%d =l loadl %%t%d\n", ptr_val, ptr_src);
+        set_reg_type(ptr_val, 'l');
+        int ptr_dst = next_reg();
+        printf("  %%t%d =l add %%t%d, 8\n", ptr_dst, addr);
+        set_reg_type(ptr_dst, 'l');
+        printf("  storel %%t%d, %%t%d\n", ptr_val, ptr_dst);
+      } else if (size > 8) {
+        int val_addr = gen_addr(node.else_);
+        copy_struct_members(t.name, addr, val_addr);
+      } else {
+        int val = gen(node.else_);
+        emit_store(val, addr, &t);
+      }
+      printf("  jmp @ternary_end%d\n", label_id);
+      
+      printf("@ternary_end%d\n", label_id);
+      if (size > 8) {
+        return addr;
+      }
+      return emit_load(addr, &t);
     }
   if (node.kind == NodeKind.NK_logical_not) {
       int val = gen(node.lhs);
