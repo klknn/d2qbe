@@ -55,6 +55,7 @@ enum NodeKind {
   NK_switch_, // switch (x) { ... }
   NK_case_, // case val:
   NK_default_, // default:
+  NK_slice, // x[start .. end]
 }
 
 struct Type {
@@ -62,6 +63,7 @@ struct Type {
   int ptr_depth;
   int[5] array_sizes;
   int array_dims;
+  bool is_slice;
 }
 
 struct Member {
@@ -247,6 +249,9 @@ void init_types() {
  * Computes the size in bytes of a D type.
  */
 int get_type_size(Type* t) {
+  if (t.is_slice) {
+    return 16;
+  }
   int base_size;
   if (t.ptr_depth > 0) {
     base_size = 8;
@@ -276,6 +281,7 @@ int get_type_size(Type* t) {
  * Computes the alignment requirement in bytes of a D type.
  */
 int get_type_alignment(Type* t) {
+  if (t.is_slice) return 8;
   if (t.ptr_depth > 0) return 8;
   if (strcmp(t.name, "int") == 0) return 4;
   if (strcmp(t.name, "char") == 0 || strcmp(t.name, "bool") == 0) return 1;
@@ -329,6 +335,13 @@ void parse_alias() {
  */
 void parse_type(Type* out_type) {
   Type t;
+  t.name = null;
+  t.ptr_depth = 0;
+  t.array_dims = 0;
+  t.is_slice = false;
+  for (int i = 0; i < 5; i++) {
+    t.array_sizes[i] = 0;
+  }
   bool is_const_paren = false;
   while (consume("const")) {
     if (consume("(")) {
@@ -382,21 +395,25 @@ void parse_type(Type* out_type) {
     t.ptr_depth++;
   }
   while (consume("[")) {
-    int size;
-    Token* tok = consume_ident();
-    if (tok) {
-      if (!lookup_constant(tok, &size)) {
-        error_at(tok.str, "unknown constant for array size");
-      }
+    if (consume("]")) {
+      t.is_slice = true;
     } else {
-      size = expect_number();
+      int size;
+      Token* tok = consume_ident();
+      if (tok) {
+        if (!lookup_constant(tok, &size)) {
+          error_at(tok.str, "unknown constant for array size");
+        }
+      } else {
+        size = expect_number();
+      }
+      for (int i = t.array_dims; i > 0; i--) {
+        t.array_sizes[i] = t.array_sizes[i - 1];
+      }
+      t.array_sizes[0] = size;
+      t.array_dims++;
+      expect("]");
     }
-    for (int i = t.array_dims; i > 0; i--) {
-      t.array_sizes[i] = t.array_sizes[i - 1];
-    }
-    t.array_sizes[0] = size;
-    t.array_dims++;
-    expect("]");
   }
   *out_type = t;
 }
@@ -746,11 +763,21 @@ Node* primary() {
   // Parse postfix operators x[y] and x.y
   for (;;) {
     if (consume("[")) {
-      Node* idx = new_node(NodeKind.NK_index);
-      idx.lhs = node;
-      idx.rhs = expr();
-      expect("]");
-      node = idx;
+      Node* start_expr = expr();
+      if (consume("..")) {
+        Node* slice = new_node(NodeKind.NK_slice);
+        slice.lhs = node; // target (array, pointer, or slice)
+        slice.rhs = start_expr; // start index
+        slice.cond = expr(); // end index
+        expect("]");
+        node = slice;
+      } else {
+        Node* idx = new_node(NodeKind.NK_index);
+        idx.lhs = node;
+        idx.rhs = start_expr;
+        expect("]");
+        node = idx;
+      }
     } else if (consume(".")) {
       Token* mem_tok;
       if (consume("sizeof")) {
@@ -2220,6 +2247,20 @@ unittest {
   assert(registered_functions_count == 1);
   assert(strcmp(registered_functions[0].name, "_D_struct_MyStruct_get_val") == 0);
   assert(registered_functions[0].num_params == 1);
+
+  // Test slice type parsing and slice expression parsing
+  user_input = cast(char*) "int[] slice_var; slice_var = arr[1 .. 5];";
+  token = tokenize(user_input);
+  Node* s1 = stmt();
+  assert(s1 != null && s1.kind == NodeKind.NK_var_decl && s1.type.is_slice);
+  assert(strcmp(s1.type.name, "int") == 0);
+  assert(s1.type.ptr_depth == 0);
+
+  Node* s2 = stmt();
+  assert(s2 != null && s2.kind == NodeKind.NK_assign && s2.rhs.kind == NodeKind.NK_slice);
+  assert(strncmp(s2.rhs.lhs.ident.str, "arr", 3) == 0);
+  assert(s2.rhs.rhs.kind == NodeKind.NK_num && s2.rhs.rhs.val == 1);
+  assert(s2.rhs.cond.kind == NodeKind.NK_num && s2.rhs.cond.val == 5);
 }
 
 

@@ -88,6 +88,7 @@ void get_global_type(const(Token)* ident, Type* out_type) {
   t.name = "int";
   t.ptr_depth = 0;
   t.array_dims = 0;
+  t.is_slice = false;
   *out_type = t;
 }
 
@@ -169,8 +170,8 @@ void add_local(const(Token)* ident, Type* type) {
   locals[locals_count].type = *type;
   const(char)* type_name = type.name;
   if (!type_name) type_name = "null";
-  printf("# DEBUG: add_local '%.*s' type '%s' ptr_depth=%d array_dims=%d outer_size=%d\n",
-         ident.len, ident.str, type_name, type.ptr_depth, type.array_dims, type.array_sizes[0]);
+  printf("# DEBUG: add_local '%.*s' type '%s' ptr_depth=%d array_dims=%d is_slice=%d outer_size=%d\n",
+         ident.len, ident.str, type_name, type.ptr_depth, type.array_dims, cast(int)type.is_slice, type.array_sizes[0]);
   locals_count++;
 }
 
@@ -226,8 +227,8 @@ void get_local_type(const(Token)* ident, Type* out_type) {
       }
       const(char)* type_name = locals[i].type.name;
       if (!type_name) type_name = "null";
-      printf("# DEBUG: get_local_type '%.*s' -> '%s' ptr_depth=%d\n",
-             ident.len, ident.str, type_name, locals[i].type.ptr_depth);
+      printf("# DEBUG: get_local_type '%.*s' -> '%s' ptr_depth=%d array_dims=%d is_slice=%d\n",
+             ident.len, ident.str, type_name, locals[i].type.ptr_depth, locals[i].type.array_dims, cast(int)locals[i].type.is_slice);
       *out_type = locals[i].type;
       return;
     }
@@ -244,6 +245,7 @@ void get_local_type(const(Token)* ident, Type* out_type) {
   t.name = "int";
   t.ptr_depth = 0;
   t.array_dims = 0;
+  t.is_slice = false;
   printf("# DEBUG: get_local_type '%.*s' -> DEFAULT 'int'\n", ident.len, ident.str);
   *out_type = t;
 }
@@ -256,6 +258,7 @@ void infer_type(Node* node, Type* out_type) {
   t.name = "int";
   t.ptr_depth = 0;
   t.array_dims = 0;
+  t.is_slice = false;
   if (!node) {
     *out_type = t;
     return;
@@ -380,6 +383,7 @@ void collect_locals(Node* node) {
         t.name = "int";
         t.ptr_depth = 0;
         t.array_dims = 0;
+        t.is_slice = false;
         add_local(node.ident, &t);
       }
     }
@@ -494,6 +498,7 @@ void get_expr_type(Node* node, Type* out_type) {
   t.name = "int";
   t.ptr_depth = 0;
   t.array_dims = 0;
+  t.is_slice = false;
   if (!node) {
     *out_type = t;
     return;
@@ -558,6 +563,29 @@ void get_expr_type(Node* node, Type* out_type) {
     *out_type = t;
     return;
   }
+  if (node.kind == NodeKind.NK_slice) {
+    Type base;
+    get_expr_type(node.lhs, &base);
+    t.name = base.name;
+    t.is_slice = true;
+    if (base.is_slice) {
+      t.ptr_depth = base.ptr_depth;
+      t.array_dims = base.array_dims;
+    } else if (base.array_dims > 0) {
+      t.ptr_depth = base.ptr_depth;
+      t.array_dims = base.array_dims - 1;
+      for (int i = 0; i < t.array_dims; i++) {
+        t.array_sizes[i] = base.array_sizes[i + 1];
+      }
+    } else {
+      int depth = 0;
+      if (base.ptr_depth > 0) depth = base.ptr_depth - 1;
+      t.ptr_depth = depth;
+      t.array_dims = 0;
+    }
+    *out_type = t;
+    return;
+  }
   if (node.kind == NodeKind.NK_assign) {
     get_expr_type(node.lhs, out_type);
     return;
@@ -572,6 +600,24 @@ void get_expr_type(Node* node, Type* out_type) {
     }
     Type lt;
     get_expr_type(node.lhs, &lt);
+    if (lt.is_slice) {
+      if (node.ident.len == 6 && strncmp(node.ident.str, "length", 6) == 0) {
+        t.name = "int";
+        t.ptr_depth = 1;
+        t.array_dims = 0;
+        t.is_slice = false;
+        *out_type = t;
+        return;
+      }
+      if (node.ident.len == 3 && strncmp(node.ident.str, "ptr", 3) == 0) {
+        t.name = lt.name;
+        t.ptr_depth = lt.ptr_depth + 1;
+        t.array_dims = lt.array_dims;
+        t.is_slice = false;
+        *out_type = t;
+        return;
+      }
+    }
     StructType* st = find_struct(lt.name);
     if (st) {
       Member* m = find_member(st, node.ident);
@@ -650,24 +696,46 @@ int gen_addr(Node* node) {
       Type lt;
       get_expr_type(node.lhs, &lt);
       int l;
-      if (lt.array_dims > 0) {
-        l = gen_addr(node.lhs);
+      Type tmp_type;
+      if (lt.is_slice) {
+        int slice_addr;
+        if (lt.ptr_depth > 0) {
+          slice_addr = gen(node.lhs);
+        } else {
+          slice_addr = gen_addr(node.lhs);
+        }
+        int ptr_addr = next_reg();
+        printf("  %%t%d =l add %%t%d, 8\n", ptr_addr, slice_addr);
+        set_reg_type(ptr_addr, 'l');
+        
+        l = next_reg();
+        printf("  %%t%d =l loadl %%t%d\n", l, ptr_addr);
+        set_reg_type(l, 'l');
+        
+        tmp_type.name = lt.name;
+        tmp_type.ptr_depth = lt.ptr_depth;
+        tmp_type.array_dims = lt.array_dims;
+        tmp_type.is_slice = false;
       } else {
-        l = gen(node.lhs);
+        if (lt.array_dims > 0) {
+          l = gen_addr(node.lhs);
+        } else {
+          l = gen(node.lhs);
+        }
+        tmp_type.name = lt.name;
+        tmp_type.is_slice = false;
+        if (lt.array_dims > 0) {
+          tmp_type.ptr_depth = lt.ptr_depth;
+          tmp_type.array_dims = lt.array_dims - 1;
+          for (int i = 0; i < tmp_type.array_dims; i++) {
+            tmp_type.array_sizes[i] = lt.array_sizes[i + 1];
+          }
+        } else {
+          tmp_type.ptr_depth = lt.ptr_depth - 1;
+          tmp_type.array_dims = 0;
+        }
       }
       int r = gen(node.rhs);
-      Type tmp_type;
-      tmp_type.name = lt.name;
-      if (lt.array_dims > 0) {
-        tmp_type.ptr_depth = lt.ptr_depth;
-        tmp_type.array_dims = lt.array_dims - 1;
-        for (int i = 0; i < tmp_type.array_dims; i++) {
-          tmp_type.array_sizes[i] = lt.array_sizes[i + 1];
-        }
-      } else {
-        tmp_type.ptr_depth = lt.ptr_depth - 1;
-        tmp_type.array_dims = 0;
-      }
       int scale = get_type_size(&tmp_type);
       int offset_reg = r;
       if (scale > 1) {
@@ -688,6 +756,24 @@ int gen_addr(Node* node) {
     }
     Type lt;
     get_expr_type(node.lhs, &lt);
+    if (lt.is_slice) {
+      int struct_addr;
+      if (lt.ptr_depth > 0) {
+        struct_addr = gen(node.lhs);
+      } else {
+        struct_addr = gen_addr(node.lhs);
+      }
+      if (node.ident.len == 6 && strncmp(node.ident.str, "length", 6) == 0) {
+        return struct_addr;
+      }
+      if (node.ident.len == 3 && strncmp(node.ident.str, "ptr", 3) == 0) {
+        int res = next_reg();
+        printf("  %%t%d =l add %%t%d, 8\n", res, struct_addr);
+        set_reg_type(res, 'l');
+        return res;
+      }
+      error("unknown slice property address");
+    }
     StructType* st = find_struct(lt.name);
     if (!st) {
       char[100] buf;
@@ -833,6 +919,7 @@ int gen_inc_dec(Node* node, bool is_inc, bool is_prefix) {
     tmp_type.name = t.name;
     tmp_type.ptr_depth = t.ptr_depth - 1;
     tmp_type.array_dims = 0;
+    tmp_type.is_slice = false;
     scale = get_type_size(&tmp_type);
   }
   
@@ -909,13 +996,117 @@ int gen(Node* node) {
       get_local_type(node.ident, &t);
       return emit_load(addr, &t);
     }
+  if (node.kind == NodeKind.NK_slice) {
+      int tmp_slice = next_reg();
+      printf("  %%t%d =l alloc8 16\n", tmp_slice);
+      set_reg_type(tmp_slice, 'l');
+      
+      int start_val = gen(node.rhs);
+      int end_val = gen(node.cond);
+      int len_val = next_reg();
+      printf("  %%t%d =w sub %%t%d, %%t%d\n", len_val, end_val, start_val);
+      set_reg_type(len_val, 'w');
+      
+      int len_ext = next_reg();
+      printf("  %%t%d =l extsw %%t%d\n", len_ext, len_val);
+      set_reg_type(len_ext, 'l');
+      printf("  storel %%t%d, %%t%d\n", len_ext, tmp_slice);
+      
+      Type lt;
+      get_expr_type(node.lhs, &lt);
+      
+      int base_ptr;
+      if (lt.is_slice) {
+        int slice_addr;
+        if (lt.ptr_depth > 0) {
+          slice_addr = gen(node.lhs);
+        } else {
+          slice_addr = gen_addr(node.lhs);
+        }
+        int ptr_loc = next_reg();
+        printf("  %%t%d =l add %%t%d, 8\n", ptr_loc, slice_addr);
+        set_reg_type(ptr_loc, 'l');
+        base_ptr = next_reg();
+        printf("  %%t%d =l loadl %%t%d\n", base_ptr, ptr_loc);
+        set_reg_type(base_ptr, 'l');
+      } else if (lt.array_dims > 0) {
+        base_ptr = gen_addr(node.lhs);
+      } else {
+        base_ptr = gen(node.lhs);
+      }
+      
+      Type element_type;
+      element_type.name = lt.name;
+      element_type.is_slice = false;
+      if (lt.is_slice) {
+        element_type.ptr_depth = lt.ptr_depth;
+        element_type.array_dims = lt.array_dims;
+        element_type.is_slice = false;
+      } else if (lt.array_dims > 0) {
+        element_type.ptr_depth = lt.ptr_depth;
+        element_type.array_dims = lt.array_dims - 1;
+        for (int i = 0; i < element_type.array_dims; i++) {
+          element_type.array_sizes[i] = lt.array_sizes[i + 1];
+        }
+      } else {
+        element_type.ptr_depth = lt.ptr_depth - 1;
+        element_type.array_dims = 0;
+      }
+      
+      int elem_size = get_type_size(&element_type);
+      int offset_reg = start_val;
+      if (elem_size > 1) {
+        int mul_res = next_reg();
+        printf("  %%t%d =w mul %%t%d, %d\n", mul_res, start_val, elem_size);
+        set_reg_type(mul_res, 'w');
+        offset_reg = mul_res;
+      }
+      int ext_res = next_reg();
+      printf("  %%t%d =l extsw %%t%d\n", ext_res, offset_reg);
+      set_reg_type(ext_res, 'l');
+      
+      int start_ptr = next_reg();
+      printf("  %%t%d =l add %%t%d, %%t%d\n", start_ptr, base_ptr, ext_res);
+      set_reg_type(start_ptr, 'l');
+      
+      int dst_ptr = next_reg();
+      printf("  %%t%d =l add %%t%d, 8\n", dst_ptr, tmp_slice);
+      set_reg_type(dst_ptr, 'l');
+      printf("  storel %%t%d, %%t%d\n", start_ptr, dst_ptr);
+      
+      return tmp_slice;
+    }
   if (node.kind == NodeKind.NK_assign) {
       Type lt;
       get_expr_type(node.lhs, &lt);
-      if (lt.ptr_depth == 0 && find_struct(lt.name)) {
+      if ((lt.ptr_depth == 0 && find_struct(lt.name)) || lt.is_slice) {
         int lhs_addr = gen_addr(node.lhs);
-        int rhs_addr = gen_addr(node.rhs);
-        copy_struct_members(lt.name, lhs_addr, rhs_addr);
+        int rhs_addr;
+        if (node.rhs.kind == NodeKind.NK_slice) {
+          rhs_addr = gen(node.rhs);
+        } else {
+          rhs_addr = gen_addr(node.rhs);
+        }
+        if (lt.is_slice) {
+          int len_reg = next_reg();
+          printf("  %%t%d =l loadl %%t%d\n", len_reg, rhs_addr);
+          set_reg_type(len_reg, 'l');
+          printf("  storel %%t%d, %%t%d\n", len_reg, lhs_addr);
+          
+          int ptr_src = next_reg();
+          printf("  %%t%d =l add %%t%d, 8\n", ptr_src, rhs_addr);
+          set_reg_type(ptr_src, 'l');
+          int ptr_val = next_reg();
+          printf("  %%t%d =l loadl %%t%d\n", ptr_val, ptr_src);
+          set_reg_type(ptr_val, 'l');
+          
+          int ptr_dst = next_reg();
+          printf("  %%t%d =l add %%t%d, 8\n", ptr_dst, lhs_addr);
+          set_reg_type(ptr_dst, 'l');
+          printf("  storel %%t%d, %%t%d\n", ptr_val, ptr_dst);
+        } else {
+          copy_struct_members(lt.name, lhs_addr, rhs_addr);
+        }
         return rhs_addr;
       } else {
         int rhs = gen(node.rhs);
@@ -932,9 +1123,33 @@ int gen(Node* node) {
         lvar_node.kind = NodeKind.NK_lvar;
         lvar_node.ident = node.ident;
         int lhs_addr = gen_addr(&lvar_node);
-        if (t.ptr_depth == 0 && find_struct(t.name)) {
-          int rhs_addr = gen_addr(node.lhs);
-          copy_struct_members(t.name, lhs_addr, rhs_addr);
+        if ((t.ptr_depth == 0 && find_struct(t.name)) || t.is_slice) {
+          int rhs_addr;
+          if (node.lhs.kind == NodeKind.NK_slice) {
+            rhs_addr = gen(node.lhs);
+          } else {
+            rhs_addr = gen_addr(node.lhs);
+          }
+          if (t.is_slice) {
+            int len_reg = next_reg();
+            printf("  %%t%d =l loadl %%t%d\n", len_reg, rhs_addr);
+            set_reg_type(len_reg, 'l');
+            printf("  storel %%t%d, %%t%d\n", len_reg, lhs_addr);
+            
+            int ptr_src = next_reg();
+            printf("  %%t%d =l add %%t%d, 8\n", ptr_src, rhs_addr);
+            set_reg_type(ptr_src, 'l');
+            int ptr_val = next_reg();
+            printf("  %%t%d =l loadl %%t%d\n", ptr_val, ptr_src);
+            set_reg_type(ptr_val, 'l');
+            
+            int ptr_dst = next_reg();
+            printf("  %%t%d =l add %%t%d, 8\n", ptr_dst, lhs_addr);
+            set_reg_type(ptr_dst, 'l');
+            printf("  storel %%t%d, %%t%d\n", ptr_val, ptr_dst);
+          } else {
+            copy_struct_members(t.name, lhs_addr, rhs_addr);
+          }
           return rhs_addr;
         } else {
           int rhs = gen(node.lhs);
@@ -1288,6 +1503,7 @@ int gen(Node* node) {
         tmp_type.name = lt.name;
         tmp_type.ptr_depth = lt.ptr_depth - 1;
         tmp_type.array_dims = 0;
+        tmp_type.is_slice = false;
         int scale = get_type_size(&tmp_type);
         int offset_reg = r;
         if (scale > 1) {
@@ -1309,6 +1525,7 @@ int gen(Node* node) {
         tmp_type.name = rt.name;
         tmp_type.ptr_depth = rt.ptr_depth - 1;
         tmp_type.array_dims = 0;
+        tmp_type.is_slice = false;
         int scale = get_type_size(&tmp_type);
         int offset_reg = l;
         if (scale > 1) {
@@ -1337,6 +1554,7 @@ int gen(Node* node) {
         tmp_type.name = lt.name;
         tmp_type.ptr_depth = lt.ptr_depth - 1;
         tmp_type.array_dims = 0;
+        tmp_type.is_slice = false;
         int scale = get_type_size(&tmp_type);
         int div_res = sub_res;
         if (scale > 1) {
@@ -1355,6 +1573,7 @@ int gen(Node* node) {
         tmp_type.name = lt.name;
         tmp_type.ptr_depth = lt.ptr_depth - 1;
         tmp_type.array_dims = 0;
+        tmp_type.is_slice = false;
         int scale = get_type_size(&tmp_type);
         int offset_reg = r;
         if (scale > 1) {
