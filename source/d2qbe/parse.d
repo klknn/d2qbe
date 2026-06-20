@@ -52,6 +52,9 @@ enum NodeKind {
   NK_bitwise_not, // ~
   NK_lshift, // <<
   NK_rshift, // >>
+  NK_switch_, // switch (x) { ... }
+  NK_case_, // case val:
+  NK_default_, // default:
 }
 
 struct Type {
@@ -836,6 +839,34 @@ Node* stmt() {
     }
     return node;
   }
+  else if (consume("switch")) {
+    Node* node = new_node(NodeKind.NK_switch_);
+    expect("(");
+    node.lhs = expr();
+    expect(")");
+    node.rhs = stmt();
+    return node;
+  }
+  else if (consume("case")) {
+    Node* node = new_node(NodeKind.NK_case_);
+    int val;
+    Token* tok = consume_ident();
+    if (tok) {
+      if (!lookup_constant(tok, &val)) {
+        error_at(tok.str, "unknown case constant");
+      }
+    } else {
+      val = expect_number();
+    }
+    node.val = val;
+    expect(":");
+    return node;
+  }
+  else if (consume("default")) {
+    Node* node = new_node(NodeKind.NK_default_);
+    expect(":");
+    return node;
+  }
   else if (consume("if")) {
     Node* node = new_node(NodeKind.NK_if_);
     expect("(");
@@ -1283,6 +1314,13 @@ unittest {
   assert(prec_node != null);
   assert(prec_node.kind == NodeKind.NK_bitwise_and);
   assert(prec_node.rhs.kind == NodeKind.NK_eq);
+
+  // Test switch parsing
+  user_input = cast(char*) "switch (x) { case 1: break; default: break; }";
+  token = tokenize(user_input);
+  Node* sw_node = stmt();
+  assert(sw_node != null);
+  assert(sw_node.kind == NodeKind.NK_switch_);
 }
 
 
