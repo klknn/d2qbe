@@ -23,9 +23,9 @@ int main(int argc, char** argv) {
     if (read_bytes == 0) {
       break;
     }
-    len += read_bytes;
+    len = len + read_bytes;
     if (len + 4096 >= capacity) {
-      capacity *= 2;
+      capacity = capacity * 2;
       buf = cast(char*) realloc(buf, capacity);
       if (!buf) {
         fprintf(stderr, "Out of memory reallocating input buffer\n");
