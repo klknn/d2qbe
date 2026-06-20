@@ -5,6 +5,10 @@ set -e
 cat << 'EOF' > test/self_host_dqbe.d
 // C stdlib declarations
 extern (C) void* calloc(int nmemb, int size);
+extern (C) void* malloc(int size);
+extern (C) void* realloc(void* ptr, int size);
+extern (C) void free(void* ptr);
+extern (C) int fread(void* ptr, int size, int nmemb, void* stream);
 extern (C) void* memcpy(void* dest, const void* src, int n);
 extern (C) int strcmp(const char* s1, const char* s2);
 extern (C) int strlen(const char* s);
@@ -19,6 +23,8 @@ extern (C) int fprintf(void* stream, const char* format, ...);
 extern (C) void exit(int status);
 
 extern (C) void* get_stderr();
+extern (C) void* get_stdin();
+extern (C) void* get_stdout();
 
 enum null = 0;
 EOF
