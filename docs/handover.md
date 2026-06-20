@@ -69,3 +69,50 @@ To further increase betterC compatibility, the following are missing and should 
    - Implementing this requires adding a template symbol table to hold uninstantiated ASTs, and cloning/substituting types at the instantiation point (e.g., `Stack!int`).
 
 For a detailed roadmap of all remaining D `betterC` features (slices, RAII, CTFE, etc.) ordered by implementation complexity, refer to the [d2qbe_plan.md](file:///usr/local/google/home/karita/repos/d2qbe/docs/d2qbe_plan.md) document.
+
+---
+
+## 5. QBE IR Subset Emitted by d2qbe (For Backend Developers)
+
+For developers building or verifying a backend QBE clone (like `dqbe`), the `d2qbe` frontend emits the following QBE IR features, types, and instructions:
+
+### 5.1 Types
+* `w` (word - 32-bit integer)
+* `l` (long - 64-bit integer / pointers)
+* `b` (byte - 8-bit integer, used in memory loads/stores and global data)
+
+### 5.2 Storage & Memory Instructions
+* `alloc4`, `alloc8`, `alloc16` (stack allocation of local variables/structs)
+* `loadsb` / `loadub` (load signed/unsigned byte from address)
+* `loadsw` / `loadw` (load signed word / word from address)
+* `loadl` (load long/pointer from address)
+* `storeb` (store byte to address)
+* `storew` (store word to address)
+* `storel` (store long/pointer to address)
+
+### 5.3 Arithmetic & Bitwise Instructions
+* `add`, `sub`, `mul`, `div` (signed operations on `w` or `l`)
+* `rem` (signed modulo remainder on `w` or `l`)
+* `and`, `or`, `xor` (bitwise operations on `w` or `l`)
+* `sar` (arithmetic shift right on `w` or `l`)
+* `shl` (shift left on `w` or `l`)
+* `extsw` (sign-extend word to long)
+* `extsb` / `extub` (sign-extend / zero-extend byte to word)
+
+### 5.4 Comparisons
+* `ceqw` / `ceql` (equal)
+* `cnew` / `cnel` (not equal)
+* `cslew` / `cslel` (signed less-than-or-equal)
+* `csltw` / `csltl` (signed less-than)
+* `csgew` / `csgel` (signed greater-than-or-equal)
+* `csgtw` / `csgtl` (signed greater-than)
+
+### 5.5 Control Flow & Call Instructions
+* `jmp @label` (unconditional jump)
+* `jnz %cond, @label_then, @label_else` (conditional jump)
+* `ret` / `ret %val` (return from function)
+* `call $func(...)` (call global function)
+
+### 5.6 Declarations
+* `export function [type] $name([params]) { ... }` (function definition)
+* `data $name = { [items] }` (global data definition using `b`, `w`, `l`, or string literals)
