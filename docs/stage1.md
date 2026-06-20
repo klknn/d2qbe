@@ -55,3 +55,12 @@ Modifiers/qualifiers like `const` and `extern (C)` are parsed but ignored in sem
 3. **Variable Access**:
    - Reading `x` loads from `%x_addr` using `loadw` (for 32-bit) or `loadl` (for 64-bit).
    - Writing to `x` stores to `%x_addr` using `storew` or `storel`.
+
+---
+
+## 4. Unittest Strategy
+
+To avoid the slow macOS linker/sub-process execution overhead, we use D's native `unittest` mechanism. Unittests run directly in memory using native assertions:
+1. **Target**: `make unittest` will compile all modules with `-unittest -main -run` and execute the unit tests instantly.
+2. **Parser Tests**: Tokenize small D snippets and verify that the AST nodes (e.g. `NodeKind.var_decl`, `NodeKind.defun` with return types) match expectations.
+3. **Symbol Table Tests**: Verify local variable collection and type resolution.

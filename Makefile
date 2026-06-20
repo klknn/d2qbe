@@ -1,4 +1,4 @@
-.PHONY: all test clean
+.PHONY: all test clean unittest
 
 DC=ldc2
 DFLAGS=-g -w -betterC -Isource
@@ -23,6 +23,9 @@ ext.o: test/ext.d
 
 test: d2qbe qbe/qbe ext.o
 	./test/run.sh
+
+unittest:
+	$(DC) -unittest -main -run source/d2qbe/tokenize.d source/d2qbe/parse.d source/d2qbe/codegen.d
 
 clean:
 	rm -f d2qbe *.o *.di tmp*
