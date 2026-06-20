@@ -78,7 +78,8 @@ void parse_data() {
     error("Expected global name starting with $ after 'data'");
   }
   
-  DataDef def;
+  assert(program_data_count < 2000);
+  DataDef* def = &program_data[program_data_count++];
   def.name = token_to_str(name_tok);
   def.items_count = 0;
   
@@ -123,9 +124,6 @@ void parse_data() {
     
     consume(",");
   }
-  
-  assert(program_data_count < 2000);
-  program_data[program_data_count++] = def;
 }
 
 void parse_function() {
@@ -555,9 +553,11 @@ void parse_program() {
       continue;
     }
     if (is_token("export") || is_token("function")) {
-      FunctionDef fn;
+      assert(program_functions_count < 200);
+      FunctionDef* fn = &program_functions[program_functions_count++];
       fn.inst_count = 0;
       fn.params_count = 0;
+      fn.is_variadic = false;
       
       bool is_export = false;
       if (consume("export")) {
@@ -605,10 +605,8 @@ void parse_program() {
       }
       
       expect("{");
-      parse_instruction_list(&fn);
+      parse_instruction_list(fn);
       
-      assert(program_functions_count < 200);
-      program_functions[program_functions_count++] = fn;
       continue;
     }
     
