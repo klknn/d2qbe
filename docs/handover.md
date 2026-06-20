@@ -9,16 +9,23 @@ This document is for the next AI agent or developer taking over the development 
 
 - **Frontend**: A hand-written lexer and parser in D (`tokenize.d` and `parse.d`).
 - **Backend**: A D-based code generator (`codegen.d`) emitting QBE IR assembly, which is then processed by QBE (`qbe/qbe`) and compiled into native binaries using a C linker (`cc`/`clang`).
-- **Self-Hosting Goal**: The primary goal is compiler self-hosting (compiling `d2qbe` using `d2qbe` itself).
+- **Self-Hosting**: The compiler is fully self-hosting (compiles itself, and the self-hosted compiler passes all integration tests).
 
 ---
 
 ## 2. Current State
+
 - **Stage 1 (Types, Pointers, Stack Locals)**: Completed & Committed.
 - **Stage 2 (Pointer Arithmetic, Indexing, Casts)**: Completed & Committed.
 - **Stage 3 (Sizeof, Globals, String Literals)**: Completed & Committed.
-- **Assertion Support**: Completed & Committed. `assert(cond);` statements are fully supported, calling standard library `exit(1)` on failure.
-- **Staging Branch**: `agy` contains all build-passing and test-passing commits.
+- **Stage 4 (Structs & Enums)**: Completed & Committed.
+  - Supports struct memory layout, pointer offsets, nested structs, and recursive copying of struct array fields (fixed in self-hosting).
+- **Modulo & Bitwise Operators**: Completed & Committed.
+  - Full support for `%`, `&`, `|`, `^`, `~`, `<<`, `>>`.
+  - Proper expression precedence parsing (e.g., equality binding tighter than bitwise AND).
+- **Assertion Support**: Completed & Committed.
+- **Classic Minic Snippet Tests**:
+  - `test/collatz_test.d` (collatz conjecture) and `test/prime_test.d` (prime numbers generation) are fully ported and verified under self-hosting.
 
 ---
 
@@ -28,26 +35,23 @@ Testing can be run using the following targets:
   - Runs in-memory module-level tests inside `source/d2qbe/*.d` in under 1 second.
 - **Integration Tests**: `make test`
   - Runs end-to-end integration tests using `test/run.sh`.
-  
-*Note: With the addition of `assert`, we are now ready to start writing fast, native D-based test files instead of slow shell-based integration tests.*
+- **Self-Hosting Verification**: `./test/self_host.sh`
+  - Verifies the self-hosted compiler compiles the entire compiler source and runs integration tests successfully.
 
 ---
 
-## 4. Next Steps (Stage 4: Structs & Enums)
-The next task is to design, plan, and implement Stage 4:
-1. **Struct Declarations & Memory Layout**:
-   - Parsing `struct Name { Type field; ... }`.
-   - Resolving struct sizes and field offsets (needs padding/alignment logic).
-   - Local and global allocation/initialization of structs.
-2. **Member Access**:
-   - Support for `struct_var.field` (address-offset resolution).
-   - Support for pointer access `struct_ptr.field` (in D, `->` is not used; member access on pointers automatically dereferences, which should compile to `%offset =l add %ptr, offset` followed by load/store).
-3. **Enums**:
-   - Parsing `enum Name = value;` or `enum { ... }` as compile-time constants.
+## 4. Missing Features & BetterC Compatibility Next Steps
 
----
+To further increase betterC compatibility and complete all minic-level tests, the following are missing and should be implemented next:
 
-## 5. Instructions for the Next Agent
-- **Strict TDD Order**: Always write planning documentation (e.g. `docs/stage4.md`) and tests first before modifying the source files.
-- **Agent Skills**: Consult the custom skills in `.agents/skills/` (`qbe`, `d`, and `testing`) for guidelines on generating QBE IR, handling the D frontend, and executing tests.
-- **Keep Design Minimal**: Prefer stack slot allocation and simple designs to facilitate easier self-hosting.
+1. **Port/Run Queen (Eight Queens) Test Case**:
+   - Port `qbe/minic/test/queen.c` to `test/queen_test.d` using multidimensional pointer indexing (`t[x][y]`) and recursion.
+   - Verify it compiles and executes correctly.
+
+2. **Switch Statements**:
+   - Currently, `switch` is not supported.
+   - Plan & implement parsing for `switch (expr) { case val: ... default: ... }` and generating corresponding QBE conditional jumps/branches.
+
+3. **Multidimensional Static Arrays**:
+   - Currently, the parser only supports single-dimensional static arrays (e.g., `int[10] arr;`).
+   - Need to support multi-dimensional static array type declarations (e.g., `int[3][2] arr;`).
