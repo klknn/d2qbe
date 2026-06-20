@@ -2,7 +2,7 @@
 set -e
 
 # Concatenate compiler source files
-cat << 'EOF' > test/self_host.d
+cat << 'EOF' > test/self_host_dqbe.d
 // C stdlib declarations
 extern (C) void* calloc(int nmemb, int size);
 extern (C) void* memcpy(void* dest, const void* src, int n);
@@ -25,15 +25,15 @@ EOF
 
 # Strip imports and modules from source files and append
 for f in source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/codegen.d source/dqbe/app.d; do
-  grep -v '^import ' "$f" | grep -v '^module ' >> test/self_host.d
+  grep -v '^import ' "$f" | grep -v '^module ' >> test/self_host_dqbe.d
 done
 
-echo "Compiling self_host.d using bootstrap compiler..."
-./d2qbe "$(cat test/self_host.d)" > test/self_host.s
+echo "Compiling self_host_dqbe.d using bootstrap compiler..."
+./d2qbe "$(cat test/self_host_dqbe.d)" > test/self_host_dqbe.s
 
-echo "Assembling self_host.s using dqbe..."
-./dqbe < test/self_host.s > test/self_host_qbe.s
-cc -o test/dqbe_self_hosted test/self_host_qbe.s ext.o
+echo "Assembling self_host_dqbe.s using dqbe..."
+./dqbe < test/self_host_dqbe.s > test/self_host_dqbe_qbe.s
+cc -o test/dqbe_self_hosted test/self_host_dqbe_qbe.s ext.o
 
 echo "Verifying self-hosted compiler using dqbe backend..."
 
