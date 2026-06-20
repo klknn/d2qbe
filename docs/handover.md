@@ -30,6 +30,8 @@ This document is for the next AI agent or developer taking over the development 
 - **Assertion Support**: Completed & Committed.
 - **Alias Declarations**: Completed & Committed.
   - Supports `alias AliasName = ExistingType;` at both top-level and local block/statement scope levels. Resolves and substitutes nested pointer types (e.g. `pint*` resolving to `int**` if `pint` is `int*`).
+- **Static Assertions**: Completed & Committed.
+  - Supports `static assert(cond);` and `static assert(cond, "message");` at both top-level and local block/statement scope levels. Evaluates constant integer/boolean expressions at compile-time.
 - **Templates (Generics)**: Completed & Committed.
   - Supports template block declarations `template Name(T) { ... }` and explicit eponymous instantiations `Name!Arg` (including complex parenthesized arguments like `Name!(char*)`).
   - Implements token-level deep duplication, argument substitution, and eponymous member renaming/mangling.
