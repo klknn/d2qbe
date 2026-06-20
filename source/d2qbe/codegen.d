@@ -254,6 +254,35 @@ void infer_type(Node* node, Type* out_type) {
     *out_type = t;
     return;
   }
+  if (node.kind == NodeKind.NK_str_literal) {
+    t.name = "char";
+    t.ptr_depth = 1;
+    *out_type = t;
+    return;
+  }
+  if (node.kind == NodeKind.NK_cast_) {
+    *out_type = node.type;
+    return;
+  }
+  if (node.kind == NodeKind.NK_index) {
+    Type base;
+    infer_type(node.lhs, &base);
+    t.name = base.name;
+    int depth = 0;
+    if (base.ptr_depth > 0) depth = base.ptr_depth - 1;
+    t.ptr_depth = depth;
+    *out_type = t;
+    return;
+  }
+  if (node.kind == NodeKind.NK_funcall) {
+    char* name = cast(char*) calloc(1, node.ident.len + 1);
+    memcpy(name, node.ident.str, node.ident.len);
+    FunctionSymbol* fs = find_function(name);
+    if (fs) {
+      *out_type = fs.return_type;
+    }
+    return;
+  }
   *out_type = t;
 }
 
@@ -263,6 +292,11 @@ void infer_type(Node* node, Type* out_type) {
 void collect_locals(Node* node) {
   if (!node) return;
   if (node.kind == NodeKind.NK_var_decl) {
+    if (node.type.name && strcmp(node.type.name, "auto") == 0) {
+      Type inferred;
+      infer_type(node.lhs, &inferred);
+      node.type = inferred;
+    }
     add_local(node.ident, &node.type);
   }
   else if (node.kind == NodeKind.NK_assign && node.lhs.kind == NodeKind.NK_lvar) {
@@ -1402,6 +1436,22 @@ unittest {
   get_local_type(&t2, &b_type);
   assert(strcmp(b_type.name, "int") == 0);
   assert(b_type.ptr_depth == 1); // should be int*
+
+  // Test auto local variable type inference in collect_locals
+  Token t_auto;
+  t_auto.str = cast(char*) "auto_var";
+  t_auto.len = 8;
+  
+  Node* auto_decl = new_node(NodeKind.NK_var_decl);
+  auto_decl.ident = &t_auto;
+  auto_decl.type.name = "auto";
+  auto_decl.lhs = new_node_num(42); // auto auto_var = 42;
+
+  collect_locals(auto_decl);
+  Type auto_type;
+  get_local_type(&t_auto, &auto_type);
+  assert(strcmp(auto_type.name, "int") == 0);
+  assert(auto_type.ptr_depth == 0);
 }
 
 

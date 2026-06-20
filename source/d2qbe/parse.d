@@ -1028,6 +1028,12 @@ Node* expr() {
  * Returns: true if it is a declaration, false otherwise.
  */
 bool is_decl_statement() {
+  if (token && token.len == 4 && strncmp(token.str, "auto", 4) == 0) {
+    Token* t = token.next;
+    if (t && t.kind == TokenKind.TK_identifier && t.next && t.next.len == 1 && t.next.str[0] == '=') {
+      return true;
+    }
+  }
   Token* tok = token;
   bool has_type_name = false;
   while (tok && (tok.len == 5 && strncmp(tok.str, "const", 5) == 0 ||
@@ -1122,7 +1128,13 @@ Node* stmt() {
   }
   if (is_decl_statement()) {
     Type t;
-    parse_type(&t);
+    if (consume("auto")) {
+      t.name = "auto";
+      t.ptr_depth = 0;
+      t.array_dims = 0;
+    } else {
+      parse_type(&t);
+    }
     Token* ident = consume_ident();
     if (!ident) {
       error_at(token.str, "variable name expected");
@@ -1808,6 +1820,24 @@ void parse_top_level() {
     return;
   }
   
+  if (is_token("auto")) {
+    expect("auto");
+    Token* ident = consume_ident();
+    if (!ident) {
+      error_at(token.str, "identifier expected at top level");
+    }
+    Node* gvar = new_node(NodeKind.NK_gvar_decl);
+    gvar.type.name = "auto";
+    gvar.type.ptr_depth = 0;
+    gvar.type.array_dims = 0;
+    gvar.ident = ident;
+    expect("=");
+    gvar.lhs = expr();
+    expect(";");
+    add_to_code(gvar);
+    return;
+  }
+  
   if (is_type_name(token.str, token.len) || is_type_start(token)) {
     Type t;
     parse_type(&t);
@@ -2093,6 +2123,13 @@ unittest {
   assert(registered_functions_count == 2);
   assert(strcmp(registered_functions[0].name, "posix_func") == 0);
   assert(strcmp(registered_functions[1].name, "other_func") == 0);
+
+  // Test auto declaration parsing
+  user_input = cast(char*) "auto val = 123;";
+  token = tokenize(user_input);
+  Node* auto_node = stmt();
+  assert(auto_node != null && auto_node.kind == NodeKind.NK_var_decl);
+  assert(strcmp(auto_node.type.name, "auto") == 0);
 }
 
 

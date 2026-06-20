@@ -1,6 +1,8 @@
 extern (C) int printf(const char* format, ...);
 static assert(5 * 5 == 25);
 
+auto global_auto_val = 500;
+
 version(Posix) {
   int get_os_val() { return 100; }
 }
@@ -86,6 +88,13 @@ int main() {
     } else {
       assert(get_os_val() == 100);
     }
+
+    // Type Inference (auto)
+    auto local_auto_val = 250;
+    assert(local_auto_val * 2 == global_auto_val);
+
+    auto local_auto_ptr = &local_auto_val;
+    assert(*local_auto_ptr == 250);
 
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;
