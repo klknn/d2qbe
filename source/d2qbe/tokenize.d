@@ -201,6 +201,9 @@ bool is_keyword(const char* p) {
   if (len == 4 && strncmp(p, "true", 4) == 0) return true;
   if (len == 5 && strncmp(p, "false", 5) == 0) return true;
   if (len == 6 && strncmp(p, "assert", 6) == 0) return true;
+  if (len == 6 && strncmp(p, "switch", 6) == 0) return true;
+  if (len == 4 && strncmp(p, "case", 4) == 0) return true;
+  if (len == 7 && strncmp(p, "default", 7) == 0) return true;
   return false;
 }
 
@@ -264,7 +267,7 @@ Token* tokenize(char* p) {
       continue;
     }
     // single-punct reserved.
-    if (strchr("+-*/()<>=;{},&.|[]!^~%", *p)) {
+    if (strchr("+-*/()<>=;{},&.|[]!^~%:", *p)) {
       cur = new_token(TokenKind.TK_reserved, cur, p++, 1);
       continue;
     }

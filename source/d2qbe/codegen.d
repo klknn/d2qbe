@@ -119,18 +119,38 @@ void pop_loop() {
   loop_stack_count--;
 }
 
-char current_loop_type() {
+char current_break_type() {
   if (loop_stack_count == 0) {
-    error("continue or break statement not within loop");
+    error("break statement not within loop or switch");
   }
   return loop_stack[loop_stack_count - 1].type;
 }
 
-int current_loop_id() {
+int current_break_id() {
   if (loop_stack_count == 0) {
-    error("continue or break statement not within loop");
+    error("break statement not within loop or switch");
   }
   return loop_stack[loop_stack_count - 1].id;
+}
+
+char current_continue_type() {
+  for (int i = loop_stack_count - 1; i >= 0; i--) {
+    if (loop_stack[i].type != 's') {
+      return loop_stack[i].type;
+    }
+  }
+  error("continue statement not within loop");
+  return 0;
+}
+
+int current_continue_id() {
+  for (int i = loop_stack_count - 1; i >= 0; i--) {
+    if (loop_stack[i].type != 's') {
+      return loop_stack[i].id;
+    }
+  }
+  error("continue statement not within loop");
+  return 0;
 }
 
 /**
@@ -703,8 +723,8 @@ int gen(Node* node) {
   }
   printf("# DEBUG: gen node=%p kind=%d\n", node, node.kind);
   if (node.kind == NodeKind.NK_continue_) {
-      char type = current_loop_type();
-      int id = current_loop_id();
+      char type = current_continue_type();
+      int id = current_continue_id();
       if (type == 'w') {
         printf("  jmp @cond%d\n", id);
       } else if (type == 'f') {
@@ -713,12 +733,14 @@ int gen(Node* node) {
       return 0;
     }
   if (node.kind == NodeKind.NK_break_) {
-      char type = current_loop_type();
-      int id = current_loop_id();
+      char type = current_break_type();
+      int id = current_break_id();
       if (type == 'w') {
         printf("  jmp @break%d\n", id);
       } else if (type == 'f') {
         printf("  jmp @forend%d\n", id);
+      } else if (type == 's') {
+        printf("  jmp @switch_end%d\n", id);
       }
       return 0;
     }
@@ -904,13 +926,73 @@ int gen(Node* node) {
       printf("@forend%d\n", label_id);
       return 0;
     }
+  if (node.kind == NodeKind.NK_switch_) {
+      int label_id = next_reg();
+      int cond = gen(node.lhs);
+      
+      int[100] case_vals;
+      int case_count = 0;
+      bool has_default = false;
+      
+      if (node.rhs && node.rhs.kind == NodeKind.NK_block) {
+        for (NodeList* curr = &node.rhs.statements; curr && curr.value; curr = curr.next) {
+          if (curr.value.kind == NodeKind.NK_case_) {
+            case_vals[case_count] = curr.value.val;
+            case_count++;
+          } else if (curr.value.kind == NodeKind.NK_default_) {
+            has_default = true;
+          }
+        }
+      }
+      
+      for (int i = 0; i < case_count; i++) {
+        int comp = next_reg();
+        printf("  %%t%d =w ceqw %%t%d, %d\n", comp, cond, case_vals[i]);
+        set_reg_type(comp, 'w');
+        
+        int branch_label = next_reg();
+        if (i == case_count - 1) {
+          if (has_default) {
+            printf("  jnz %%t%d, @switch%d_case_%d, @switch%d_default\n", comp, label_id, case_vals[i], label_id);
+          } else {
+            printf("  jnz %%t%d, @switch%d_case_%d, @switch_end%d\n", comp, label_id, case_vals[i], label_id);
+          }
+        } else {
+          printf("  jnz %%t%d, @switch%d_case_%d, @switch%d_check%d\n", comp, label_id, case_vals[i], label_id, branch_label);
+          printf("@switch%d_check%d\n", label_id, branch_label);
+        }
+      }
+      
+      if (case_count == 0) {
+        if (has_default) {
+          printf("  jmp @switch%d_default\n", label_id);
+        } else {
+          printf("  jmp @switch_end%d\n", label_id);
+        }
+      }
+      
+      push_loop('s', label_id);
+      int body_val = gen(node.rhs);
+      pop_loop();
+      
+      printf("@switch_end%d\n", label_id);
+      return body_val;
+    }
   if (node.kind == NodeKind.NK_block) {
       int ret = 0;
+      bool dead = false;
       NodeList* stmts = &node.statements;
       while (stmts) {
-        ret = gen(stmts.value);
-        if (ends_with_return(stmts.value)) {
-          break;
+        if (stmts.value) {
+          if (stmts.value.kind == NodeKind.NK_case_ || stmts.value.kind == NodeKind.NK_default_) {
+            dead = false;
+          }
+          if (!dead) {
+            ret = gen(stmts.value);
+            if (ends_with_return(stmts.value)) {
+              dead = true;
+            }
+          }
         }
         stmts = stmts.next;
       }
@@ -1245,6 +1327,16 @@ int gen(Node* node) {
     }
   if (node.kind == NodeKind.NK_post_dec) {
       return gen_inc_dec(node, false, false);
+    }
+  if (node.kind == NodeKind.NK_case_) {
+      int sw_id = current_break_id();
+      printf("@switch%d_case_%d\n", sw_id, node.val);
+      return 0;
+    }
+  if (node.kind == NodeKind.NK_default_) {
+      int sw_id = current_break_id();
+      printf("@switch%d_default\n", sw_id);
+      return 0;
     }
   assert(0);
 }
