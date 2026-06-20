@@ -75,8 +75,8 @@ int main() {
   assert(--i == 10);
   assert(i == 10);
   
-  int x = 10;
-  int* px = &x;
+  int x2 = 10;
+  int* px = &x2;
   int* px2 = px;
   px++;
   assert(px - px2 == 1);
