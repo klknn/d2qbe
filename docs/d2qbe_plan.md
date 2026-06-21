@@ -44,6 +44,15 @@ These features require transforming D syntax into basic pointer/structure operat
 * **Syntax**: `static if (T.sizeof == 4) { ... }`
 * **Implementation**: Parse the conditional compile-time expression, evaluate it, and conditionally parse only the active branch.
 
+### 2.4 Floating Point Support (`float` and `double` types)
+* **Syntax**: `float f = 1.0f;`
+* **Behavior**: In D, floating-point variables (`float`, `double`) are default-initialized to `NaN` (IEEE 754 NaN) if no explicit initializer is provided (and not initialized to `void`).
+* **Implementation**:
+  - Add `float` and `double` to parsed types.
+  - Map `float` to QBE `s` (single) and `double` to QBE `d` (double).
+  - Implement NaN constant evaluation and emission (e.g. `$nan` or custom data representation for NaN floating-point values in BSS/data).
+  - Implement float arithmetic (`adds`, `addd`, `subs`, etc.) and comparisons.
+
 ---
 
 ## Phase 3: Advanced Compiler Architecture (Difficulty: 4/5 to 5/5)
