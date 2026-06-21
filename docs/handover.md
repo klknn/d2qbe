@@ -176,3 +176,12 @@ To ensure the backend compiler `dqbe` compiles successfully under self-hosting (
 * **No Self-Assignments**: Self-assignments (e.g. `+=`, `-=`, `*=`) are not supported. Use full expansions (e.g. `x = x + 1`) instead.
 * **No Global Array Literals**: Global array literal initializers (e.g. `const char*[6] arr = [...]`) cannot be parsed by the bootstrap compiler. Use helper functions with `if/else` or `switch` to return the values instead.
 
+### 6.5 Self-Hosting and Bootstrapping Float Support Constraints
+* **No Native `long` Type Support**: The bootstrap compiler `d2qbe` does not support `long` type. Writing `long* bits = ...` is parsed as an expression binary multiplication (`long * bits`), leading to compilation errors (e.g., `lvalue expected`).
+  * *Workaround*: Define `alias long = int;` inside the self-host header block template (`test/self_host_dqbe.sh`) so `d2qbe` parses it as `int` under self-hosting (which is safe for bitwise extraction), while allowing the production compiler to build it as a native 64-bit integer.
+* **Explicit `strtod` Declaration Required**: Calling C's `strtod` to parse float literals without an explicit declaration makes the bootstrap compiler default the return type to `int` (`'w'` type in QBE), resulting in all compiled float literals generating as `0`.
+  * *Workaround*: Always declare `extern (C) double strtod(const(char)*, void*);` in the self-host header block.
+* **Custom Enum Types in Overload Resolution**: The bootstrap compiler's overload resolution expects custom types (such as enums like `TokenKind`) to be pointers (register type `'l'`). Passing them by value as integers (`'w'`) causes overload resolution to fail and fall back to unmangled names.
+  * *Workaround*: Define function signatures (e.g. `new_token` or `consume_kind`) taking custom enum types using `int` instead of the enum type. D implicitly converts enum members to integers, so this is 100% type-safe and fully compatible.
+
+
