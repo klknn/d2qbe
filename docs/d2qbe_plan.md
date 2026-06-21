@@ -114,3 +114,31 @@ We will support general template blocks (`template Name(T) { ... }`) and eponymo
 * **Implementation**:
   - Rename the eponymous member (the member matching the template name, e.g., `struct MyTemplate` or `void MyTemplate(...)`) inside the instantiated block to a mangled name `MyTemplate_int` or `MyTemplate_char` to avoid collisions across different instantiations.
   - Resolve the instantiation expression `MyTemplate!int` directly to that mangled name.
+
+---
+
+## Phase 5: Floating Point Support (Difficulty: 3/5)
+This phase introduces support for D `float` and `double` types and floating-point arithmetic.
+
+### 5.1 Type Parsing & Size/Alignment
+* **Syntax**: `float`, `double`
+* **Implementation**:
+  - Register `float` and `double` as base type names in the parser.
+  - Implement size (4 bytes for `float`, 8 bytes for `double`) and alignment (4 for `float`, 8 for `double`) logic in `get_type_size` and `get_type_alignment`.
+  - Extend type properties `float.sizeof`, `double.sizeof`, `float.alignof`, `double.alignof`.
+
+### 5.2 Tokenizing and Parsing float/double Literals
+* **Syntax**: `3.14`, `1.0f`, `0.5F`, `-2.3e-4`
+* **Implementation**:
+  - Update the tokenizer to recognize numbers containing a decimal point `.` or exponent (`e`/`E`), optionally suffixed with `f` or `F`.
+  - Parse float literals into AST nodes (`NK_num` or introduce `NK_float_num` containing float value representation).
+  - Since our AST `Node` struct currently stores `int val`, we can store float constants as strings or double values (e.g. adding a `double float_val` or using string literal storage).
+
+### 5.3 Code Generation for Float Registers & Math
+* **Implementation**:
+  - Map D `float` to QBE register type `s` (single precision).
+  - Map D `double` to QBE register type `d` (double precision).
+  - Emit QBE float literals with `s_` and `d_` prefixes (e.g., `s_3.14`).
+  - Generate float arithmetic instructions (`add`, `sub`, `mul`, `div`) using `s` or `d` type tags.
+  - Generate float comparison instructions (`ceqs`, `ceqd`, `cnes`, `cned`, `clts`, `cltd`, `cles`, `cled`, `cgts`, `cgtd`, `cges`, `cged`).
+  - Support casting between integers and floats using QBE conversions (`stosi`, `dtosi`, `swtof`, `sltof`).

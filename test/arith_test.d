@@ -170,6 +170,17 @@ int main() {
     assert(tern_sl.length == 3);
     assert(tern_sl[0] == 200);
 
+    // Float and double tests
+    float f1 = 1.5f;
+    float f2 = 2.5f;
+    float f3 = f1 + f2;
+    assert(f3 > 3.9f && f3 < 4.1f);
+
+    double d1 = 10.0;
+    double d2 = 3.0;
+    double d3 = d1 / d2;
+    assert(d3 > 3.33 && d3 < 3.34);
+
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;
 }

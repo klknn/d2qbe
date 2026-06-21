@@ -485,7 +485,124 @@ int gen_binop(Node* node, const char* binop) {
   int l = gen(node.lhs);
   int r = gen(node.rhs);
   int res = next_reg();
-  printf("  %%t%d =w %s %%t%d, %%t%d\n", res, binop, l, r);
+  char qbe_type = get_reg_type(l);
+  if (qbe_type != 'w' && qbe_type != 'l' && qbe_type != 's' && qbe_type != 'd') {
+    qbe_type = 'w';
+  }
+  printf("  %%t%d =%c %s %%t%d, %%t%d\n", res, qbe_type, binop, l, r);
+  set_reg_type(res, qbe_type);
+  return res;
+}
+
+int gen_comparison(Node* node, const char* op) {
+  int l = gen(node.lhs);
+  int r = gen(node.rhs);
+  int res = next_reg();
+  
+  char l_type = get_reg_type(l);
+  char r_type = get_reg_type(r);
+  
+  char comp_type = 'w';
+  if (l_type == 'd' || r_type == 'd') comp_type = 'd';
+  else if (l_type == 's' || r_type == 's') comp_type = 's';
+  else if (l_type == 'l' || r_type == 'l') comp_type = 'l';
+  
+  if (comp_type == 'l') {
+    if (l_type == 'w') {
+      int ext_res = next_reg();
+      printf("  %%t%d =l extsw %%t%d\n", ext_res, l);
+      set_reg_type(ext_res, 'l');
+      l = ext_res;
+    }
+    if (r_type == 'w') {
+      int ext_res = next_reg();
+      printf("  %%t%d =l extsw %%t%d\n", ext_res, r);
+      set_reg_type(ext_res, 'l');
+      r = ext_res;
+    }
+  } else if (comp_type == 'd') {
+    if (l_type == 's') {
+      int ext_res = next_reg();
+      printf("  %%t%d =d exts %%t%d\n", ext_res, l);
+      set_reg_type(ext_res, 'd');
+      l = ext_res;
+    } else if (l_type == 'w') {
+      int ext_res = next_reg();
+      printf("  %%t%d =d swtof %%t%d\n", ext_res, l);
+      set_reg_type(ext_res, 'd');
+      l = ext_res;
+    } else if (l_type == 'l') {
+      int ext_res = next_reg();
+      printf("  %%t%d =d sltof %%t%d\n", ext_res, l);
+      set_reg_type(ext_res, 'd');
+      l = ext_res;
+    }
+    if (r_type == 's') {
+      int ext_res = next_reg();
+      printf("  %%t%d =d exts %%t%d\n", ext_res, r);
+      set_reg_type(ext_res, 'd');
+      r = ext_res;
+    } else if (r_type == 'w') {
+      int ext_res = next_reg();
+      printf("  %%t%d =d swtof %%t%d\n", ext_res, r);
+      set_reg_type(ext_res, 'd');
+      r = ext_res;
+    } else if (r_type == 'l') {
+      int ext_res = next_reg();
+      printf("  %%t%d =d sltof %%t%d\n", ext_res, r);
+      set_reg_type(ext_res, 'd');
+      r = ext_res;
+    }
+  } else if (comp_type == 's') {
+    if (l_type == 'd') {
+      int ext_res = next_reg();
+      printf("  %%t%d =s truncd %%t%d\n", ext_res, l);
+      set_reg_type(ext_res, 's');
+      l = ext_res;
+    } else if (l_type == 'w') {
+      int ext_res = next_reg();
+      printf("  %%t%d =s swtof %%t%d\n", ext_res, l);
+      set_reg_type(ext_res, 's');
+      l = ext_res;
+    } else if (l_type == 'l') {
+      int ext_res = next_reg();
+      printf("  %%t%d =s sltof %%t%d\n", ext_res, l);
+      set_reg_type(ext_res, 's');
+      l = ext_res;
+    }
+    if (r_type == 'd') {
+      int ext_res = next_reg();
+      printf("  %%t%d =s truncd %%t%d\n", ext_res, r);
+      set_reg_type(ext_res, 's');
+      r = ext_res;
+    } else if (r_type == 'w') {
+      int ext_res = next_reg();
+      printf("  %%t%d =s swtof %%t%d\n", ext_res, r);
+      set_reg_type(ext_res, 's');
+      r = ext_res;
+    } else if (r_type == 'l') {
+      int ext_res = next_reg();
+      printf("  %%t%d =s sltof %%t%d\n", ext_res, r);
+      set_reg_type(ext_res, 's');
+      r = ext_res;
+    }
+  }
+  
+  if (comp_type == 's' || comp_type == 'd') {
+    printf("  %%t%d =w c%s%c %%t%d, %%t%d\n", res, op, comp_type, l, r);
+  } else if (comp_type == 'l') {
+    if (strcmp(op, "eq") == 0 || strcmp(op, "ne") == 0) {
+      printf("  %%t%d =w c%sl %%t%d, %%t%d\n", res, op, l, r);
+    } else {
+      printf("  %%t%d =w cs%sl %%t%d, %%t%d\n", res, op, l, r);
+    }
+  } else {
+    if (strcmp(op, "eq") == 0 || strcmp(op, "ne") == 0) {
+      printf("  %%t%d =w c%sw %%t%d, %%t%d\n", res, op, l, r);
+    } else {
+      printf("  %%t%d =w cs%sw %%t%d, %%t%d\n", res, op, l, r);
+    }
+  }
   set_reg_type(res, 'w');
   return res;
 }
@@ -504,6 +621,17 @@ void get_expr_type(Node* node, Type* out_type) {
     return;
   }
   if (node.kind == NodeKind.NK_num) {
+    *out_type = t;
+    return;
+  }
+  if (node.kind == NodeKind.NK_float_num) {
+    t.name = "double";
+    if (node.ident.len > 0) {
+      char last = node.ident.str[node.ident.len - 1];
+      if (last == 'f' || last == 'F') {
+        t.name = "float";
+      }
+    }
     *out_type = t;
     return;
   }
@@ -823,6 +951,12 @@ int emit_load(int addr_reg, Type* t) {
   if (t.ptr_depth > 0) {
     printf("  %%t%d =l loadl %%t%d\n", ret, addr_reg);
     set_reg_type(ret, 'l');
+  } else if (strcmp(t.name, "float") == 0) {
+    printf("  %%t%d =s loads %%t%d\n", ret, addr_reg);
+    set_reg_type(ret, 's');
+  } else if (strcmp(t.name, "double") == 0) {
+    printf("  %%t%d =d loadd %%t%d\n", ret, addr_reg);
+    set_reg_type(ret, 'd');
   } else if (size == 1) {
     printf("  %%t%d =w loadub %%t%d\n", ret, addr_reg);
     set_reg_type(ret, 'w');
@@ -853,6 +987,10 @@ void emit_store(int val_reg, int addr_reg, Type* t) {
       val_reg = ext_res;
     }
     printf("  storel %%t%d, %%t%d\n", val_reg, addr_reg);
+  } else if (strcmp(t.name, "float") == 0) {
+    printf("  stores %%t%d, %%t%d\n", val_reg, addr_reg);
+  } else if (strcmp(t.name, "double") == 0) {
+    printf("  stored %%t%d, %%t%d\n", val_reg, addr_reg);
   } else if (size == 1) {
     printf("  storeb %%t%d, %%t%d\n", val_reg, addr_reg);
   } else if (size == 4) {
@@ -992,6 +1130,19 @@ int gen(Node* node) {
       int res = next_reg();
       printf("  %%t%d =w copy %d\n", res, node.val);
       set_reg_type(res, 'w');
+      return res;
+    }
+  if (node.kind == NodeKind.NK_float_num) {
+      Type t;
+      get_expr_type(node, &t);
+      char qbe_type = (strcmp(t.name, "float") == 0) ? 's' : 'd';
+      int res = next_reg();
+      int lit_len = node.ident.len;
+      if (lit_len > 0 && (node.ident.str[lit_len - 1] == 'f' || node.ident.str[lit_len - 1] == 'F')) {
+        lit_len--;
+      }
+      printf("  %%t%d =%c copy %c_%.*s\n", res, qbe_type, qbe_type, lit_len, node.ident.str);
+      set_reg_type(res, qbe_type);
       return res;
     }
   if (node.kind == NodeKind.NK_lvar) {
@@ -1166,15 +1317,26 @@ int gen(Node* node) {
   if (node.kind == NodeKind.NK_gvar_decl) {
       int size = get_type_size(&node.type);
       printf("data $%.*s = ", node.ident.len, node.ident.str);
-      if (node.lhs && node.lhs.kind == NodeKind.NK_num) {
-        char c = 'w';
-        if (node.type.ptr_depth > 0) {
-          c = 'l';
+      if (node.lhs) {
+        if (node.lhs.kind == NodeKind.NK_num) {
+          char c = 'w';
+          if (node.type.ptr_depth > 0) {
+            c = 'l';
+          }
+          if (strcmp(node.type.name, "char") == 0 || strcmp(node.type.name, "bool") == 0) {
+            c = 'b';
+          }
+          printf("{ %c %d }\n", c, node.lhs.val);
+        } else if (node.lhs.kind == NodeKind.NK_float_num) {
+          char c = (strcmp(node.type.name, "float") == 0) ? 's' : 'd';
+          int lit_len = node.lhs.ident.len;
+          if (lit_len > 0 && (node.lhs.ident.str[lit_len - 1] == 'f' || node.lhs.ident.str[lit_len - 1] == 'F')) {
+            lit_len--;
+          }
+          printf("{ %c %c_%.*s }\n", c, c, lit_len, node.lhs.ident.str);
+        } else {
+          printf("{ z %d }\n", size);
         }
-        if (strcmp(node.type.name, "char") == 0 || strcmp(node.type.name, "bool") == 0) {
-          c = 'b';
-        }
-        printf("{ %c %d }\n", c, node.lhs.val);
       } else {
         printf("{ z %d }\n", size);
       }
@@ -1192,12 +1354,34 @@ int gen(Node* node) {
       char tgt_char = 'w';
       if (node.type.ptr_depth > 0) {
         tgt_char = 'l';
+      } else if (strcmp(node.type.name, "float") == 0) {
+        tgt_char = 's';
+      } else if (strcmp(node.type.name, "double") == 0) {
+        tgt_char = 'd';
       }
       char src_char = get_reg_type(lhs);
-      if (src_char != 'w' && src_char != 'l') src_char = 'w';
+      if (src_char != 'w' && src_char != 'l' && src_char != 's' && src_char != 'd') {
+        src_char = 'w';
+      }
       int res = next_reg();
       if (tgt_char == src_char) {
         printf("  %%t%d =%c copy %%t%d\n", res, tgt_char, lhs);
+      } else if (src_char == 's' && tgt_char == 'd') {
+        printf("  %%t%d =d exts %%t%d\n", res, lhs);
+      } else if (src_char == 'd' && tgt_char == 's') {
+        printf("  %%t%d =s truncd %%t%d\n", res, lhs);
+      } else if ((src_char == 'w' || src_char == 'l') && (tgt_char == 's' || tgt_char == 'd')) {
+        if (src_char == 'w') {
+          printf("  %%t%d =%c swtof %%t%d\n", res, tgt_char, lhs);
+        } else {
+          printf("  %%t%d =%c sltof %%t%d\n", res, tgt_char, lhs);
+        }
+      } else if ((src_char == 's' || src_char == 'd') && (tgt_char == 'w' || tgt_char == 'l')) {
+        if (src_char == 's') {
+          printf("  %%t%d =%c stosi %%t%d\n", res, tgt_char, lhs);
+        } else {
+          printf("  %%t%d =%c dtosi %%t%d\n", res, tgt_char, lhs);
+        }
       } else if (tgt_char == 'l') {
         printf("  %%t%d =l extsw %%t%d\n", res, lhs);
       } else {
@@ -1228,6 +1412,10 @@ int gen(Node* node) {
         char fn_ret_type = 'w';
         if (current_fn.return_type.ptr_depth > 0) {
           fn_ret_type = 'l';
+        } else if (strcmp(current_fn.return_type.name, "float") == 0) {
+          fn_ret_type = 's';
+        } else if (strcmp(current_fn.return_type.name, "double") == 0) {
+          fn_ret_type = 'd';
         }
         if (fn_ret_type == 'l' && lhs_type == 'w') {
           int ext_res = next_reg();
@@ -1412,8 +1600,14 @@ int gen(Node* node) {
       }
 
       char ret_type = 'w';
-      if (fs && fs.return_type.ptr_depth > 0) {
-        ret_type = 'l';
+      if (fs) {
+        if (fs.return_type.ptr_depth > 0) {
+          ret_type = 'l';
+        } else if (strcmp(fs.return_type.name, "float") == 0) {
+          ret_type = 's';
+        } else if (strcmp(fs.return_type.name, "double") == 0) {
+          ret_type = 'd';
+        }
       }
       int res = next_reg();
       printf("  %%t%d =%c call $%.*s(", res, ret_type, mangled_func_len, mangled_func_name);
@@ -1422,7 +1616,7 @@ int gen(Node* node) {
           printf("..., ");
         }
         char c = get_reg_type(args_vars[i]);
-        if (c != 'w' && c != 'l') c = 'w';
+        if (c != 'w' && c != 'l' && c != 's' && c != 'd') c = 'w';
         printf("%c %%t%d", c, args_vars[i]);
         if (i != n_arg - 1) {
           printf(", ");
@@ -1449,6 +1643,10 @@ int gen(Node* node) {
       const(char)* ret_type_str = "w";
       if (node.return_type.ptr_depth > 0) {
         ret_type_str = "l";
+      } else if (strcmp(node.return_type.name, "float") == 0) {
+        ret_type_str = "s";
+      } else if (strcmp(node.return_type.name, "double") == 0) {
+        ret_type_str = "d";
       }
       printf("export function %s $%.*s(", ret_type_str, node.ident.len, node.ident.str);
       for (int i = 0; node.params[i]; ++i) {
@@ -1457,6 +1655,10 @@ int gen(Node* node) {
         const(char)* t_str = "w";
         if (t.ptr_depth > 0) {
           t_str = "l";
+        } else if (strcmp(t.name, "float") == 0) {
+          t_str = "s";
+        } else if (strcmp(t.name, "double") == 0) {
+          t_str = "d";
         }
         printf("%s %%%.*s", t_str, p.len, p.str);
         if (node.params[i + 1]) {
@@ -1619,16 +1821,16 @@ int gen(Node* node) {
       return gen_binop(node, "sar");
     }
   if (node.kind == NodeKind.NK_lt_op) {
-      return gen_binop(node, "csltw");
+      return gen_comparison(node, "lt");
     }
   if (node.kind == NodeKind.NK_le) {
-      return gen_binop(node, "cslew");
+      return gen_comparison(node, "le");
     }
   if (node.kind == NodeKind.NK_eq) {
-      return gen_binop(node, "ceqw");
+      return gen_comparison(node, "eq");
     }
   if (node.kind == NodeKind.NK_ne) {
-      return gen_binop(node, "cnew");
+      return gen_comparison(node, "ne");
     }
   if (node.kind == NodeKind.NK_logical_and) {
       int addr = next_reg();

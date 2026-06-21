@@ -28,6 +28,18 @@ for f in source/d2qbe/tokenize.d source/d2qbe/parse.d source/d2qbe/codegen.d sou
   grep -v '^import ' "$f" | grep -v '^module ' >> test/self_host.d
 done
 
+# Strip comments and empty lines to reduce file size
+python3 -c "
+import re
+with open('test/self_host.d', 'r') as f:
+    content = f.read()
+content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
+content = re.sub(r'//.*', '', content)
+content = '\n'.join([l for l in content.split('\n') if l.strip()])
+with open('test/self_host.d', 'w') as f:
+    f.write(content)
+"
+
 echo "Compiling self_host.d using bootstrap compiler..."
 ./d2qbe "$(cat test/self_host.d)" > test/self_host.s
 

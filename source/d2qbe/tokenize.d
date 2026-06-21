@@ -12,6 +12,7 @@ enum TokenKind {
   TK_reserved,
   TK_identifier,
   TK_num,
+  TK_float_literal,
   TK_str_literal,
   TK_eof,
 }
@@ -335,6 +336,12 @@ Token* tokenize(char* p) {
     }
 
     if (isdigit(*p)) {
+      int fl_len = parse_float_literal_length(p);
+      if (fl_len > 0) {
+        cur = new_token(TokenKind.TK_float_literal, cur, p, fl_len);
+        p = p + fl_len;
+        continue;
+      }
       cur = new_token(TokenKind.TK_num, cur, p, 0);
       cur.val = cast(int) strtol(p, &p, 10);
       cur.len = cast(int)(p - cur.str);
@@ -348,4 +355,50 @@ Token* tokenize(char* p) {
 
   Token* _ = new_token(TokenKind.TK_eof, cur, p, 1);
   return head.next;
+}
+
+int parse_float_literal_length(const(char)* p) {
+  const(char)* s = p;
+  if (!isdigit(*s)) return 0;
+  
+  while (isdigit(*s)) {
+    s++;
+  }
+  
+  bool is_float = false;
+  
+  if (*s == '.') {
+    if (*(s + 1) == '.') {
+      return 0;
+    }
+    is_float = true;
+    s++;
+    while (isdigit(*s)) {
+      s++;
+    }
+  }
+  
+  if (*s == 'e' || *s == 'E') {
+    is_float = true;
+    s++;
+    if (*s == '+' || *s == '-') {
+      s++;
+    }
+    if (!isdigit(*s)) {
+      return 0;
+    }
+    while (isdigit(*s)) {
+      s++;
+    }
+  }
+  
+  if (*s == 'f' || *s == 'F') {
+    is_float = true;
+    s++;
+  }
+  
+  if (is_float) {
+    return cast(int)(s - p);
+  }
+  return 0;
 }

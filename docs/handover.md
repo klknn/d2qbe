@@ -51,8 +51,13 @@ This document is for the next AI agent or developer taking over the development 
   - Support for slice indexing (`slice[i]`) and slice creation expressions (`array[start .. end]` or pointer/slice slicing).
 - **Ternary Operator (`cond ? then : else`)**: Completed & Committed.
   - Supports parsing and compiling ternary expressions for scalars, slices, and structs. Allocates a temporary variable on the stack to hold the result of the evaluated branch and returns its address.
+- **Floating Point Support (`float`, `double`)**: Completed & Committed.
+  - Supports `float` (32-bit `s` type in QBE) and `double` (64-bit `d` type in QBE) parsing, sizing, and alignment.
+  - Tokenizes and parses float/double literals (e.g. `3.14f`, `0.5e-2`), preserving them as formatted QBE constants.
+  - Generates code for floating-point arithmetic (`add`, `sub`, `mul`, `div`), comparisons (`ceq[sd]`, `cne[sd]`, `clt[sd]`, `cle[sd]`, `cgt[sd]`, `cge[sd]`), return values, and parameter signatures.
+  - Implements type-promoting comparisons and casts between float/double and integers using QBE conversion instructions (`exts`, `truncd`, `swtof`, `sltof`, `stosi`, `dtosi`).
 - **Classic Minic Snippet Tests**:
-  - `test/collatz_test.d` (collatz conjecture), `test/prime_test.d` (prime numbers), `test/queen_test.d` (eight queens), `test/switch_test.d` (switch/case branches), `test/multidim_test.d` (multidimensional array indexing/sizing), `test/template_test.d` (struct and function templates), and structured slice/member function/ternary integration tests inside `test/arith_test.d` are fully verified under self-hosting.
+  - `test/collatz_test.d` (collatz conjecture), `test/prime_test.d` (prime numbers), `test/queen_test.d` (eight queens), `test/switch_test.d` (switch/case branches), `test/multidim_test.d` (multidimensional array indexing/sizing), `test/template_test.d` (struct and function templates), and structured slice/member function/ternary/float integration tests inside `test/arith_test.d` are fully verified under self-hosting.
 
 ---
 

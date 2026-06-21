@@ -57,6 +57,7 @@ enum NodeKind {
   NK_default_, // default:
   NK_slice, // x[start .. end]
   NK_ternary, // cond ? then : else
+  NK_float_num, // float or double literal
 }
 
 struct Type {
@@ -244,6 +245,8 @@ void init_types() {
   register_type("char");
   register_type("bool");
   register_type("void");
+  register_type("float");
+  register_type("double");
 }
 
 /**
@@ -259,6 +262,8 @@ int get_type_size(Type* t) {
   } else {
     base_size = 4;
     if (strcmp(t.name, "int") == 0) base_size = 4;
+    else if (strcmp(t.name, "float") == 0) base_size = 4;
+    else if (strcmp(t.name, "double") == 0) base_size = 8;
     else if (strcmp(t.name, "char") == 0 || strcmp(t.name, "bool") == 0) base_size = 1;
     else if (strcmp(t.name, "void") == 0) base_size = 1;
     else {
@@ -285,6 +290,8 @@ int get_type_alignment(Type* t) {
   if (t.is_slice) return 8;
   if (t.ptr_depth > 0) return 8;
   if (strcmp(t.name, "int") == 0) return 4;
+  if (strcmp(t.name, "float") == 0) return 4;
+  if (strcmp(t.name, "double") == 0) return 8;
   if (strcmp(t.name, "char") == 0 || strcmp(t.name, "bool") == 0) return 1;
   StructType* st = find_struct(t.name);
   if (st) {
@@ -698,6 +705,10 @@ Node* primary() {
     node.lhs = unary();
   } else if (token.kind == TokenKind.TK_str_literal) {
     node = new_node(NodeKind.NK_str_literal);
+    node.ident = token;
+    token = token.next;
+  } else if (token.kind == TokenKind.TK_float_literal) {
+    node = new_node(NodeKind.NK_float_num);
     node.ident = token;
     token = token.next;
   } else if (is_type_expression_start(token)) {
@@ -2288,6 +2299,33 @@ unittest {
   assert(strncmp(tern.rhs.cond.ident.str, "cond", 4) == 0);
   assert(tern.rhs.then.kind == NodeKind.NK_num && tern.rhs.then.val == 10);
   assert(tern.rhs.else_.kind == NodeKind.NK_num && tern.rhs.else_.val == 20);
+
+  // Test float and double type parsing, sizeof, and alignof
+  user_input = cast(char*) "float x; double y; int fs = float.sizeof; int da = double.alignof;";
+  token = tokenize(user_input);
+  Node* f1 = stmt();
+  assert(f1 != null && f1.kind == NodeKind.NK_var_decl && strcmp(f1.type.name, "float") == 0);
+  Node* f2 = stmt();
+  assert(f2 != null && f2.kind == NodeKind.NK_var_decl && strcmp(f2.type.name, "double") == 0);
+  
+  Node* f3 = stmt();
+  assert(f3 != null && f3.kind == NodeKind.NK_var_decl && f3.lhs != null && f3.lhs.kind == NodeKind.NK_num && f3.lhs.val == 4);
+  
+  Node* f4 = stmt();
+  assert(f4 != null && f4.kind == NodeKind.NK_var_decl && f4.lhs != null && f4.lhs.kind == NodeKind.NK_num && f4.lhs.val == 8);
+
+  // Test float and double literal parsing
+  user_input = cast(char*) "float a = 3.14f; double b = 0.5e-2;";
+  token = tokenize(user_input);
+  Node* fl1 = stmt();
+  assert(fl1 != null && fl1.kind == NodeKind.NK_var_decl && strcmp(fl1.type.name, "float") == 0);
+  assert(fl1.lhs != null && fl1.lhs.kind == NodeKind.NK_float_num);
+  assert(strncmp(fl1.lhs.ident.str, "3.14f", 5) == 0);
+
+  Node* fl2 = stmt();
+  assert(fl2 != null && fl2.kind == NodeKind.NK_var_decl && strcmp(fl2.type.name, "double") == 0);
+  assert(fl2.lhs != null && fl2.lhs.kind == NodeKind.NK_float_num);
+  assert(strncmp(fl2.lhs.ident.str, "0.5e-2", 6) == 0);
 }
 
 
