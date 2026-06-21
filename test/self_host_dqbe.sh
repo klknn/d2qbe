@@ -18,16 +18,16 @@ extern (C) int strtol(const char* nptr, char** endptr, int base);
 extern (C) int isspace(int c);
 extern (C) int isdigit(int c);
 extern (C) char* strchr(const char* s, int c);
-extern (C) int printf(const char* format, ...);
-extern (C) int fprintf(void* stream, const char* format, ...);
-extern (C) void exit(int status);
+extern (C) int printf(const(char)*, ...);
+extern (C) int fprintf(void*, const(char)*, ...);
+extern (C) void exit(int);
+extern (C) double strtod(const(char)*, void*);
 
 extern (C) void* get_stderr();
 extern (C) void* get_stdin();
 extern (C) void* get_stdout();
 
-alias float = int;
-alias double = long;
+alias long = int;
 enum null = 0;
 EOF
 
