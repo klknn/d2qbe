@@ -1,6 +1,7 @@
 module d2qbe.app;
 
 import core.stdc.stdio;
+import core.stdc.stdlib;
 import core.stdc.string;
 
 import d2qbe.codegen;
@@ -16,8 +17,21 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  user_input = argv[1];
-  token = tokenize(argv[1]);
+  char* input_str = argv[1];
+  FILE* f_in = fopen(argv[1], "r");
+  if (f_in) {
+    fseek(f_in, 0, 2);
+    int size = cast(int) ftell(f_in);
+    fseek(f_in, 0, 0);
+    char* buf = cast(char*) calloc(1, size + 1);
+    int read_bytes = cast(int) fread(buf, 1, size, f_in);
+    buf[read_bytes] = 0;
+    fclose(f_in);
+    input_str = buf;
+  }
+
+  user_input = input_str;
+  token = tokenize(input_str);
   printf("# DEBUG: tokens:\n");
   Token* tok = token;
   while (tok) {

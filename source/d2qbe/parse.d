@@ -101,11 +101,16 @@ struct TypeAlias {
 TypeAlias[100] registered_aliases;
 int registered_aliases_count = 0;
 
+enum MAX_PARAM_SIZE = 10;
+
 struct FunctionSymbol {
   const(char)* name;
+  const(char)* unmangled_name;
+  bool is_extern_c;
   bool is_variadic;
   int num_params;
   Type return_type;
+  Type[MAX_PARAM_SIZE] params_types;
 }
 FunctionSymbol[200] registered_functions;
 int registered_functions_count = 0;
@@ -113,7 +118,7 @@ int registered_functions_count = 0;
 /**
  * Registers a function signature.
  */
-void register_function(const(char)* name, bool is_variadic, int num_params, Type* return_type) {
+void register_function(const(char)* name, const(char)* unmangled_name, bool is_extern_c, bool is_variadic, int num_params, Type* return_type, Type* params_types) {
   for (int i = 0; i < registered_functions_count; i++) {
     if (strcmp(registered_functions[i].name, name) == 0) {
       return;
@@ -121,14 +126,58 @@ void register_function(const(char)* name, bool is_variadic, int num_params, Type
   }
   assert(registered_functions_count < 200, "registered_functions overflow");
   registered_functions[registered_functions_count].name = name;
+  registered_functions[registered_functions_count].unmangled_name = unmangled_name;
+  registered_functions[registered_functions_count].is_extern_c = is_extern_c;
   registered_functions[registered_functions_count].is_variadic = is_variadic;
   registered_functions[registered_functions_count].num_params = num_params;
   registered_functions[registered_functions_count].return_type = *return_type;
+  for (int j = 0; j < num_params; j++) {
+    registered_functions[registered_functions_count].params_types[j] = params_types[j];
+  }
   const(char)* ret_name = return_type.name;
   if (!ret_name) ret_name = "null";
-  printf("# DEBUG: register_function '%s' ret='%s' ptr_depth=%d\n",
-         name, ret_name, return_type.ptr_depth);
+  printf("# DEBUG: register_function '%s' (unmangled='%s') ret='%s' ptr_depth=%d is_extern_c=%d\n",
+         name, unmangled_name, ret_name, return_type.ptr_depth, is_extern_c);
   registered_functions_count++;
+}
+
+char* mangle_function_name(const(char)* base_name, Type* params_types, int num_params, bool is_extern_c) {
+  if (is_extern_c) {
+    char* name = cast(char*) calloc(1, strlen(base_name) + 1);
+    strcpy(name, base_name);
+    return name;
+  }
+  
+  int len = 4 + cast(int) strlen(base_name);
+  for (int i = 0; i < num_params; i++) {
+    len = len + 50;
+  }
+  
+  char* buf = cast(char*) calloc(1, len);
+  strcpy(buf, "_D_");
+  strcat(buf, base_name);
+  
+  for (int i = 0; i < num_params; i++) {
+    strcat(buf, "_");
+    Type* t = &params_types[i];
+    for (int p = 0; p < t.ptr_depth; p++) {
+      strcat(buf, "p");
+    }
+    if (t.is_slice) {
+      strcat(buf, "s");
+    }
+    
+    if (strcmp(t.name, "int") == 0) strcat(buf, "i");
+    else if (strcmp(t.name, "char") == 0) strcat(buf, "c");
+    else if (strcmp(t.name, "bool") == 0) strcat(buf, "b");
+    else if (strcmp(t.name, "void") == 0) strcat(buf, "v");
+    else if (strcmp(t.name, "float") == 0) strcat(buf, "f");
+    else if (strcmp(t.name, "double") == 0) strcat(buf, "d");
+    else {
+      strcat(buf, t.name);
+    }
+  }
+  return buf;
 }
 
 /**
@@ -247,6 +296,7 @@ void init_types() {
   register_type("void");
   register_type("float");
   register_type("double");
+  register_type("FILE");
 }
 
 /**
@@ -441,7 +491,6 @@ NodeList* push_back(NodeList* nl, Node* v) {
   return nl.next;
 }
 
-enum MAX_PARAM_SIZE = 10;
 
 struct Node {
   NodeKind kind;
@@ -461,6 +510,8 @@ struct Node {
   Type[MAX_PARAM_SIZE] params_types; // for NodeKind.NK_defun
   bool is_decl_only; // for NodeKind.NK_defun
   bool is_variadic; // for NodeKind.NK_defun
+  bool is_extern_c; // for NodeKind.NK_defun
+  char* mangled_name; // for NodeKind.NK_defun
 }
 
 Node* expr();
@@ -1383,7 +1434,7 @@ void parse_struct() {
       fn_tok.str = mangled_name;
       fn_tok.len = cast(int) strlen(mangled_name);
       
-      Node* fn = parse_function(&t, fn_tok, name);
+      Node* fn = parse_function(&t, fn_tok, name, false);
       add_to_code(fn);
       continue;
     }
@@ -1760,7 +1811,7 @@ char* resolve_template_instantiation(const(char)* base_name) {
           Token* decl_ident = consume_ident();
           if (!decl_ident) error_at(token.str, "identifier expected in template body");
           if (is_token("(")) {
-            add_to_code(parse_function(&decl_type, decl_ident, null));
+            add_to_code(parse_function(&decl_type, decl_ident, null, false));
           } else {
             Node* gvar = new_node(NodeKind.NK_gvar_decl);
             gvar.type = decl_type;
@@ -1841,10 +1892,11 @@ void parse_enum() {
  * Parses a function declaration or definition.
  * EBNF: defun = Type ident "(" parameters? ")" (stmt | ";")
  */
-Node* parse_function(Type* ret_type, Token* func_name, const(char)* struct_name) {
+Node* parse_function(Type* ret_type, Token* func_name, const(char)* struct_name, bool is_extern_c) {
   Node* node = new_node(NodeKind.NK_defun);
   node.ident = func_name;
   node.return_type = *ret_type;
+  node.is_extern_c = is_extern_c;
   
   expect("(");
   int i = 0;
@@ -1873,9 +1925,18 @@ Node* parse_function(Type* ret_type, Token* func_name, const(char)* struct_name)
     consume(",");
   }
   
-  char* name = cast(char*) calloc(1, func_name.len + 1);
-  memcpy(name, func_name.str, func_name.len);
-  register_function(name, node.is_variadic, i, ret_type);
+  char* original_name = cast(char*) calloc(1, func_name.len + 1);
+  memcpy(original_name, func_name.str, func_name.len);
+  
+  char* mangled;
+  if (is_extern_c || struct_name || strcmp(original_name, "main") == 0) {
+    mangled = original_name;
+  } else {
+    mangled = mangle_function_name(original_name, &node.params_types[0], i, false);
+  }
+  node.mangled_name = mangled;
+  
+  register_function(mangled, original_name, is_extern_c || (struct_name != null), node.is_variadic, i, ret_type, &node.params_types[0]);
 
   if (consume(";")) {
     node.is_decl_only = true;
@@ -1960,6 +2021,20 @@ void parse_top_level() {
     return;
   }
   
+  bool is_extern_c = false;
+  if (is_token("extern")) {
+    while (consume("extern")) {
+      if (consume("(")) {
+        Token* tok = consume_ident();
+        if (!tok || tok.len != 1 || tok.str[0] != 'C') {
+          error_at(token.str, "Expected 'C'");
+        }
+        expect(")");
+      }
+      is_extern_c = true;
+    }
+  }
+  
   if (is_type_name(token.str, token.len) || is_type_start(token)) {
     Type t;
     parse_type(&t);
@@ -1968,11 +2043,12 @@ void parse_top_level() {
       error_at(token.str, "identifier expected at top level");
     }
     if (is_token("(")) {
-      add_to_code(parse_function(&t, ident, null));
+      add_to_code(parse_function(&t, ident, null, is_extern_c));
     } else {
       Node* gvar = new_node(NodeKind.NK_gvar_decl);
       gvar.type = t;
       gvar.ident = ident;
+      gvar.is_extern_c = is_extern_c;
       if (consume("=")) {
         gvar.lhs = expr();
       }
@@ -2188,7 +2264,7 @@ unittest {
   assert(call_node.kind == NodeKind.NK_funcall);
   assert(strncmp(call_node.ident.str, "swap_char", call_node.ident.len) == 0);
   assert(registered_functions_count == 1);
-  assert(strcmp(registered_functions[0].name, "swap_char") == 0);
+  assert(strcmp(registered_functions[0].unmangled_name, "swap_char") == 0);
   // Test alias parsing and resolution
   registered_aliases_count = 0;
   user_input = cast(char*) "alias myint = int; alias pint = int*;";
@@ -2243,8 +2319,8 @@ unittest {
   token = tokenize(user_input);
   program();
   assert(registered_functions_count == 2);
-  assert(strcmp(registered_functions[0].name, "posix_func") == 0);
-  assert(strcmp(registered_functions[1].name, "other_func") == 0);
+  assert(strcmp(registered_functions[0].unmangled_name, "posix_func") == 0);
+  assert(strcmp(registered_functions[1].unmangled_name, "other_func") == 0);
 
   // Test auto declaration parsing
   user_input = cast(char*) "auto val = 123;";
@@ -2259,14 +2335,14 @@ unittest {
   token = tokenize(user_input);
   program();
   assert(registered_functions_count == 1);
-  assert(strcmp(registered_functions[0].name, "true_func") == 0);
+  assert(strcmp(registered_functions[0].unmangled_name, "true_func") == 0);
 
   registered_functions_count = 0;
   user_input = cast(char*) "static if (3 > 5) { void true_func() {} } else { void false_func() {} }";
   token = tokenize(user_input);
   program();
   assert(registered_functions_count == 1);
-  assert(strcmp(registered_functions[0].name, "false_func") == 0);
+  assert(strcmp(registered_functions[0].unmangled_name, "false_func") == 0);
 
   // Test member function parsing inside struct
   registered_functions_count = 0;
@@ -2326,6 +2402,25 @@ unittest {
   assert(fl2 != null && fl2.kind == NodeKind.NK_var_decl && strcmp(fl2.type.name, "double") == 0);
   assert(fl2.lhs != null && fl2.lhs.kind == NodeKind.NK_float_num);
   assert(strncmp(fl2.lhs.ident.str, "0.5e-2", 6) == 0);
+
+  // Test function overloading parsing and mangling
+  registered_functions_count = 0;
+  user_input = cast(char*) "void my_print(int x) {} void my_print(double y) {} extern (C) void printf(char* f, ...);";
+  token = tokenize(user_input);
+  program();
+  assert(registered_functions_count == 3);
+  
+  FunctionSymbol* fs_printf = find_function("printf");
+  assert(fs_printf != null && fs_printf.is_extern_c);
+  assert(strcmp(fs_printf.name, "printf") == 0);
+  
+  FunctionSymbol* fs1 = find_function("_D_my_print_i");
+  assert(fs1 != null && !fs1.is_extern_c);
+  assert(strcmp(fs1.unmangled_name, "my_print") == 0);
+  
+  FunctionSymbol* fs2 = find_function("_D_my_print_d");
+  assert(fs2 != null && !fs2.is_extern_c);
+  assert(strcmp(fs2.unmangled_name, "my_print") == 0);
 }
 
 
