@@ -79,18 +79,42 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
     int offset = get_temp_offset(arg);
     if (type == 'w') {
       fprintf(f, "  movl -%d(%%rbp), %s\n", offset, reg);
-    } else {
+    } else if (type == 'l') {
       fprintf(f, "  movq -%d(%%rbp), %s\n", offset, reg);
+    } else if (type == 's') {
+      fprintf(f, "  movss -%d(%%rbp), %s\n", offset, reg);
+    } else if (type == 'd') {
+      fprintf(f, "  movsd -%d(%%rbp), %s\n", offset, reg);
     }
   } else if (arg[0] == '$') {
     // Global address
     fprintf(f, "  leaq %s(%%rip), %s\n", arg + 1, reg);
   } else {
-    // Number literal
-    if (type == 'w') {
-      fprintf(f, "  movl $%s, %s\n", arg, reg);
+    // Number literal or Float literal
+    if (strncmp(arg, "s_", 2) == 0) {
+      double val = strtod(arg + 2, null);
+      float val_f = cast(float) val;
+      int* bits = cast(int*) &val_f;
+      fprintf(f, "  movl $%u, %%eax\n", *bits);
+      fprintf(f, "  movd %%eax, %s\n", reg);
+    } else if (strncmp(arg, "d_", 2) == 0) {
+      double val = strtod(arg + 2, null);
+      long* bits = cast(long*) &val;
+      fprintf(f, "  movabsq $%ld, %%rax\n", *bits);
+      fprintf(f, "  movq %%rax, %s\n", reg);
     } else {
-      fprintf(f, "  movq $%s, %s\n", arg, reg);
+      // Raw integer literal
+      if (type == 'w') {
+        fprintf(f, "  movl $%s, %s\n", arg, reg);
+      } else if (type == 'l') {
+        fprintf(f, "  movq $%s, %s\n", arg, reg);
+      } else if (type == 's') {
+        fprintf(f, "  movl $%s, %%eax\n", arg);
+        fprintf(f, "  movd %%eax, %s\n", reg);
+      } else if (type == 'd') {
+        fprintf(f, "  movabsq $%s, %%rax\n", arg);
+        fprintf(f, "  movq %%rax, %s\n", reg);
+      }
     }
   }
 }
@@ -99,8 +123,12 @@ void store_reg(const char* dest, const char* reg, int type, FILE* f) {
   int offset = get_temp_offset(dest);
   if (type == 'w') {
     fprintf(f, "  movl %s, -%d(%%rbp)\n", reg, offset);
-  } else {
+  } else if (type == 'l') {
     fprintf(f, "  movq %s, -%d(%%rbp)\n", reg, offset);
+  } else if (type == 's') {
+    fprintf(f, "  movss %s, -%d(%%rbp)\n", reg, offset);
+  } else if (type == 'd') {
+    fprintf(f, "  movsd %s, -%d(%%rbp)\n", reg, offset);
   }
 }
 
@@ -121,6 +149,18 @@ const(char)* get_arg_reg_64(int idx) {
   if (idx == 3) return "%rcx";
   if (idx == 4) return "%r8";
   if (idx == 5) return "%r9";
+  return null;
+}
+
+const(char)* get_float_arg_reg(int idx) {
+  if (idx == 0) return "%xmm0";
+  if (idx == 1) return "%xmm1";
+  if (idx == 2) return "%xmm2";
+  if (idx == 3) return "%xmm3";
+  if (idx == 4) return "%xmm4";
+  if (idx == 5) return "%xmm5";
+  if (idx == 6) return "%xmm6";
+  if (idx == 7) return "%xmm7";
   return null;
 }
 
@@ -149,8 +189,12 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
     if (inst.arg1) {
       if (fn_ret_type == 'w') {
         load_arg(inst.arg1, "%eax", 'w', f);
-      } else {
+      } else if (fn_ret_type == 'l') {
         load_arg(inst.arg1, "%rax", 'l', f);
+      } else if (fn_ret_type == 's') {
+        load_arg(inst.arg1, "%xmm0", 's', f);
+      } else if (fn_ret_type == 'd') {
+        load_arg(inst.arg1, "%xmm0", 'd', f);
       }
     }
     fprintf(f, "  leave\n");
@@ -160,7 +204,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
   
   if (inst.kind == InstKind.IK_store) {
     // storew %val, %ptr
-    char type = inst.op[5]; // 'b', 'h', 'w', 'l'
+    char type = inst.op[5]; // 'b', 'h', 'w', 'l', 's', 'd'
     if (type == 'b') {
       load_arg(inst.arg1, "%edx", 'w', f);
       load_arg(inst.arg2, "%rax", 'l', f);
@@ -173,6 +217,14 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
       load_arg(inst.arg1, "%rdx", 'l', f);
       load_arg(inst.arg2, "%rax", 'l', f);
       fprintf(f, "  movq %%rdx, (%%rax)\n");
+    } else if (type == 's') {
+      load_arg(inst.arg1, "%xmm0", 's', f);
+      load_arg(inst.arg2, "%rax", 'l', f);
+      fprintf(f, "  movss %%xmm0, (%%rax)\n");
+    } else if (type == 'd') {
+      load_arg(inst.arg1, "%xmm0", 'd', f);
+      load_arg(inst.arg2, "%rax", 'l', f);
+      fprintf(f, "  movsd %%xmm0, (%%rax)\n");
     }
     return;
   }
@@ -180,11 +232,26 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
   if (inst.kind == InstKind.IK_call) {
     // Void call
     // Set up parameters
-    for (int i = 0; i < inst.call_args_count && i < 6; i++) {
-      if (inst.call_args[i].type == 'w') {
-        load_arg(inst.call_args[i].name, get_arg_reg_32(i), 'w', f);
-      } else {
-        load_arg(inst.call_args[i].name, get_arg_reg_64(i), 'l', f);
+    int int_arg_idx = 0;
+    int float_arg_idx = 0;
+    for (int i = 0; i < inst.call_args_count && i < 20; i++) {
+      char type = inst.call_args[i].type;
+      if (type == 'w') {
+        if (int_arg_idx < 6) {
+          load_arg(inst.call_args[i].name, get_arg_reg_32(int_arg_idx++), 'w', f);
+        }
+      } else if (type == 'l') {
+        if (int_arg_idx < 6) {
+          load_arg(inst.call_args[i].name, get_arg_reg_64(int_arg_idx++), 'l', f);
+        }
+      } else if (type == 's') {
+        if (float_arg_idx < 8) {
+          load_arg(inst.call_args[i].name, get_float_arg_reg(float_arg_idx++), 's', f);
+        }
+      } else if (type == 'd') {
+        if (float_arg_idx < 8) {
+          load_arg(inst.call_args[i].name, get_float_arg_reg(float_arg_idx++), 'd', f);
+        }
       }
     }
     fprintf(f, "  call %s\n", inst.arg1 + 1);
@@ -208,9 +275,15 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
       if (inst.dest_type == 'w') {
         load_arg(inst.arg1, "%eax", 'w', f);
         store_reg(inst.dest, "%eax", 'w', f);
-      } else {
+      } else if (inst.dest_type == 'l') {
         load_arg(inst.arg1, "%rax", 'l', f);
         store_reg(inst.dest, "%rax", 'l', f);
+      } else if (inst.dest_type == 's') {
+        load_arg(inst.arg1, "%xmm0", 's', f);
+        store_reg(inst.dest, "%xmm0", 's', f);
+      } else if (inst.dest_type == 'd') {
+        load_arg(inst.arg1, "%xmm0", 'd', f);
+        store_reg(inst.dest, "%xmm0", 'd', f);
       }
       return;
     }
@@ -223,7 +296,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
     }
     
     if (strncmp(inst.op, "load", 4) == 0) {
-      // loadw, loadub, loadl
+      // loadw, loadub, loadl, loads, loadd
       load_arg(inst.arg1, "%rax", 'l', f);
       if (strcmp(inst.op, "loadub") == 0) {
         fprintf(f, "  movzbl (%%rax), %%eax\n");
@@ -234,24 +307,122 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
       } else if (strcmp(inst.op, "loadl") == 0) {
         fprintf(f, "  movq (%%rax), %%rax\n");
         store_reg(inst.dest, "%rax", 'l', f);
+      } else if (strcmp(inst.op, "loads") == 0) {
+        fprintf(f, "  movss (%%rax), %%xmm0\n");
+        store_reg(inst.dest, "%xmm0", 's', f);
+      } else if (strcmp(inst.op, "loadd") == 0) {
+        fprintf(f, "  movsd (%%rax), %%xmm0\n");
+        store_reg(inst.dest, "%xmm0", 'd', f);
+      }
+      return;
+    }
+    
+    if (strcmp(inst.op, "exts") == 0) {
+      load_arg(inst.arg1, "%xmm0", 's', f);
+      fprintf(f, "  cvtss2sd %%xmm0, %%xmm0\n");
+      store_reg(inst.dest, "%xmm0", 'd', f);
+      return;
+    }
+    
+    if (strcmp(inst.op, "truncd") == 0) {
+      load_arg(inst.arg1, "%xmm0", 'd', f);
+      fprintf(f, "  cvtsd2ss %%xmm0, %%xmm0\n");
+      store_reg(inst.dest, "%xmm0", 's', f);
+      return;
+    }
+    
+    if (strcmp(inst.op, "stosi") == 0) {
+      load_arg(inst.arg1, "%xmm0", 's', f);
+      fprintf(f, "  cvttss2si %%xmm0, %%eax\n");
+      store_reg(inst.dest, "%eax", 'w', f);
+      return;
+    }
+    
+    if (strcmp(inst.op, "dtosi") == 0) {
+      load_arg(inst.arg1, "%xmm0", 'd', f);
+      fprintf(f, "  cvttsd2si %%xmm0, %%eax\n");
+      store_reg(inst.dest, "%eax", 'w', f);
+      return;
+    }
+    
+    if (strcmp(inst.op, "swtof") == 0) {
+      load_arg(inst.arg1, "%eax", 'w', f);
+      if (inst.dest_type == 's') {
+        fprintf(f, "  cvtsi2ss %%eax, %%xmm0\n");
+        store_reg(inst.dest, "%xmm0", 's', f);
+      } else {
+        fprintf(f, "  cvtsi2sd %%eax, %%xmm0\n");
+        store_reg(inst.dest, "%xmm0", 'd', f);
+      }
+      return;
+    }
+    
+    if (strcmp(inst.op, "sltof") == 0) {
+      load_arg(inst.arg1, "%rax", 'l', f);
+      if (inst.dest_type == 's') {
+        fprintf(f, "  cvtsi2ss %%rax, %%xmm0\n");
+        store_reg(inst.dest, "%xmm0", 's', f);
+      } else {
+        fprintf(f, "  cvtsi2sd %%rax, %%xmm0\n");
+        store_reg(inst.dest, "%xmm0", 'd', f);
+      }
+      return;
+    }
+    
+    if (strcmp(inst.op, "cast") == 0) {
+      if (inst.dest_type == 'w') {
+        load_arg(inst.arg1, "%xmm0", 's', f);
+        fprintf(f, "  movd %%xmm0, %%eax\n");
+        store_reg(inst.dest, "%eax", 'w', f);
+      } else if (inst.dest_type == 's') {
+        load_arg(inst.arg1, "%eax", 'w', f);
+        fprintf(f, "  movd %%eax, %%xmm0\n");
+        store_reg(inst.dest, "%xmm0", 's', f);
+      } else if (inst.dest_type == 'l') {
+        load_arg(inst.arg1, "%xmm0", 'd', f);
+        fprintf(f, "  movq %%xmm0, %%rax\n");
+        store_reg(inst.dest, "%rax", 'l', f);
+      } else if (inst.dest_type == 'd') {
+        load_arg(inst.arg1, "%rax", 'l', f);
+        fprintf(f, "  movq %%rax, %%xmm0\n");
+        store_reg(inst.dest, "%xmm0", 'd', f);
       }
       return;
     }
     
     if (strcmp(inst.op, "call") == 0) {
       // Function call with assignment
-      for (int i = 0; i < inst.call_args_count && i < 6; i++) {
-        if (inst.call_args[i].type == 'w') {
-          load_arg(inst.call_args[i].name, get_arg_reg_32(i), 'w', f);
-        } else {
-          load_arg(inst.call_args[i].name, get_arg_reg_64(i), 'l', f);
+      int int_arg_idx = 0;
+      int float_arg_idx = 0;
+      for (int i = 0; i < inst.call_args_count && i < 20; i++) {
+        char type = inst.call_args[i].type;
+        if (type == 'w') {
+          if (int_arg_idx < 6) {
+            load_arg(inst.call_args[i].name, get_arg_reg_32(int_arg_idx++), 'w', f);
+          }
+        } else if (type == 'l') {
+          if (int_arg_idx < 6) {
+            load_arg(inst.call_args[i].name, get_arg_reg_64(int_arg_idx++), 'l', f);
+          }
+        } else if (type == 's') {
+          if (float_arg_idx < 8) {
+            load_arg(inst.call_args[i].name, get_float_arg_reg(float_arg_idx++), 's', f);
+          }
+        } else if (type == 'd') {
+          if (float_arg_idx < 8) {
+            load_arg(inst.call_args[i].name, get_float_arg_reg(float_arg_idx++), 'd', f);
+          }
         }
       }
       fprintf(f, "  call %s\n", inst.arg1 + 1);
       if (inst.dest_type == 'w') {
         store_reg(inst.dest, "%eax", 'w', f);
-      } else {
+      } else if (inst.dest_type == 'l') {
         store_reg(inst.dest, "%rax", 'l', f);
+      } else if (inst.dest_type == 's') {
+        store_reg(inst.dest, "%xmm0", 's', f);
+      } else if (inst.dest_type == 'd') {
+        store_reg(inst.dest, "%xmm0", 'd', f);
       }
       return;
     }
@@ -290,7 +461,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
           fprintf(f, "  sarl %%cl, %%eax\n");
         }
         store_reg(inst.dest, "%eax", 'w', f);
-      } else {
+      } else if (inst.dest_type == 'l') {
         load_arg(inst.arg1, "%rax", 'l', f);
         load_arg(inst.arg2, "%rcx", 'l', f);
         if (strcmp(inst.op, "add") == 0) {
@@ -318,6 +489,32 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
           fprintf(f, "  sarq %%cl, %%rax\n");
         }
         store_reg(inst.dest, "%rax", 'l', f);
+      } else if (inst.dest_type == 's') {
+        load_arg(inst.arg1, "%xmm0", 's', f);
+        load_arg(inst.arg2, "%xmm1", 's', f);
+        if (strcmp(inst.op, "add") == 0) {
+          fprintf(f, "  addss %%xmm1, %%xmm0\n");
+        } else if (strcmp(inst.op, "sub") == 0) {
+          fprintf(f, "  subss %%xmm1, %%xmm0\n");
+        } else if (strcmp(inst.op, "mul") == 0) {
+          fprintf(f, "  mulss %%xmm1, %%xmm0\n");
+        } else if (strcmp(inst.op, "div") == 0) {
+          fprintf(f, "  divss %%xmm1, %%xmm0\n");
+        }
+        store_reg(inst.dest, "%xmm0", 's', f);
+      } else if (inst.dest_type == 'd') {
+        load_arg(inst.arg1, "%xmm0", 'd', f);
+        load_arg(inst.arg2, "%xmm1", 'd', f);
+        if (strcmp(inst.op, "add") == 0) {
+          fprintf(f, "  addsd %%xmm1, %%xmm0\n");
+        } else if (strcmp(inst.op, "sub") == 0) {
+          fprintf(f, "  subsd %%xmm1, %%xmm0\n");
+        } else if (strcmp(inst.op, "mul") == 0) {
+          fprintf(f, "  mulsd %%xmm1, %%xmm0\n");
+        } else if (strcmp(inst.op, "div") == 0) {
+          fprintf(f, "  divsd %%xmm1, %%xmm0\n");
+        }
+        store_reg(inst.dest, "%xmm0", 'd', f);
       }
       return;
     }
@@ -341,6 +538,39 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
       return;
     }
     
+    // Floating point comparisons (ceqs, ceqd, cnes, cned, clts, cltd, cles, cled, cgts, cgtd, cges, cged)
+    if (strcmp(inst.op, "ceqs") == 0 || strcmp(inst.op, "ceqd") == 0 ||
+        strcmp(inst.op, "cnes") == 0 || strcmp(inst.op, "cned") == 0 ||
+        strcmp(inst.op, "clts") == 0 || strcmp(inst.op, "cltd") == 0 ||
+        strcmp(inst.op, "cles") == 0 || strcmp(inst.op, "cled") == 0 ||
+        strcmp(inst.op, "cgts") == 0 || strcmp(inst.op, "cgtd") == 0 ||
+        strcmp(inst.op, "cges") == 0 || strcmp(inst.op, "cged") == 0) {
+      
+      char type = inst.op[3]; // 's' or 'd'
+      if (type == 's') {
+        load_arg(inst.arg1, "%xmm0", 's', f);
+        load_arg(inst.arg2, "%xmm1", 's', f);
+        fprintf(f, "  ucomiss %%xmm1, %%xmm0\n");
+      } else {
+        load_arg(inst.arg1, "%xmm0", 'd', f);
+        load_arg(inst.arg2, "%xmm1", 'd', f);
+        fprintf(f, "  ucomisd %%xmm1, %%xmm0\n");
+      }
+      
+      const(char)* set_op = "";
+      if (strncmp(inst.op, "ceq", 3) == 0) set_op = "sete";
+      else if (strncmp(inst.op, "cne", 3) == 0) set_op = "setne";
+      else if (strncmp(inst.op, "clt", 3) == 0) set_op = "setb";
+      else if (strncmp(inst.op, "cle", 3) == 0) set_op = "setbe";
+      else if (strncmp(inst.op, "cgt", 3) == 0) set_op = "seta";
+      else if (strncmp(inst.op, "cge", 3) == 0) set_op = "setae";
+      
+      fprintf(f, "  %s %%al\n", set_op);
+      fprintf(f, "  movzbl %%al, %%eax\n");
+      store_reg(inst.dest, "%eax", 'w', f);
+      return;
+    }
+
     // Comparisons 64-bit (ceqb, ceql, cnewl, etc.)
     if (strcmp(inst.op, "ceql") == 0 || strcmp(inst.op, "cnewl") == 0) {
       load_arg(inst.arg1, "%rax", 'l', f);
@@ -434,12 +664,26 @@ void gen_function(FunctionDef* fn, FILE* f) {
   }
   
   // Store parameter registers into their stack slots
-  for (int i = 0; i < fn.params_count && i < 6; i++) {
+  int int_arg_idx = 0;
+  int float_arg_idx = 0;
+  for (int i = 0; i < fn.params_count; i++) {
     int offset = get_temp_offset(fn.params[i].name);
     if (fn.params[i].type == 'w') {
-      fprintf(f, "  movl %s, -%d(%%rbp)\n", get_arg_reg_32(i), offset);
-    } else {
-      fprintf(f, "  movq %s, -%d(%%rbp)\n", get_arg_reg_64(i), offset);
+      if (int_arg_idx < 6) {
+        fprintf(f, "  movl %s, -%d(%%rbp)\n", get_arg_reg_32(int_arg_idx++), offset);
+      }
+    } else if (fn.params[i].type == 'l') {
+      if (int_arg_idx < 6) {
+        fprintf(f, "  movq %s, -%d(%%rbp)\n", get_arg_reg_64(int_arg_idx++), offset);
+      }
+    } else if (fn.params[i].type == 's') {
+      if (float_arg_idx < 8) {
+        fprintf(f, "  movss %s, -%d(%%rbp)\n", get_float_arg_reg(float_arg_idx++), offset);
+      }
+    } else if (fn.params[i].type == 'd') {
+      if (float_arg_idx < 8) {
+        fprintf(f, "  movsd %s, -%d(%%rbp)\n", get_float_arg_reg(float_arg_idx++), offset);
+      }
     }
   }
   
