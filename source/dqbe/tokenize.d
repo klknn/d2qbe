@@ -62,7 +62,7 @@ bool consume(const char* op) {
   return false;
 }
 
-Token* consume_kind(TokenKind kind) {
+Token* consume_kind(int kind) {
   if (token.kind != kind) {
     return null;
   }
@@ -92,9 +92,9 @@ bool at_eof() {
   return token.kind == TokenKind.TK_eof;
 }
 
-Token* new_token(TokenKind kind, Token* cur, char* str, int len) {
+Token* new_token(int kind, Token* cur, char* str, int len) {
   Token* tok = cast(Token*) calloc(1, Token.sizeof);
-  tok.kind = kind;
+  tok.kind = cast(TokenKind) kind;
   tok.str = str;
   tok.len = len;
   cur.next = tok;
