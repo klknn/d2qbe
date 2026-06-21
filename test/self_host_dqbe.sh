@@ -26,6 +26,8 @@ extern (C) void* get_stderr();
 extern (C) void* get_stdin();
 extern (C) void* get_stdout();
 
+alias float = int;
+alias double = long;
 enum null = 0;
 EOF
 
