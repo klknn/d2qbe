@@ -432,6 +432,73 @@ char get_reg_type(int reg) {
   return reg_types[reg];
 }
 
+FunctionSymbol* resolve_overload(const(char)* base_name, int* args_regs, int num_args) {
+  FunctionSymbol* best_candidate = null;
+  int best_score = 9999;
+  
+  for (int i = 0; i < registered_functions_count; i++) {
+    FunctionSymbol* fs = &registered_functions[i];
+    if (strcmp(fs.unmangled_name, base_name) != 0) {
+      continue;
+    }
+    
+    if (fs.is_variadic) {
+      if (num_args < fs.num_params) continue;
+    } else {
+      if (num_args != fs.num_params) continue;
+    }
+    
+    int total_score = 0;
+    bool compatible = true;
+    for (int j = 0; j < fs.num_params; j++) {
+      char arg_type = get_reg_type(args_regs[j]);
+      int param_score = 999;
+      
+      Type* t = &fs.params_types[j];
+      if (t.ptr_depth > 0 || t.is_slice) {
+        if (arg_type == 'l') param_score = 0;
+        else if (arg_type == 'w') param_score = 1;
+      } else if (strcmp(t.name, "double") == 0) {
+        if (arg_type == 'd') param_score = 0;
+        else if (arg_type == 's') param_score = 1;
+        else if (arg_type == 'w' || arg_type == 'l') param_score = 2;
+      } else if (strcmp(t.name, "float") == 0) {
+        if (arg_type == 's') param_score = 0;
+        else if (arg_type == 'd') param_score = 1;
+        else if (arg_type == 'w' || arg_type == 'l') param_score = 2;
+      } else if (strcmp(t.name, "int") == 0) {
+        if (arg_type == 'w') param_score = 0;
+        else if (arg_type == 'l') param_score = 1;
+        else if (arg_type == 's' || arg_type == 'd') param_score = 2;
+      } else if (strcmp(t.name, "char") == 0 || strcmp(t.name, "bool") == 0) {
+        if (arg_type == 'w' || arg_type == 'l') param_score = 0;
+      } else {
+        if (find_struct(t.name)) {
+          if (arg_type == 'l') param_score = 0;
+        } else {
+          if (arg_type == 'w') param_score = 0;
+          else if (arg_type == 'l') param_score = 1;
+        }
+      }
+      
+      if (param_score == 999) {
+        compatible = false;
+        break;
+      }
+      total_score = total_score + param_score;
+    }
+    
+    if (compatible) {
+      if (total_score < best_score) {
+        best_score = total_score;
+        best_candidate = fs;
+      }
+    }
+  }
+  
+  return best_candidate;
+}
+
 /**
  * Checks if a node (or any statement inside it) is a return statement.
  */
@@ -1556,6 +1623,7 @@ int gen(Node* node) {
       char* mangled_func_name = null;
       int mangled_func_len = 0;
 
+      int start_arg_idx = 0;
       if (node.lhs) {
         Type lt;
         get_expr_type(node.lhs.lhs, &lt);
@@ -1567,8 +1635,19 @@ int gen(Node* node) {
           this_addr = gen_addr(node.lhs.lhs);
         }
         args_vars[0] = this_addr;
-        n_arg = 1;
-        
+        start_arg_idx = 1;
+      }
+
+      n_arg = start_arg_idx;
+      for (NodeList* args = &node.args; args.value; args = args.next) {
+        args_vars[n_arg] = gen(args.value);
+        n_arg++;
+      }
+      assert(n_arg < 21);
+
+      if (node.lhs) {
+        Type lt;
+        get_expr_type(node.lhs.lhs, &lt);
         char[256] mangled;
         snprintf(&mangled[0], 256, "_D_struct_%s_%.*s", lt.name, node.lhs.ident.len, node.lhs.ident.str);
         mangled_func_name = cast(char*) calloc(1, strlen(&mangled[0]) + 1);
@@ -1579,16 +1658,16 @@ int gen(Node* node) {
       } else {
         char* name = cast(char*) calloc(1, node.ident.len + 1);
         memcpy(name, node.ident.str, node.ident.len);
-        mangled_func_name = name;
-        mangled_func_len = node.ident.len;
-        fs = find_function(name);
+        
+        fs = resolve_overload(name, &args_vars[start_arg_idx], n_arg - start_arg_idx);
+        if (fs) {
+          mangled_func_name = cast(char*) fs.name;
+          mangled_func_len = cast(int) strlen(mangled_func_name);
+        } else {
+          mangled_func_name = name;
+          mangled_func_len = node.ident.len;
+        }
       }
-
-      for (NodeList* args = &node.args; args.value; args = args.next) {
-        args_vars[n_arg] = gen(args.value);
-        n_arg++;
-      }
-      assert(n_arg < 21);
       
       if (!fs) {
         printf("# DEBUG: gen(funcall) '%s' NOT FOUND in registered_functions!\n", mangled_func_name);
@@ -1648,7 +1727,7 @@ int gen(Node* node) {
       } else if (strcmp(node.return_type.name, "double") == 0) {
         ret_type_str = "d";
       }
-      printf("export function %s $%.*s(", ret_type_str, node.ident.len, node.ident.str);
+      printf("export function %s $%s(", ret_type_str, node.mangled_name);
       for (int i = 0; node.params[i]; ++i) {
         const(Token)* p = node.params[i];
         Type t = node.params_types[i];
@@ -1685,8 +1764,12 @@ int gen(Node* node) {
       for (int i = 0; node.params[i]; ++i) {
         const(Token)* p = node.params[i];
         Type t = node.params_types[i];
-        if (t.ptr_depth > 0) {
+        if (t.is_slice || t.ptr_depth > 0) {
           printf("  storel %%%.*s, %%%.*s_addr\n", p.len, p.str, p.len, p.str);
+        } else if (strcmp(t.name, "double") == 0) {
+          printf("  stored %%%.*s, %%%.*s_addr\n", p.len, p.str, p.len, p.str);
+        } else if (strcmp(t.name, "float") == 0) {
+          printf("  stores %%%.*s, %%%.*s_addr\n", p.len, p.str, p.len, p.str);
         } else {
           printf("  storew %%%.*s, %%%.*s_addr\n", p.len, p.str, p.len, p.str);
         }

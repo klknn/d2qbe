@@ -41,7 +41,7 @@ with open('test/self_host.d', 'w') as f:
 "
 
 echo "Compiling self_host.d using bootstrap compiler..."
-./d2qbe "$(cat test/self_host.d)" > test/self_host.s
+./d2qbe test/self_host.d > test/self_host.s
 
 echo "Assembling self_host.s..."
 ./qbe/qbe < test/self_host.s > test/self_host_qbe.s
