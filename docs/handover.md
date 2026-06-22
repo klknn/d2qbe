@@ -80,11 +80,10 @@ This document is for the next AI agent or developer taking over the development 
 ### 3.3 Self-Hosting Verification (`./test/self_host.sh`)
 - **How it works**: Compiles the compiler using itself, and then runs the entire integration test suite using the self-hosted binary.
 - **Verification Flow**:
-  1. Concatenates all compiler source files (`tokenize.d`, `parse.d`, `codegen.d`, `app.d`) into a single file `test/self_host.d` (excluding module/import declarations).
-  2. Compiles `test/self_host.d` using the bootstrap compiler `./d2qbe` to produce `test/self_host.s` (QBE IR).
-  3. Uses `qbe/qbe` to assemble `test/self_host.s` to assembly.
-  4. Links the assembly with `ext.o` to produce `./test/d2qbe_self_hosted`.
-  5. Sets the `D2QBE` environment variable to `./test/d2qbe_self_hosted` and runs `test/run.sh` to guarantee that the self-hosted compiler produces correct executable binaries.
+  1. Compiles the main entry point `source/d2qbe/app.d` directly using the bootstrap compiler `./d2qbe` to produce `test/self_host.s` (QBE IR). The parser automatically resolves and parses imported files recursively.
+  2. Uses `qbe/qbe` to assemble `test/self_host.s` to assembly.
+  3. Links the assembly with `ext.o` to produce `./test/d2qbe_self_hosted`.
+  4. Sets the `D2QBE` environment variable to `./test/d2qbe_self_hosted` and runs `test/run.sh` to guarantee that the self-hosted compiler produces correct executable binaries.
 
 ---
 
@@ -163,20 +162,15 @@ To ensure the backend compiler `dqbe` compiles successfully under self-hosting (
 * **Limitation**: The bootstrap compiler `d2qbe` does not support `extern` global variables (e.g. `extern (C) extern FILE* stderr;`). It compiles them as unallocated local stack variables, causing immediate segmentation faults when dereferenced.
 * **Request**: Do not declare or use direct `extern` global variables. Instead, wrap them in `extern (C)` helper functions (e.g. `extern (C) void* get_stderr();`) and compile/link them via an external helper object like `test/tmp_ext_dqbe.d`.
 
-### 6.2 Avoid Byte-Sized (`char` / `byte`) Function Parameters
-* **Limitation**: The bootstrap compiler allocates function parameters sequentially on the stack without padding or alignment. When a byte-sized parameter (like `char`) is stored via a 4-byte QBE `storew` instruction, it overwrites the lowest 3 bytes of the adjacent variable on the stack, causing stack corruption.
-* **Request**: In function signatures, use `int` instead of `char` for scalar parameters.
-
-### 6.3 Avoid Copying Large Structs by Value
+### 6.2 Avoid Copying Large Structs by Value
 * **Limitation**: The frontend code generator has a hard-coded limit of 9,999 temporary registers (`reg_counter < 9999`). Copying large structs (e.g., a 1.9MB `FunctionDef`) by value inside loops creates thousands of intermediate QBE registers, causing a compilation crash.
 * **Request**: Pass large structs by pointer, or parse/write directly into global/heap memory array slots instead of performing struct copies.
 
-### 6.4 Syntax Constraints
+### 6.3 Syntax Constraints
 * **No Backticks**: Do not use backtick strings (`` ` ``); they are not supported by the bootstrap parser. Use double quotes (`"`) instead.
-* **No Self-Assignments**: Self-assignments (e.g. `+=`, `-=`, `*=`) are not supported. Use full expansions (e.g. `x = x + 1`) instead.
 * **No Global Array Literals**: Global array literal initializers (e.g. `const char*[6] arr = [...]`) cannot be parsed by the bootstrap compiler. Use helper functions with `if/else` or `switch` to return the values instead.
 
-### 6.5 Self-Hosting and Bootstrapping Float Support Constraints
+### 6.4 Self-Hosting and Bootstrapping Float Support Constraints
 * **No Native `long` Type Support**: The bootstrap compiler `d2qbe` does not support `long` type. Writing `long* bits = ...` is parsed as an expression binary multiplication (`long * bits`), leading to compilation errors (e.g., `lvalue expected`).
   * *Workaround*: Define `alias long = int;` inside the self-host header block template (`test/self_host_dqbe.sh`) so `d2qbe` parses it as `int` under self-hosting (which is safe for bitwise extraction), while allowing the production compiler to build it as a native 64-bit integer.
 * **Explicit `strtod` Declaration Required**: Calling C's `strtod` to parse float literals without an explicit declaration makes the bootstrap compiler default the return type to `int` (`'w'` type in QBE), resulting in all compiled float literals generating as `0`.
