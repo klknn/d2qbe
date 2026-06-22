@@ -15,6 +15,59 @@ struct TempMap {
 TempMap[10000] temp_offsets;
 int temp_offsets_count = 0;
 
+
+struct RegCache {
+  char[32] temp_name;
+  char[16] phys_reg;
+}
+__gshared RegCache[16] reg_cache;
+__gshared int reg_cache_count = 0;
+
+void clear_cache() {
+  reg_cache_count = 0;
+}
+
+void invalidate_cache(const char* phys) {
+  for (int i = 0; i < reg_cache_count; i++) {
+    bool match = false;
+    if (strcmp(reg_cache[i].phys_reg.ptr, phys) == 0) {
+      match = true;
+    } else {
+      int len1 = cast(int) strlen(reg_cache[i].phys_reg.ptr);
+      int len2 = cast(int) strlen(phys);
+      if (len1 >= 3 && len2 >= 3 && strcmp(reg_cache[i].phys_reg.ptr + len1 - 2, phys + len2 - 2) == 0) {
+        match = true;
+      }
+    }
+    if (match) {
+      for (int j = i; j < reg_cache_count - 1; j++) {
+        reg_cache[j] = reg_cache[j+1];
+      }
+      reg_cache_count--;
+      i--;
+    }
+  }
+}
+
+void update_cache(const char* temp, const char* phys) {
+  if (!temp || !phys) return;
+  invalidate_cache(phys);
+  if (reg_cache_count < 16) {
+    strncpy(reg_cache[reg_cache_count].temp_name.ptr, temp, 31);
+    strncpy(reg_cache[reg_cache_count].phys_reg.ptr, phys, 15);
+    reg_cache_count++;
+  }
+}
+
+const(char)* lookup_cache(const char* temp) {
+  for (int i = 0; i < reg_cache_count; i++) {
+    if (strcmp(reg_cache[i].temp_name.ptr, temp) == 0) {
+      return reg_cache[i].phys_reg.ptr;
+    }
+  }
+  return null;
+}
+
 struct VarMap {
   char* name;
   int offset;
@@ -76,6 +129,35 @@ int get_var_offset(const char* name, int size, int align_) {
 
 void load_arg(const char* arg, const char* reg, int type, FILE* f) {
   if (arg[0] == '%') {
+    const(char)* cached_reg = lookup_cache(arg);
+    if (cached_reg) {
+      if (strcmp(cached_reg, reg) == 0) {
+        return;
+      }
+      bool compatible = false;
+      if (cached_reg[0] == '%' && reg[0] == '%') {
+        if (cached_reg[1] == 'x' && reg[1] == 'x') {
+          compatible = true;
+        } else if (cached_reg[1] != 'x' && reg[1] != 'x') {
+          if (strlen(cached_reg) == strlen(reg)) {
+            compatible = true;
+          }
+        }
+      }
+      if (compatible) {
+        if (type == 'w') {
+          fprintf(f, "  movl %s, %s\n", cached_reg, reg);
+        } else if (type == 'l') {
+          fprintf(f, "  movq %s, %s\n", cached_reg, reg);
+        } else if (type == 's') {
+          fprintf(f, "  movss %s, %s\n", cached_reg, reg);
+        } else if (type == 'd') {
+          fprintf(f, "  movsd %s, %s\n", cached_reg, reg);
+        }
+        update_cache(arg, reg);
+        return;
+      }
+    }
     int offset = get_temp_offset(arg);
     if (type == 'w') {
       fprintf(f, "  movl -%d(%%rbp), %s\n", offset, reg);
@@ -86,20 +168,25 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
     } else if (type == 'd') {
       fprintf(f, "  movsd -%d(%%rbp), %s\n", offset, reg);
     }
+    update_cache(arg, reg);
   } else if (arg[0] == '$') {
     // Global address
+    invalidate_cache(reg);
     fprintf(f, "  leaq %s(%%rip), %s\n", arg + 1, reg);
   } else {
+    invalidate_cache(reg);
     // Number literal or Float literal
     if (strncmp(arg, "s_", 2) == 0) {
       double val = strtod(arg + 2, null);
       float val_f = cast(float) val;
       int* bits = cast(int*) &val_f;
+      invalidate_cache("%eax");
       fprintf(f, "  movl $%u, %%eax\n", *bits);
       fprintf(f, "  movd %%eax, %s\n", reg);
     } else if (strncmp(arg, "d_", 2) == 0) {
       double val = strtod(arg + 2, null);
       long* bits = cast(long*) &val;
+      invalidate_cache("%rax");
       fprintf(f, "  movabsq $%ld, %%rax\n", *bits);
       fprintf(f, "  movq %%rax, %s\n", reg);
     } else {
@@ -109,9 +196,11 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
       } else if (type == 'l') {
         fprintf(f, "  movq $%s, %s\n", arg, reg);
       } else if (type == 's') {
+        invalidate_cache("%eax");
         fprintf(f, "  movl $%s, %%eax\n", arg);
         fprintf(f, "  movd %%eax, %s\n", reg);
       } else if (type == 'd') {
+        invalidate_cache("%rax");
         fprintf(f, "  movabsq $%s, %%rax\n", arg);
         fprintf(f, "  movq %%rax, %s\n", reg);
       }
@@ -130,6 +219,7 @@ void store_reg(const char* dest, const char* reg, int type, FILE* f) {
   } else if (type == 'd') {
     fprintf(f, "  movsd %s, -%d(%%rbp)\n", reg, offset);
   }
+  update_cache(dest, reg);
 }
 
 const(char)* get_arg_reg_32(int idx) {
@@ -169,11 +259,13 @@ const(char)* current_fn_name;
 void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
   if (inst.kind == InstKind.IK_label) {
     fprintf(f, ".L%s_%s:\n", current_fn_name, inst.label + 1);
+    clear_cache();
     return;
   }
   
   if (inst.kind == InstKind.IK_jmp) {
     fprintf(f, "  jmp .L%s_%s\n", current_fn_name, inst.label + 1);
+    clear_cache();
     return;
   }
   
@@ -182,6 +274,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
     fprintf(f, "  cmpl $0, %%eax\n");
     fprintf(f, "  jne .L%s_%s\n", current_fn_name, inst.label + 1);
     fprintf(f, "  jmp .L%s_%s\n", current_fn_name, inst.label_else + 1);
+    clear_cache();
     return;
   }
   
@@ -255,6 +348,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
       }
     }
     fprintf(f, "  call %s\n", inst.arg1 + 1);
+    clear_cache();
     return;
   }
   
@@ -415,6 +509,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
         }
       }
       fprintf(f, "  call %s\n", inst.arg1 + 1);
+      clear_cache();
       if (inst.dest_type == 'w') {
         store_reg(inst.dest, "%eax", 'w', f);
       } else if (inst.dest_type == 'l') {
@@ -444,9 +539,11 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
         } else if (strcmp(inst.op, "mul") == 0) {
           fprintf(f, "  imull %%ecx, %%eax\n");
         } else if (strcmp(inst.op, "div") == 0) {
+          invalidate_cache("%edx");
           fprintf(f, "  cltd\n");
           fprintf(f, "  idivl %%ecx\n");
         } else if (strcmp(inst.op, "rem") == 0) {
+          invalidate_cache("%edx");
           fprintf(f, "  cltd\n");
           fprintf(f, "  idivl %%ecx\n");
           fprintf(f, "  movl %%edx, %%eax\n");
@@ -474,9 +571,11 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
         } else if (strcmp(inst.op, "mul") == 0) {
           fprintf(f, "  imulq %%rcx, %%rax\n");
         } else if (strcmp(inst.op, "div") == 0) {
+          invalidate_cache("%rdx");
           fprintf(f, "  cqto\n");
           fprintf(f, "  idivq %%rcx\n");
         } else if (strcmp(inst.op, "rem") == 0) {
+          invalidate_cache("%rdx");
           fprintf(f, "  cqto\n");
           fprintf(f, "  idivq %%rcx\n");
           fprintf(f, "  movq %%rdx, %%rax\n");
@@ -653,6 +752,7 @@ void gen_function(FunctionDef* fn, FILE* f) {
   }
   
   // Generate code for instructions
+  clear_cache();
   bool ends_with_ret = false;
   for (int i = 0; i < fn.inst_count; i++) {
     gen_instruction(&fn.instructions[i], fn.ret_type, f);
