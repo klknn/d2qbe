@@ -34,7 +34,9 @@ cc a.s -o a.out
   - [x] generics & templates (`template Name(T) { ... }`, eponymous `Name!Arg`)
   - [x] modular compilation (native `module` and recursive `import` compilation)
   - [x] floating point support (`float`, `double` arithmetic, conversions & registers)
-- [x] full set of betterC D language https://dlang.org/spec/betterc.html#consequences (Self-hosted compiler is 100% complete and self-hosting)
+  - [x] compound self-assignments (`+=`, `-=`, etc.)
+  - [x] byte-sized function parameters safety (`char`/`bool` parameter stack stores)
+- [x] full set of betterC D language https://dlang.org/spec/betterc.html#consequences (Self-hosted compiler is 100% complete, fully optimized and self-hosting)
 
 ## benchmarks
 
