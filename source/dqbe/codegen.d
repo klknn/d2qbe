@@ -153,6 +153,7 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
       } else if (type == 'd') {
         fprintf(f, "  movsd %s, %s\n", alloc_reg, reg);
       }
+      invalidate_cache(reg);
       return;
     }
     const(char)* cached_reg = lookup_cache(arg);
@@ -249,6 +250,7 @@ void store_reg(const char* dest, const char* reg, int type, FILE* f) {
     } else if (type == 'd') {
       fprintf(f, "  movsd %s, %s\n", reg, alloc_reg);
     }
+    invalidate_cache(alloc_reg);
     return;
   }
   int offset = get_temp_offset(dest);
