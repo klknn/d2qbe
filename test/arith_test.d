@@ -248,6 +248,21 @@ int main() {
     int char_ret = test_char_params('x', 500, 'y');
     assert(char_ret == 456);
 
+    // Nested ternary operator test
+    int nest1 = 10;
+    int nest2 = 20;
+    int nest3 = 30;
+    int nest_res = (nest1 < nest2) ? ((nest2 > nest3) ? 500 : 600) : 700;
+    assert(nest_res == 600);
+
+    // Ternary operator in a loop
+    int loop_idx;
+    int loop_sum = 0;
+    for (loop_idx = 0; loop_idx < 10; loop_idx++) {
+        loop_sum = loop_sum + ((loop_idx % 2 == 0) ? 10 : 20);
+    }
+    assert(loop_sum == 150);
+
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;
 }
