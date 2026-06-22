@@ -107,6 +107,7 @@ struct FunctionSymbol {
   const(char)* name;
   const(char)* unmangled_name;
   bool is_extern_c;
+  bool is_member;
   bool is_variadic;
   int num_params;
   Type return_type;
@@ -118,7 +119,7 @@ int registered_functions_count = 0;
 /**
  * Registers a function signature.
  */
-void register_function(const(char)* name, const(char)* unmangled_name, bool is_extern_c, bool is_variadic, int num_params, Type* return_type, Type* params_types) {
+void register_function(const(char)* name, const(char)* unmangled_name, bool is_extern_c, bool is_member, bool is_variadic, int num_params, Type* return_type, Type* params_types) {
   for (int i = 0; i < registered_functions_count; i++) {
     if (strcmp(registered_functions[i].name, name) == 0) {
       return;
@@ -128,6 +129,7 @@ void register_function(const(char)* name, const(char)* unmangled_name, bool is_e
   registered_functions[registered_functions_count].name = name;
   registered_functions[registered_functions_count].unmangled_name = unmangled_name;
   registered_functions[registered_functions_count].is_extern_c = is_extern_c;
+  registered_functions[registered_functions_count].is_member = is_member;
   registered_functions[registered_functions_count].is_variadic = is_variadic;
   registered_functions[registered_functions_count].num_params = num_params;
   registered_functions[registered_functions_count].return_type = *return_type;
@@ -136,8 +138,8 @@ void register_function(const(char)* name, const(char)* unmangled_name, bool is_e
   }
   const(char)* ret_name = return_type.name;
   if (!ret_name) ret_name = "null";
-  printf("# DEBUG: register_function '%s' (unmangled='%s') ret='%s' ptr_depth=%d is_extern_c=%d\n",
-         name, unmangled_name, ret_name, return_type.ptr_depth, is_extern_c);
+  printf("# DEBUG: register_function '%s' (unmangled='%s') ret='%s' ptr_depth=%d is_extern_c=%d is_member=%d\n",
+         name, unmangled_name, ret_name, return_type.ptr_depth, is_extern_c, is_member);
   registered_functions_count++;
 }
 
@@ -154,8 +156,12 @@ char* mangle_function_name(const(char)* base_name, Type* params_types, int num_p
   }
   
   char* buf = cast(char*) calloc(1, len);
-  strcpy(buf, "_D_");
-  strcat(buf, base_name);
+  if (strncmp(base_name, "_D_", 3) == 0) {
+    strcpy(buf, base_name);
+  } else {
+    strcpy(buf, "_D_");
+    strcat(buf, base_name);
+  }
   
   for (int i = 0; i < num_params; i++) {
     strcat(buf, "_");
@@ -746,6 +752,11 @@ Node* primary() {
     node = new_node_num(1);
   } else if (consume("false")) {
     node = new_node_num(0);
+  } else if (is_token("this")) {
+    Token* this_tok = token;
+    consume("this");
+    node = new_node(NodeKind.NK_lvar);
+    node.ident = this_tok;
   } else if (consume("cast")) {
     expect("(");
     Type cast_type;
@@ -779,10 +790,52 @@ Node* primary() {
         error_at(token.str, "unknown type property");
       }
     } else {
-      Type dummy;
-      parse_type(&dummy);
-      expect(".");
-      node = primary();
+      Type t;
+      parse_type(&t);
+      if (is_token("(")) {
+        if (find_struct(t.name)) {
+          node = new_node(NodeKind.NK_funcall);
+          node.type = t;
+          
+          char[256] mangled;
+          snprintf(&mangled[0], 256, "_D_struct_%s___ctor", t.name);
+          char* ctor_name = cast(char*) calloc(1, strlen(&mangled[0]) + 1);
+          strcpy(ctor_name, &mangled[0]);
+          
+          Token* ctor_tok = cast(Token*) calloc(1, Token.sizeof);
+          ctor_tok.kind = TokenKind.TK_identifier;
+          ctor_tok.str = ctor_name;
+          ctor_tok.len = cast(int) strlen(ctor_name);
+          
+          node.ident = ctor_tok;
+          
+          expect("(");
+          NodeList* args = &node.args;
+          while (!consume(")")) {
+            args = push_back(args, expr());
+            consume(",");
+          }
+        } else {
+          node = cast(Node*) calloc(1, Node.sizeof);
+          node.kind = NodeKind.NK_funcall;
+          
+          Token* fn_tok = cast(Token*) calloc(1, Token.sizeof);
+          fn_tok.kind = TokenKind.TK_identifier;
+          fn_tok.str = cast(char*) t.name;
+          fn_tok.len = cast(int) strlen(t.name);
+          node.ident = fn_tok;
+          
+          expect("(");
+          NodeList* args = &node.args;
+          while (!consume(")")) {
+            args = push_back(args, expr());
+            consume(",");
+          }
+        }
+      } else {
+        expect(".");
+        node = primary();
+      }
     }
   } else {
     Token* tok = consume_ident();
@@ -796,11 +849,11 @@ Node* primary() {
         
         Token* final_tok = tok;
         if (is_token("!")) {
-          char* mangled = resolve_template_instantiation(base_name);
+          char* tmpl_mangled = resolve_template_instantiation(base_name);
           final_tok = cast(Token*) calloc(1, Token.sizeof);
           final_tok.kind = TokenKind.TK_identifier;
-          final_tok.str = mangled;
-          final_tok.len = cast(int) strlen(mangled);
+          final_tok.str = tmpl_mangled;
+          final_tok.len = cast(int) strlen(tmpl_mangled);
         }
         
         node = cast(Node*) calloc(1, Node.sizeof);
@@ -1418,6 +1471,51 @@ void parse_struct() {
   
   expect("{");
   while (!consume("}")) {
+    if (is_token("this")) {
+      consume("this");
+      Type ret_type;
+      ret_type.name = "void";
+      ret_type.ptr_depth = 0;
+      ret_type.array_dims = 0;
+      ret_type.is_slice = false;
+      
+      char[256] mangled;
+      snprintf(&mangled[0], 256, "_D_struct_%s___ctor", name);
+      char* mangled_name = cast(char*) calloc(1, strlen(&mangled[0]) + 1);
+      strcpy(mangled_name, &mangled[0]);
+      
+      Token* fn_tok = cast(Token*) calloc(1, Token.sizeof);
+      fn_tok.kind = TokenKind.TK_identifier;
+      fn_tok.str = mangled_name;
+      fn_tok.len = cast(int) strlen(mangled_name);
+      
+      Node* fn = parse_function(&ret_type, fn_tok, name, false);
+      add_to_code(fn);
+      continue;
+    }
+    if (consume("~")) {
+      expect("this");
+      Type ret_type;
+      ret_type.name = "void";
+      ret_type.ptr_depth = 0;
+      ret_type.array_dims = 0;
+      ret_type.is_slice = false;
+      
+      char[256] mangled;
+      snprintf(&mangled[0], 256, "_D_struct_%s___dtor", name);
+      char* mangled_name = cast(char*) calloc(1, strlen(&mangled[0]) + 1);
+      strcpy(mangled_name, &mangled[0]);
+      
+      Token* fn_tok = cast(Token*) calloc(1, Token.sizeof);
+      fn_tok.kind = TokenKind.TK_identifier;
+      fn_tok.str = mangled_name;
+      fn_tok.len = cast(int) strlen(mangled_name);
+      
+      Node* fn = parse_function(&ret_type, fn_tok, name, false);
+      add_to_code(fn);
+      continue;
+    }
+    
     Type t;
     parse_type(&t);
     Token* mem_ident = consume_ident();
@@ -1583,7 +1681,7 @@ bool is_type_expression_start(Token* tok) {
       break;
     }
   }
-  return t && t.len == 1 && t.str[0] == '.';
+  return t && t.len == 1 && (t.str[0] == '.' || t.str[0] == '(');
 }
 
 bool is_type_property_expression(Token* tok) {
@@ -1929,14 +2027,15 @@ Node* parse_function(Type* ret_type, Token* func_name, const(char)* struct_name,
   memcpy(original_name, func_name.str, func_name.len);
   
   char* mangled;
-  if (is_extern_c || struct_name || strcmp(original_name, "main") == 0) {
+  if (is_extern_c || strcmp(original_name, "main") == 0) {
     mangled = original_name;
   } else {
-    mangled = mangle_function_name(original_name, &node.params_types[0], i, false);
+    int start_param = (struct_name != null) ? 1 : 0;
+    mangled = mangle_function_name(original_name, &node.params_types[start_param], i - start_param, false);
   }
   node.mangled_name = mangled;
   
-  register_function(mangled, original_name, is_extern_c || (struct_name != null), node.is_variadic, i, ret_type, &node.params_types[0]);
+  register_function(mangled, original_name, is_extern_c, (struct_name != null), node.is_variadic, i, ret_type, &node.params_types[0]);
 
   if (consume(";")) {
     node.is_decl_only = true;
@@ -2421,6 +2520,29 @@ unittest {
   FunctionSymbol* fs2 = find_function("_D_my_print_d");
   assert(fs2 != null && !fs2.is_extern_c);
   assert(strcmp(fs2.unmangled_name, "my_print") == 0);
+
+  // Test struct constructor and destructor parsing
+  registered_functions_count = 0;
+  user_input = cast(char*) "struct MyRaii { int value; this(int v) { this.value = v; } ~this() { this.value = 0; } }";
+  token = tokenize(user_input);
+  program();
+  
+  // MyRaii struct constructor should be registered as _D_struct_MyRaii___ctor_i
+  FunctionSymbol* ctor = find_function("_D_struct_MyRaii___ctor_i");
+  assert(ctor != null);
+  assert(ctor.is_member);
+  assert(strcmp(ctor.unmangled_name, "_D_struct_MyRaii___ctor") == 0);
+  assert(ctor.num_params == 2); // 'this' (MyRaii*) and 'v' (int)
+  assert(strcmp(ctor.params_types[0].name, "MyRaii") == 0 && ctor.params_types[0].ptr_depth == 1);
+  assert(strcmp(ctor.params_types[1].name, "int") == 0 && ctor.params_types[1].ptr_depth == 0);
+
+  // MyRaii struct destructor should be registered as _D_struct_MyRaii___dtor
+  FunctionSymbol* dtor = find_function("_D_struct_MyRaii___dtor");
+  assert(dtor != null);
+  assert(dtor.is_member);
+  assert(strcmp(dtor.unmangled_name, "_D_struct_MyRaii___dtor") == 0);
+  assert(dtor.num_params == 1); // 'this' (MyRaii*)
+  assert(strcmp(dtor.params_types[0].name, "MyRaii") == 0 && dtor.params_types[0].ptr_depth == 1);
 }
 
 

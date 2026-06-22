@@ -403,6 +403,28 @@ void collect_locals(Node* node) {
   }
 }
 
+Node*[500] active_raii_stack;
+int active_raii_stack_count = 0;
+
+FunctionSymbol* find_destructor(const(char)* type_name) {
+  if (!type_name) return null;
+  char[256] mangled;
+  snprintf(&mangled[0], 256, "_D_struct_%s___dtor", type_name);
+  return find_function(&mangled[0]);
+}
+
+void emit_destructor_call(Node* var_node) {
+  Type t;
+  get_local_type(var_node.ident, &t);
+  FunctionSymbol* dtor = find_destructor(t.name);
+  if (!dtor) return;
+  
+  int addr_reg = gen_addr(var_node);
+  int dummy_res = next_reg();
+  printf("  %%t%d =w call $%.*s(l %%t%d)\n", dummy_res, cast(int) strlen(dtor.name), dtor.name, addr_reg);
+  set_reg_type(dummy_res, 'w');
+}
+
 // Tracks whether register %ti is 'w' (word) or 'l' (long)
 char[10000] reg_types;
 
@@ -710,6 +732,13 @@ void get_expr_type(Node* node, Type* out_type) {
     return;
   }
   if (node.kind == NodeKind.NK_funcall) {
+    if (node.type.name != null) {
+      *out_type = node.type;
+      out_type.ptr_depth = 0;
+      out_type.is_slice = false;
+      out_type.array_dims = 0;
+      return;
+    }
     char* name = cast(char*) calloc(1, node.ident.len + 1);
     memcpy(name, node.ident.str, node.ident.len);
     FunctionSymbol* fs = find_function(name);
@@ -1311,7 +1340,7 @@ int gen(Node* node) {
       if ((lt.ptr_depth == 0 && find_struct(lt.name)) || lt.is_slice) {
         int lhs_addr = gen_addr(node.lhs);
         int rhs_addr;
-        if (node.rhs.kind == NodeKind.NK_slice || node.rhs.kind == NodeKind.NK_ternary) {
+        if (node.rhs.kind == NodeKind.NK_slice || node.rhs.kind == NodeKind.NK_ternary || node.rhs.kind == NodeKind.NK_funcall) {
           rhs_addr = gen(node.rhs);
         } else {
           rhs_addr = gen_addr(node.rhs);
@@ -1354,7 +1383,7 @@ int gen(Node* node) {
         int lhs_addr = gen_addr(&lvar_node);
         if ((t.ptr_depth == 0 && find_struct(t.name)) || t.is_slice) {
           int rhs_addr;
-          if (node.lhs.kind == NodeKind.NK_slice || node.lhs.kind == NodeKind.NK_ternary) {
+          if (node.lhs.kind == NodeKind.NK_slice || node.lhs.kind == NodeKind.NK_ternary || node.lhs.kind == NodeKind.NK_funcall) {
             rhs_addr = gen(node.lhs);
           } else {
             rhs_addr = gen_addr(node.lhs);
@@ -1497,9 +1526,26 @@ int gen(Node* node) {
           set_reg_type(ext_res, 'l');
           lhs = ext_res;
         }
+        
+        for (int i = active_raii_stack_count - 1; i >= 0; i--) {
+          Node* var_node = active_raii_stack[i];
+          Node lvar;
+          lvar.kind = NodeKind.NK_lvar;
+          lvar.ident = var_node.ident;
+          emit_destructor_call(&lvar);
+        }
+        
         printf("  ret %%t%d\n", lhs);
         return lhs;
       } else {
+        for (int i = active_raii_stack_count - 1; i >= 0; i--) {
+          Node* var_node = active_raii_stack[i];
+          Node lvar;
+          lvar.kind = NodeKind.NK_lvar;
+          lvar.ident = var_node.ident;
+          emit_destructor_call(&lvar);
+        }
+        
         printf("  ret\n");
         return 0;
       }
@@ -1606,6 +1652,8 @@ int gen(Node* node) {
   if (node.kind == NodeKind.NK_block) {
       int ret = 0;
       bool dead = false;
+      int stack_base = active_raii_stack_count;
+      
       NodeList* stmts = &node.statements;
       while (stmts) {
         if (stmts.value) {
@@ -1614,6 +1662,16 @@ int gen(Node* node) {
           }
           if (!dead) {
             ret = gen(stmts.value);
+            
+            if (stmts.value.kind == NodeKind.NK_var_decl) {
+              Type t;
+              get_local_type(stmts.value.ident, &t);
+              if (find_destructor(t.name)) {
+                assert(active_raii_stack_count < 500, "active_raii_stack overflow");
+                active_raii_stack[active_raii_stack_count++] = stmts.value;
+              }
+            }
+            
             if (ends_with_return(stmts.value)) {
               dead = true;
             }
@@ -1621,6 +1679,17 @@ int gen(Node* node) {
         }
         stmts = stmts.next;
       }
+      
+      while (active_raii_stack_count > stack_base) {
+        Node* var_node = active_raii_stack[--active_raii_stack_count];
+        if (!dead) {
+          Node lvar;
+          lvar.kind = NodeKind.NK_lvar;
+          lvar.ident = var_node.ident;
+          emit_destructor_call(&lvar);
+        }
+      }
+      
       return ret;
     }
   if (node.kind == NodeKind.NK_funcall) {
@@ -1631,7 +1700,18 @@ int gen(Node* node) {
       int mangled_func_len = 0;
 
       int start_arg_idx = 0;
-      if (node.lhs) {
+      int struct_addr = 0;
+      if (node.type.name != null) {
+        int size = get_type_size(&node.type);
+        int alignment = get_type_alignment(&node.type);
+        if (alignment < 4) alignment = 4;
+        struct_addr = next_reg();
+        printf("  %%t%d =l alloc%d %d\n", struct_addr, alignment, size);
+        set_reg_type(struct_addr, 'l');
+        
+        args_vars[0] = struct_addr;
+        start_arg_idx = 1;
+      } else if (node.lhs) {
         Type lt;
         get_expr_type(node.lhs.lhs, &lt);
         
@@ -1714,6 +1794,9 @@ int gen(Node* node) {
       }
       printf(")\n");
       set_reg_type(res, ret_type);
+      if (node.type.name != null) {
+        return struct_addr;
+      }
       return res;
     }
   if (node.kind == NodeKind.NK_defun) {
@@ -1723,6 +1806,7 @@ int gen(Node* node) {
       current_fn = node;
       
       reg_counter = 0;
+      active_raii_stack_count = 0;
       
       locals_count = 0;
       for (int i = 0; node.params[i]; ++i) {

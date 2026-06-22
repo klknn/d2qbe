@@ -29,6 +29,24 @@ version(Windows) {
   int get_os_val() { return 200; }
 }
 
+int g_destroyed_count = 0;
+
+struct RaiiTester {
+  int id;
+  this(int val) {
+    id = val;
+  }
+  ~this() {
+    g_destroyed_count = g_destroyed_count + 1;
+  }
+}
+
+int test_raii_return() {
+  RaiiTester r2 = RaiiTester(99);
+  assert(r2.id == 99);
+  return 123;
+}
+
 int main() {
     // Arithmetic & basic operations
     assert(5+20-4 == 21);
@@ -180,6 +198,21 @@ int main() {
     double d2 = 3.0;
     double d3 = d1 / d2;
     assert(d3 > 3.33 && d3 < 3.34);
+
+    // RAII / Constructor & Destructor tests
+    assert(g_destroyed_count == 0);
+    {
+      RaiiTester r1 = RaiiTester(42);
+      assert(r1.id == 42);
+      assert(g_destroyed_count == 0);
+    }
+    // Block exit should call destructor!
+    assert(g_destroyed_count == 1);
+
+    // Test destruction on return
+    int ret_val = test_raii_return();
+    assert(ret_val == 123);
+    assert(g_destroyed_count == 2);
 
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;
