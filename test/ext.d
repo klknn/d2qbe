@@ -15,3 +15,5 @@ extern (C) int foo2(int a1, int a2) {
 extern (C) FILE* get_stderr() {
   return stderr;
 }
+
+extern (C) int extern_global_int = 420;

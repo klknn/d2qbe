@@ -1,4 +1,5 @@
 extern (C) int printf(const char* format, ...);
+extern (C) extern int extern_global_int;
 static assert(5 * 5 == 25);
 
 static if (int.sizeof == 4) {
@@ -262,6 +263,9 @@ int main() {
         loop_sum = loop_sum + ((loop_idx % 2 == 0) ? 10 : 20);
     }
     assert(loop_sum == 150);
+
+    // Test extern global variables support
+    assert(extern_global_int == 420);
 
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;
