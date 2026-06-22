@@ -777,26 +777,47 @@ void gen_function(FunctionDef* fn, FILE* f) {
     fprintf(f, "  subq $%d, %%rsp\n", aligned_stack);
   }
   
-  // Store parameter registers into their stack slots
+  // Store parameter registers into their stack slots or allocated registers
   int int_arg_idx = 0;
   int float_arg_idx = 0;
   for (int i = 0; i < fn.params_count; i++) {
+    const(char)* alloc_reg = get_allocated_register(fn.params[i].name, fn.params[i].type);
     int offset = get_temp_offset(fn.params[i].name);
     if (fn.params[i].type == 'w') {
       if (int_arg_idx < 6) {
-        fprintf(f, "  movl %s, -%d(%%rbp)\n", get_arg_reg_32(int_arg_idx++), offset);
+        const(char)* src_reg = get_arg_reg_32(int_arg_idx++);
+        if (alloc_reg) {
+          fprintf(f, "  movl %s, %s\n", src_reg, alloc_reg);
+        } else {
+          fprintf(f, "  movl %s, -%d(%%rbp)\n", src_reg, offset);
+        }
       }
     } else if (fn.params[i].type == 'l') {
       if (int_arg_idx < 6) {
-        fprintf(f, "  movq %s, -%d(%%rbp)\n", get_arg_reg_64(int_arg_idx++), offset);
+        const(char)* src_reg = get_arg_reg_64(int_arg_idx++);
+        if (alloc_reg) {
+          fprintf(f, "  movq %s, %s\n", src_reg, alloc_reg);
+        } else {
+          fprintf(f, "  movq %s, -%d(%%rbp)\n", src_reg, offset);
+        }
       }
     } else if (fn.params[i].type == 's') {
       if (float_arg_idx < 8) {
-        fprintf(f, "  movss %s, -%d(%%rbp)\n", get_float_arg_reg(float_arg_idx++), offset);
+        const(char)* src_reg = get_float_arg_reg(float_arg_idx++);
+        if (alloc_reg) {
+          fprintf(f, "  movss %s, %s\n", src_reg, alloc_reg);
+        } else {
+          fprintf(f, "  movss %s, -%d(%%rbp)\n", src_reg, offset);
+        }
       }
     } else if (fn.params[i].type == 'd') {
       if (float_arg_idx < 8) {
-        fprintf(f, "  movsd %s, -%d(%%rbp)\n", get_float_arg_reg(float_arg_idx++), offset);
+        const(char)* src_reg = get_float_arg_reg(float_arg_idx++);
+        if (alloc_reg) {
+          fprintf(f, "  movsd %s, %s\n", src_reg, alloc_reg);
+        } else {
+          fprintf(f, "  movsd %s, -%d(%%rbp)\n", src_reg, offset);
+        }
       }
     }
   }
