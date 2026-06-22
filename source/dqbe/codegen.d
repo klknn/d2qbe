@@ -6,14 +6,15 @@ import core.stdc.string;
 
 import dqbe.tokenize;
 import dqbe.parse;
+import dqbe.regalloc : perform_register_allocation, get_allocated_register;
 
 struct TempMap {
   char* name;
   int offset;
 }
 
-TempMap[10000] temp_offsets;
-int temp_offsets_count = 0;
+__gshared TempMap[10000] temp_offsets;
+__gshared int temp_offsets_count = 0;
 
 
 struct RegCache {
@@ -73,15 +74,24 @@ struct VarMap {
   int offset;
 }
 
-VarMap[5000] var_offsets;
-int var_offsets_count = 0;
-
-int stack_offset_counter = 0;
+__gshared VarMap[5000] var_offsets;
+__gshared int var_offsets_count = 0;
+__gshared int stack_offset_counter = 0;
 
 void reset_offsets() {
   temp_offsets_count = 0;
   var_offsets_count = 0;
   stack_offset_counter = 0;
+}
+
+void emit_epilogue(FILE* f) {
+  fprintf(f, "  movq -8(%%rbp), %%rbx\n");
+  fprintf(f, "  movq -16(%%rbp), %%r12\n");
+  fprintf(f, "  movq -24(%%rbp), %%r13\n");
+  fprintf(f, "  movq -32(%%rbp), %%r14\n");
+  fprintf(f, "  movq -40(%%rbp), %%r15\n");
+  fprintf(f, "  leave\n");
+  fprintf(f, "  ret\n");
 }
 
 int get_temp_offset(const char* name) {
@@ -129,6 +139,22 @@ int get_var_offset(const char* name, int size, int align_) {
 
 void load_arg(const char* arg, const char* reg, int type, FILE* f) {
   if (arg[0] == '%') {
+    const(char)* alloc_reg = get_allocated_register(arg, cast(char) type);
+    if (alloc_reg) {
+      if (strcmp(alloc_reg, reg) == 0) {
+        return;
+      }
+      if (type == 'w') {
+        fprintf(f, "  movl %s, %s\n", alloc_reg, reg);
+      } else if (type == 'l') {
+        fprintf(f, "  movq %s, %s\n", alloc_reg, reg);
+      } else if (type == 's') {
+        fprintf(f, "  movss %s, %s\n", alloc_reg, reg);
+      } else if (type == 'd') {
+        fprintf(f, "  movsd %s, %s\n", alloc_reg, reg);
+      }
+      return;
+    }
     const(char)* cached_reg = lookup_cache(arg);
     if (cached_reg) {
       if (strcmp(cached_reg, reg) == 0) {
@@ -209,6 +235,22 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
 }
 
 void store_reg(const char* dest, const char* reg, int type, FILE* f) {
+  const(char)* alloc_reg = get_allocated_register(dest, cast(char) type);
+  if (alloc_reg) {
+    if (strcmp(alloc_reg, reg) == 0) {
+      return;
+    }
+    if (type == 'w') {
+      fprintf(f, "  movl %s, %s\n", reg, alloc_reg);
+    } else if (type == 'l') {
+      fprintf(f, "  movq %s, %s\n", reg, alloc_reg);
+    } else if (type == 's') {
+      fprintf(f, "  movss %s, %s\n", reg, alloc_reg);
+    } else if (type == 'd') {
+      fprintf(f, "  movsd %s, %s\n", reg, alloc_reg);
+    }
+    return;
+  }
   int offset = get_temp_offset(dest);
   if (type == 'w') {
     fprintf(f, "  movl %s, -%d(%%rbp)\n", reg, offset);
@@ -290,8 +332,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
         load_arg(inst.arg1, "%xmm0", 'd', f);
       }
     }
-    fprintf(f, "  leave\n");
-    fprintf(f, "  ret\n");
+    emit_epilogue(f);
     return;
   }
   
@@ -723,6 +764,11 @@ void gen_function(FunctionDef* fn, FILE* f) {
   fprintf(f, "%s:\n", fn.name + 1);
   fprintf(f, "  pushq %%rbp\n");
   fprintf(f, "  movq %%rsp, %%rbp\n");
+  fprintf(f, "  pushq %%rbx\n");
+  fprintf(f, "  pushq %%r12\n");
+  fprintf(f, "  pushq %%r13\n");
+  fprintf(f, "  pushq %%r14\n");
+  fprintf(f, "  pushq %%r15\n");
   if (aligned_stack > 0) {
     fprintf(f, "  subq $%d, %%rsp\n", aligned_stack);
   }
@@ -763,8 +809,7 @@ void gen_function(FunctionDef* fn, FILE* f) {
   
   // Epilogue if not ended with ret
   if (!ends_with_ret) {
-    fprintf(f, "  leave\n");
-    fprintf(f, "  ret\n");
+    emit_epilogue(f);
   }
 }
 
@@ -801,6 +846,7 @@ void gen_program(FILE* f) {
   
   fprintf(f, ".text\n");
   for (int i = 0; i < program_functions_count; i++) {
+    perform_register_allocation(&program_functions[i]);
     gen_function(&program_functions[i], f);
   }
 }
