@@ -4,47 +4,47 @@ This document outlines the phased roadmap to support the complete `betterC` subs
 
 ---
 
-## Phase 1: Simple Syntactic Extensions (Difficulty: 1/5 to 2/5)
+## Phase 1: Simple Syntactic Extensions (Completed)
 These features require minor updates to the parser and symbol resolution, with zero to minimal changes in the code generator.
 
-### 1.1 `alias` Declarations
+### 1.1 `alias` Declarations (Completed)
 * **Syntax**: `alias myint = int;`
 * **Implementation**: Store aliases in a global name-to-type map. When parsing types, resolve any alias identifier to its target type.
 
-### 1.2 `static assert`
+### 1.2 `static assert` (Completed)
 * **Syntax**: `static assert(Val == 42);`
 * **Implementation**: Parse compile-time expressions, evaluate them to constants immediately, and trigger a compiler error if the value is false.
 
-### 1.3 Type Properties (`.init`, `.alignof`)
+### 1.3 Type Properties (`.init`, `.alignof`) (Completed)
 * **Syntax**: `int.init`, `Point.alignof`
 * **Implementation**: Expand the `.sizeof` parser and evaluation logic. `.init` returns the default zero pattern of the type; `.alignof` returns the byte alignment.
 
-### 1.4 Conditional Compilation (`version` & `debug` blocks)
+### 1.4 Conditional Compilation (`version` & `debug` blocks) (Completed)
 * **Syntax**: `version(Posix) { ... }`
 * **Implementation**: Simple preprocessor-like filtering in the tokenizer/parser to skip block contents that do not match the compiled version flags.
 
-### 1.5 Type Inference (`auto` declarations)
+### 1.5 Type Inference (`auto` declarations) (Completed)
 * **Syntax**: `auto x = 12;`
 * **Implementation**: Infer the type of the initializer expression during parsing (reusing `get_expr_type` which already exists in `codegen.d`) and assign it to the declared variable.
 
 ---
 
-## Phase 2: Moderate Structural Features (Difficulty: 3/5)
+## Phase 2: Moderate Structural Features (Completed)
 These features require transforming D syntax into basic pointer/structure operations.
 
-### 2.1 Slices (`T[]` types & slicing syntax)
+### 2.1 Slices (`T[]` types & slicing syntax) (Completed)
 * **Syntax**: `int[] slice = arr[1 .. 3];`
 * **Implementation**: Represent a slice internally as a compiler-generated struct `struct Slice { size_t length; T* ptr; }`. Rewrite slice indexing `slice[i]` to `slice.ptr[i]`, and slice operations to struct instantiation.
 
-### 2.2 Member Functions in Structs
+### 2.2 Member Functions in Structs (Completed)
 * **Syntax**: `s.foo()`
 * **Implementation**: Parse member functions inside struct blocks. Rewrite calls to member functions `s.foo()` to a global call `foo(&s)`, passing the address of the struct instance as the implicit `this` pointer parameter.
 
-### 2.3 `static if`
+### 2.3 `static if` (Completed)
 * **Syntax**: `static if (T.sizeof == 4) { ... }`
 * **Implementation**: Parse the conditional compile-time expression, evaluate it, and conditionally parse only the active branch.
 
-### 2.4 Floating Point Support (`float` and `double` types)
+### 2.4 Floating Point Support (`float` and `double` types) (Completed)
 * **Syntax**: `float f = 1.0f;`
 * **Behavior**: In D, floating-point variables (`float`, `double`) are default-initialized to `NaN` (IEEE 754 NaN) if no explicit initializer is provided (and not initialized to `void`).
 * **Implementation**:
@@ -55,36 +55,35 @@ These features require transforming D syntax into basic pointer/structure operat
 
 ---
 
-## Phase 3: Advanced Compiler Architecture (Difficulty: 4/5 to 5/5)
+## Phase 3: Advanced Compiler Architecture (Completed)
 These features require significant restructuring of name resolution, type validation, or code generation.
 
-### 3.1 Function Overloading
+### 3.1 Function Overloading (Completed)
 * **Syntax**: Multiple functions sharing the same name but different signatures.
 * **Implementation**: Implement compiler name mangling based on function parameter signatures (e.g. `_D4fooFia` for `foo(int, char)`). Implement overload resolution to select the correct mangled name during code generation.
 
-### 3.2 Struct Constructors (`this()`) & Destructors (`~this()`) (RAII)
+### 3.2 Struct Constructors (`this()`) & Destructors (`~this()`) (RAII) (Completed)
 * **Syntax**: Automatically cleanup resources when struct goes out of scope.
 * **Implementation**: Automatically insert constructor calls during variable initialization, and destructor calls at every scope exit point (such as `return`, `break`, or block end).
 
-### 3.3 Modules & Imports
+### 3.3 Modules & Imports (Completed)
 * **Syntax**: `module my_module; import other_module;`
-* **Current Limitation**: Currently, `d2qbe` only supports compiling a single D source string. The self-hosting test script (`test/self_host.sh`) concatenates all modules (`tokenize.d`, `parse.d`, `codegen.d`, `app.d`) into a single file and strips the `module` and `import` lines to bypass this limitation.
 * **Implementation**:
   - Update tokenizer/parser to accept `module` and `import` keywords without failing.
   - Implement import path lookup to locate and parse dependent `.d` files dynamically.
   - Support modular symbol tables and namespace scoping to prevent symbol conflicts.
 
-### 3.4 Compile-Time Function Execution (CTFE)
+### 3.4 Compile-Time Function Execution (CTFE) (Optional / Proposed)
 * **Syntax**: Evaluating arbitrary functions at compile-time.
 * **Implementation**: Write a lightweight AST interpreter inside the compiler to execute subset D code during compilation.
 
 ---
 
-## Phase 4: Mini Template Support (Immediate Focus)
+## Phase 4: Mini Template Support (Completed)
 
 We will support general template blocks (`template Name(T) { ... }`) and eponymous instantiations (`Name!int`) using a lightweight **token-level substitution and mangling** approach.
 
-### 4.1 Template Declaration Parsing
+### 4.1 Template Declaration Parsing (Completed)
 * **Syntax**:
   ```d
   template MyTemplate(T) {
@@ -98,7 +97,7 @@ We will support general template blocks (`template Name(T) { ... }`) and eponymo
   - Introduce a `TemplateSymbol` table storing registered templates.
   - When parsing `template Name(Params)`, capture the start token and end token of the template body (`{ ... }`), and the parameter names (e.g. `T`). We do *not* build an AST at this stage.
 
-### 4.2 Explicit Instantiation & Substitution
+### 4.2 Explicit Instantiation & Substitution (Completed)
 * **Syntax**: `MyTemplate!int`
 * **Implementation**:
   - When the parser encounters `Name!Arg` (e.g. `MyTemplate!int`):
@@ -110,14 +109,14 @@ We will support general template blocks (`template Name(T) { ... }`) and eponymo
     6. Recursively parse the declarations inside the block (using the standard parser functions).
     7. Restore the original parser `token` stream.
 
-### 4.3 Eponymous Renaming & Mangling
+### 4.3 Eponymous Renaming & Mangling (Completed)
 * **Implementation**:
   - Rename the eponymous member (the member matching the template name, e.g., `struct MyTemplate` or `void MyTemplate(...)`) inside the instantiated block to a mangled name `MyTemplate_int` or `MyTemplate_char` to avoid collisions across different instantiations.
   - Resolve the instantiation expression `MyTemplate!int` directly to that mangled name.
 
 ---
 
-## Phase 5: Floating Point Support (Difficulty: 3/5)
+## Phase 5: Floating Point Support (Completed)
 This phase introduces support for D `float` and `double` types and floating-point arithmetic.
 
 ### 5.1 Type Parsing & Size/Alignment
