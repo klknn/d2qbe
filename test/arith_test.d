@@ -91,6 +91,29 @@ int main() {
     assert(3 >> 1 == 1);
     assert((~-1) == 0);
     assert((~0) == -1);
+    // Compound assignment operators
+    int ca_val = 10;
+    ca_val += 5;
+    assert(ca_val == 15);
+    ca_val -= 3;
+    assert(ca_val == 12);
+    ca_val *= 2;
+    assert(ca_val == 24);
+    ca_val /= 4;
+    assert(ca_val == 6);
+    ca_val %= 4;
+    assert(ca_val == 2);
+    ca_val &= 3;
+    assert(ca_val == 2);
+    ca_val |= 4;
+    assert(ca_val == 6);
+    ca_val ^= 2;
+    assert(ca_val == 4);
+    ca_val <<= 2;
+    assert(ca_val == 16);
+    ca_val >>= 1;
+    assert(ca_val == 8);
+
     assert((2 & (1 == 0)) == 0);
 
     // Type sizes

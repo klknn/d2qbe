@@ -263,13 +263,20 @@ Token* tokenize(char* p) {
     // multi-punct reserved.
     if (startswith(p, "...") ||
       startswith(p, "..") ||
+      startswith(p, "<<=") || startswith(p, ">>=") ||
       startswith(p, "==") || startswith(p, "!=") ||
       startswith(p, "<=") || startswith(p, ">=") ||
       startswith(p, "&&") || startswith(p, "||") ||
       startswith(p, "++") || startswith(p, "--") ||
-      startswith(p, "<<") || startswith(p, ">>")) {
+      startswith(p, "<<") || startswith(p, ">>") ||
+      startswith(p, "+=") || startswith(p, "-=") ||
+      startswith(p, "*=") || startswith(p, "/=") ||
+      startswith(p, "%=") || startswith(p, "&=") ||
+      startswith(p, "|=") || startswith(p, "^=")) {
       int len = 2;
       if (startswith(p, "...")) {
+        len = 3;
+      } else if (startswith(p, "<<=") || startswith(p, ">>=")) {
         len = 3;
       } else if (startswith(p, "..")) {
         len = 2;
@@ -401,4 +408,13 @@ int parse_float_literal_length(const(char)* p) {
     return cast(int)(s - p);
   }
   return 0;
+}
+
+unittest {
+  Token* tok = tokenize(cast(char*) "+= <<=");
+  assert(tok != null && tok.kind == TokenKind.TK_reserved && tok.len == 2 && strncmp(tok.str, "+=", 2) == 0);
+  tok = tok.next;
+  assert(tok != null && tok.kind == TokenKind.TK_reserved && tok.len == 3 && strncmp(tok.str, "<<=", 3) == 0);
+  tok = tok.next;
+  assert(tok != null && tok.kind == TokenKind.TK_eof);
 }

@@ -1258,16 +1258,41 @@ Node* parse_ternary() {
   return cond;
 }
 
-/**
- * Parses an assignment expression (=).
- * EBNF: assign = ternary ("=" assign)?
- */
+bool is_compound_assign(const(char)* op, NodeKind* out_kind) {
+  if (strcmp(op, "+=") == 0) { *out_kind = NodeKind.NK_add; return true; }
+  if (strcmp(op, "-=") == 0) { *out_kind = NodeKind.NK_sub; return true; }
+  if (strcmp(op, "*=") == 0) { *out_kind = NodeKind.NK_mul; return true; }
+  if (strcmp(op, "/=") == 0) { *out_kind = NodeKind.NK_div; return true; }
+  if (strcmp(op, "%=") == 0) { *out_kind = NodeKind.NK_mod; return true; }
+  if (strcmp(op, "&=") == 0) { *out_kind = NodeKind.NK_bitwise_and; return true; }
+  if (strcmp(op, "|=") == 0) { *out_kind = NodeKind.NK_bitwise_or; return true; }
+  if (strcmp(op, "^=") == 0) { *out_kind = NodeKind.NK_bitwise_xor; return true; }
+  if (strcmp(op, "<<=") == 0) { *out_kind = NodeKind.NK_lshift; return true; }
+  if (strcmp(op, ">>=") == 0) { *out_kind = NodeKind.NK_rshift; return true; }
+  return false;
+}
+
 Node* parse_assign() {
-  Node* node = parse_ternary();
-  if (consume("=")) {
-    node = new_node_binop(NodeKind.NK_assign, node, parse_assign());
+  Node* lhs = parse_ternary();
+  NodeKind op_kind;
+  if (token && token.kind == TokenKind.TK_reserved) {
+    char[16] op_buf;
+    int len = token.len < 15 ? token.len : 15;
+    memcpy(&op_buf[0], token.str, len);
+    op_buf[len] = 0;
+    
+    if (is_compound_assign(&op_buf[0], &op_kind)) {
+      token = token.next;
+      Node* rhs = parse_assign();
+      Node* binop = new_node_binop(op_kind, lhs, rhs);
+      return new_node_binop(NodeKind.NK_assign, lhs, binop);
+    }
   }
-  return node;
+  
+  if (consume("=")) {
+    lhs = new_node_binop(NodeKind.NK_assign, lhs, parse_assign());
+  }
+  return lhs;
 }
 
 /**
@@ -2675,7 +2700,7 @@ unittest {
   assert(strcmp(dtor.params_types[0].name, "MyRaii") == 0 && dtor.params_types[0].ptr_depth == 1);
 
   // Test import compilation
-  FILE* tmp_f = fopen("test_import_module.d", "w");
+  void* tmp_f = fopen("test_import_module.d", "w");
   assert(tmp_f != null);
   fputs("module test_import_module; void imported_func() {}", tmp_f);
   fclose(tmp_f);
@@ -2690,6 +2715,19 @@ unittest {
   assert(imp_fs != null);
   
   remove("test_import_module.d");
+
+  // Test compound assignment parsing and desugaring
+  user_input = cast(char*) "x += 42;";
+  token = tokenize(user_input);
+  Node* ca = stmt();
+  assert(ca != null);
+  assert(ca.kind == NodeKind.NK_assign);
+  assert(ca.lhs.kind == NodeKind.NK_lvar);
+  assert(strncmp(ca.lhs.ident.str, "x", 1) == 0);
+  assert(ca.rhs.kind == NodeKind.NK_add);
+  assert(ca.rhs.lhs.kind == NodeKind.NK_lvar);
+  assert(strncmp(ca.rhs.lhs.ident.str, "x", 1) == 0);
+  assert(ca.rhs.rhs.kind == NodeKind.NK_num && ca.rhs.rhs.val == 42);
 }
 
 
