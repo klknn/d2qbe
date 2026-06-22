@@ -390,6 +390,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
         }
       }
     }
+    fprintf(f, "  movb $%d, %%al\n", float_arg_idx);
     fprintf(f, "  call %s\n", inst.arg1 + 1);
     clear_cache();
     return;
@@ -551,6 +552,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
           }
         }
       }
+      fprintf(f, "  movb $%d, %%al\n", float_arg_idx);
       fprintf(f, "  call %s\n", inst.arg1 + 1);
       clear_cache();
       if (inst.dest_type == 'w') {
