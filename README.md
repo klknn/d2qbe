@@ -36,6 +36,7 @@ cc a.s -o a.out
   - [x] floating point support (`float`, `double` arithmetic, conversions & registers)
   - [x] compound self-assignments (`+=`, `-=`, etc.)
   - [x] byte-sized function parameters safety (`char`/`bool` parameter stack stores)
+  - [x] frontend SSA optimization (direct emission of QBE SSA `phi` instructions for ternary operations)
 - [x] full set of betterC D language https://dlang.org/spec/betterc.html#consequences (Self-hosted compiler is 100% complete, fully optimized and self-hosting)
 
 ## benchmarks
