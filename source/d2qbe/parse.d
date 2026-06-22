@@ -1,12 +1,9 @@
 module d2qbe.parse;
 
-import core.stdc.string;
-import core.stdc.stdlib;
-import core.stdc.stdio;
-
 import d2qbe.tokenize;
+import d2qbe.c_declarations;
 
-extern (C) FILE* get_stderr();
+extern (C) void* get_stderr();
 
 enum NodeKind {
   NK_add, // +
@@ -102,6 +99,66 @@ TypeAlias[100] registered_aliases;
 int registered_aliases_count = 0;
 
 enum MAX_PARAM_SIZE = 10;
+
+const(char)*[100] parsed_modules;
+int parsed_modules_count = 0;
+
+char* read_file_to_string(const(char)* path) {
+  void* f = fopen(path, "r");
+  if (!f) return null;
+  fseek(f, 0, 2);
+  int size = cast(int) ftell(f);
+  fseek(f, 0, 0);
+  char* buf = cast(char*) calloc(1, size + 1);
+  int read_bytes = cast(int) fread(buf, 1, size, f);
+  buf[read_bytes] = 0;
+  fclose(f);
+  return buf;
+}
+
+bool has_parsed_module(const(char)* mod_name) {
+  for (int i = 0; i < parsed_modules_count; i++) {
+    if (strcmp(parsed_modules[i], mod_name) == 0) return true;
+  }
+  return false;
+}
+
+void register_parsed_module(const(char)* mod_name) {
+  if (has_parsed_module(mod_name)) return;
+  assert(parsed_modules_count < 100, "parsed_modules overflow");
+  parsed_modules[parsed_modules_count++] = mod_name;
+}
+
+char* resolve_import_filepath(const(char)* mod_name) {
+  int len = cast(int) strlen(mod_name);
+  char* path = cast(char*) calloc(1, len + 5);
+  strcpy(path, mod_name);
+  for (int i = 0; i < len; i++) {
+    if (path[i] == '.') {
+      path[i] = '/';
+    }
+  }
+  strcat(path, ".d");
+  
+  void* f = fopen(path, "r");
+  if (f) {
+    fclose(f);
+    return path;
+  }
+  
+  char* src_path = cast(char*) calloc(1, len + 15);
+  strcpy(src_path, "source/");
+  strcat(src_path, path);
+  f = fopen(src_path, "r");
+  if (f) {
+    fclose(f);
+    free(path);
+    return src_path;
+  }
+  
+  free(src_path);
+  return path;
+}
 
 struct FunctionSymbol {
   const(char)* name;
@@ -260,6 +317,26 @@ bool lookup_constant(const(Token)* ident, int* val) {
   }
   return false;
 }
+
+Token* expect_ident() {
+  Token* tok = consume_ident();
+  if (!tok) {
+    error_at(token.str, "identifier expected");
+  }
+  return tok;
+}
+
+void parse_module_decl() {
+  if (consume("module")) {
+    Token* path = expect_ident();
+    while (consume(".")) {
+      expect_ident();
+    }
+    expect(";");
+  }
+}
+
+void parse_import_decl();
 
 const(char)*[200] known_types;
 int known_types_count = 0;
@@ -751,6 +828,8 @@ Node* primary() {
   } else if (consume("true")) {
     node = new_node_num(1);
   } else if (consume("false")) {
+    node = new_node_num(0);
+  } else if (consume("null")) {
     node = new_node_num(0);
   } else if (is_token("this")) {
     Token* this_tok = token;
@@ -2159,10 +2238,62 @@ void parse_top_level() {
   }
 }
 
+void parse_import_decl() {
+  expect("import");
+  Token* start_tok = token;
+  Token* last_tok = token;
+  expect_ident();
+  while (consume(".")) {
+    last_tok = token;
+    expect_ident();
+  }
+  expect(";");
+  
+  int name_len = cast(int) (last_tok.str + last_tok.len - start_tok.str);
+  char* mod_name = cast(char*) calloc(1, name_len + 1);
+  memcpy(mod_name, start_tok.str, name_len);
+  
+  if (has_parsed_module(mod_name)) {
+    return;
+  }
+  register_parsed_module(mod_name);
+  
+  if (strncmp(mod_name, "core.stdc.", 10) == 0) {
+    return;
+  }
+  
+  char* path = resolve_import_filepath(mod_name);
+  char* content = read_file_to_string(path);
+  if (!content) {
+    char[256] buf;
+    snprintf(&buf[0], 256, "imported module file not found: '%s' (tried '%s')", mod_name, path);
+    error(&buf[0]);
+  }
+  
+  Token* saved_token = token;
+  token = tokenize(content);
+  
+  parse_module_decl();
+  while (token && token.kind != TokenKind.TK_eof) {
+    if (is_token("import")) {
+      parse_import_decl();
+    } else {
+      parse_top_level();
+    }
+  }
+  
+  token = saved_token;
+}
+
 void program() {
   init_types();
+  parse_module_decl();
   while (!at_eof()) {
-    parse_top_level();
+    if (is_token("import")) {
+      parse_import_decl();
+    } else {
+      parse_top_level();
+    }
   }
   code[code_count] = null;
 }
@@ -2543,6 +2674,23 @@ unittest {
   assert(strcmp(dtor.unmangled_name, "_D_struct_MyRaii___dtor") == 0);
   assert(dtor.num_params == 1); // 'this' (MyRaii*)
   assert(strcmp(dtor.params_types[0].name, "MyRaii") == 0 && dtor.params_types[0].ptr_depth == 1);
+
+  // Test import compilation
+  FILE* tmp_f = fopen("test_import_module.d", "w");
+  assert(tmp_f != null);
+  fputs("module test_import_module; void imported_func() {}", tmp_f);
+  fclose(tmp_f);
+  
+  registered_functions_count = 0;
+  parsed_modules_count = 0;
+  user_input = cast(char*) "import test_import_module;";
+  token = tokenize(user_input);
+  program();
+  
+  FunctionSymbol* imp_fs = find_function("_D_imported_func");
+  assert(imp_fs != null);
+  
+  remove("test_import_module.d");
 }
 
 
