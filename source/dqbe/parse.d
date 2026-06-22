@@ -14,6 +14,7 @@ enum InstKind {
   IK_jnz,
   IK_ret,
   IK_call,
+  IK_phi,
 }
 
 struct Variable {
@@ -21,11 +22,16 @@ struct Variable {
   char type; // 'w', 'l', 'b'
 }
 
+struct PhiPredecessor {
+  char* label;
+  char* value;
+}
+
 struct Instruction {
   InstKind kind;
   char* label; // for IK_label, IK_jmp
-  char* dest;  // for IK_assign
-  char dest_type; // 'w', 'l', 'b'
+  char* dest;  // for IK_assign, IK_phi
+  char dest_type; // 'w', 'l', 'b', 's', 'd'
   char* op;    // e.g. "add", "sub", "copy", "alloc4", "loadw", etc.
   char* arg1;  // first argument (can be %temp, $global, or constant)
   char* arg2;  // second argument
@@ -33,6 +39,9 @@ struct Instruction {
   
   Variable[20] call_args;
   int call_args_count;
+  
+  PhiPredecessor[20] phi_args;
+  int phi_args_count;
 }
 
 struct FunctionDef {
@@ -361,7 +370,26 @@ void parse_instruction_list(FunctionDef* fn) {
       Token* op_tok = consume_kind(TokenKind.TK_ident);
       if (!op_tok) error("Expected operation or call");
       
-      if (op_tok.len == 4 && strncmp(op_tok.str, "call", 4) == 0) {
+      if (op_tok.len == 3 && strncmp(op_tok.str, "phi", 3) == 0) {
+        inst.kind = InstKind.IK_phi;
+        inst.op = token_to_str(op_tok);
+        inst.phi_args_count = 0;
+        while (true) {
+          Token* lbl_tok = consume_kind(TokenKind.TK_label);
+          if (!lbl_tok) error("Expected label inside phi instruction");
+          Token* val_tok = consume_kind(TokenKind.TK_temp);
+          if (!val_tok) val_tok = consume_kind(TokenKind.TK_num);
+          if (!val_tok) error("Expected value for label inside phi instruction");
+          PhiPredecessor pred;
+          pred.label = token_to_str(lbl_tok);
+          pred.value = token_to_str(val_tok);
+          assert(inst.phi_args_count < 20);
+          inst.phi_args[inst.phi_args_count++] = pred;
+          if (!consume(",")) {
+            break;
+          }
+        }
+      } else if (op_tok.len == 4 && strncmp(op_tok.str, "call", 4) == 0) {
         inst.op = token_to_str(op_tok); // "call"
         Token* target = consume_kind(TokenKind.TK_global);
         if (!target) error("Expected call target global name");
