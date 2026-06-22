@@ -81,7 +81,7 @@ __gshared int stack_offset_counter = 0;
 void reset_offsets() {
   temp_offsets_count = 0;
   var_offsets_count = 0;
-  stack_offset_counter = 0;
+  stack_offset_counter = 40;
 }
 
 void emit_epilogue(FILE* f) {
