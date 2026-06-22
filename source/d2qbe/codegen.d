@@ -2141,6 +2141,36 @@ int gen(Node* node) {
       Type t;
       get_expr_type(node, &t);
       int size = get_type_size(&t);
+      
+      if (size <= 8) {
+        char c = 'w';
+        if (t.ptr_depth > 0) {
+          c = 'l';
+        } else if (strcmp(t.name, "double") == 0) {
+          c = 'd';
+        } else if (strcmp(t.name, "float") == 0) {
+          c = 's';
+        }
+        
+        int cond = gen(node.cond);
+        int label_id = next_reg();
+        printf("  jnz %%t%d, @ternary_then%d, @ternary_else%d\n", cond, label_id, label_id);
+        
+        printf("@ternary_then%d\n", label_id);
+        int val_then = gen(node.then);
+        printf("  jmp @ternary_end%d\n", label_id);
+        
+        printf("@ternary_else%d\n", label_id);
+        int val_else = gen(node.else_);
+        printf("  jmp @ternary_end%d\n", label_id);
+        
+        printf("@ternary_end%d\n", label_id);
+        int res = next_reg();
+        printf("  %%t%d =%c phi @ternary_then%d %%t%d, @ternary_else%d %%t%d\n", res, c, label_id, val_then, label_id, val_else);
+        set_reg_type(res, c);
+        return res;
+      }
+      
       int align_ = get_type_alignment(&t);
       int qbe_align = 4;
       if (align_ > 8) qbe_align = 16;
@@ -2211,10 +2241,7 @@ int gen(Node* node) {
       printf("  jmp @ternary_end%d\n", label_id);
       
       printf("@ternary_end%d\n", label_id);
-      if (size > 8) {
-        return addr;
-      }
-      return emit_load(addr, &t);
+      return addr;
     }
   if (node.kind == NodeKind.NK_logical_not) {
       int val = gen(node.lhs);
