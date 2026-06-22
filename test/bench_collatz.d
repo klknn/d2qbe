@@ -1,17 +1,17 @@
-extern (C) void* malloc(int size);
+extern (C) void* malloc(long size);
 extern (C) int printf(const char* format, ...);
 
 extern (C) int main() {
-    int n;
-    int nv;
-    int c;
-    int cmax;
-    int* mem;
+    long n;
+    long nv;
+    long c;
+    long cmax;
+    long* mem;
 
-    mem = cast(int*) malloc(4 * 10000000);
+    mem = cast(long*) malloc(8 * 1000000);
 
     cmax = 0;
-    for (nv = 1; nv < 10000000; nv++) {
+    for (nv = 1; nv < 1000000; nv++) {
         n = nv;
         c = 0;
         while (n != 1) {
@@ -29,6 +29,6 @@ extern (C) int main() {
         if (c > cmax)
             cmax = c;
     }
-    printf("max steps: %d\n", cmax);
+    printf("max steps: %ld\n", cmax);
     return 0;
 }
