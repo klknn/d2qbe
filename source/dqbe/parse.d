@@ -43,7 +43,7 @@ struct FunctionDef {
   int params_count;
   bool is_variadic;
   
-  Instruction[5000] instructions;
+  Instruction[1000] instructions;
   int inst_count;
 }
 
@@ -58,11 +58,11 @@ struct DataDef {
   int items_count;
 }
 
-FunctionDef[200] program_functions;
-int program_functions_count = 0;
+__gshared FunctionDef[100] program_functions;
+__gshared int program_functions_count = 0;
 
-DataDef[2000] program_data;
-int program_data_count = 0;
+__gshared DataDef[500] program_data;
+__gshared int program_data_count = 0;
 
 char* token_to_str(Token* tok) {
   if (!tok) return null;
@@ -78,7 +78,7 @@ void parse_data() {
     error("Expected global name starting with $ after 'data'");
   }
   
-  assert(program_data_count < 2000);
+  assert(program_data_count < 500);
   DataDef* def = &program_data[program_data_count++];
   def.name = token_to_str(name_tok);
   def.items_count = 0;
@@ -190,7 +190,7 @@ void parse_function() {
       inst.kind = InstKind.IK_label;
       inst.label = token_to_str(label_tok);
       
-      assert(fn.inst_count < 5000);
+      assert(fn.inst_count < 1000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -215,7 +215,7 @@ void parse_function() {
       inst.arg1 = token_to_str(arg1_tok);
       inst.arg2 = token_to_str(arg2_tok);
       
-      assert(fn.inst_count < 5000);
+      assert(fn.inst_count < 1000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -230,7 +230,7 @@ void parse_function() {
       
       inst.label = token_to_str(label_target);
       
-      assert(fn.inst_count < 5000);
+      assert(fn.inst_count < 1000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -257,7 +257,7 @@ void parse_function() {
       inst.label = token_to_str(label_then);
       inst.label_else = token_to_str(label_else);
       
-      assert(fn.inst_count < 5000);
+      assert(fn.inst_count < 1000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -274,7 +274,7 @@ void parse_function() {
         inst.arg1 = token_to_str(ret_val_tok);
       }
       
-      assert(fn.inst_count < 5000);
+      assert(fn.inst_count < 1000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -310,7 +310,7 @@ void parse_function() {
         consume(",");
       }
       
-      assert(fn.inst_count < 5000);
+      assert(fn.inst_count < 1000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -414,7 +414,7 @@ void parse_instruction_list(FunctionDef* fn) {
         }
       }
       
-      assert(fn.inst_count < 5000);
+      assert(fn.inst_count < 1000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -442,7 +442,7 @@ void parse_instruction_list(FunctionDef* fn) {
       inst.arg1 = token_to_str(arg1_tok);
       inst.arg2 = token_to_str(arg2_tok);
       
-      assert(fn.inst_count < 5000);
+      assert(fn.inst_count < 1000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -457,7 +457,7 @@ void parse_instruction_list(FunctionDef* fn) {
       
       inst.label = token_to_str(label_target);
       
-      assert(fn.inst_count < 5000);
+      assert(fn.inst_count < 1000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -484,7 +484,7 @@ void parse_instruction_list(FunctionDef* fn) {
       inst.label = token_to_str(label_then);
       inst.label_else = token_to_str(label_else);
       
-      assert(fn.inst_count < 5000);
+      assert(fn.inst_count < 1000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -501,7 +501,7 @@ void parse_instruction_list(FunctionDef* fn) {
         inst.arg1 = token_to_str(ret_val_tok);
       }
       
-      assert(fn.inst_count < 5000);
+      assert(fn.inst_count < 1000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -541,7 +541,7 @@ void parse_instruction_list(FunctionDef* fn) {
         consume(",");
       }
       
-      assert(fn.inst_count < 5000);
+      assert(fn.inst_count < 1000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -560,7 +560,7 @@ void parse_program() {
       continue;
     }
     if (is_token("export") || is_token("function")) {
-      assert(program_functions_count < 200);
+      assert(program_functions_count < 100);
       FunctionDef* fn = &program_functions[program_functions_count++];
       fn.inst_count = 0;
       fn.params_count = 0;
