@@ -901,7 +901,7 @@ void get_expr_type(Node* node, Type* out_type) {
     }
     Type lt;
     get_expr_type(node.lhs, &lt);
-    if (lt.is_slice) {
+    if (lt.is_slice || lt.array_dims > 0) {
       if (node.ident.len == 6 && strncmp(node.ident.str, "length", 6) == 0) {
         t.name = "int";
         t.ptr_depth = 1;
@@ -913,7 +913,7 @@ void get_expr_type(Node* node, Type* out_type) {
       if (node.ident.len == 3 && strncmp(node.ident.str, "ptr", 3) == 0) {
         t.name = lt.name;
         t.ptr_depth = lt.ptr_depth + 1;
-        t.array_dims = lt.array_dims;
+        t.array_dims = 0;
         t.is_slice = false;
         *out_type = t;
         return;
@@ -2284,6 +2284,19 @@ int gen(Node* node) {
         printf("  %%t%d =w copy %d\n", res, get_type_size(&t));
         set_reg_type(res, 'w');
         return res;
+      }
+      Type lt;
+      get_expr_type(node.lhs, &lt);
+      if (lt.array_dims > 0) {
+        if (node.ident.len == 3 && strncmp(node.ident.str, "ptr", 3) == 0) {
+          return gen_addr(node.lhs);
+        }
+        if (node.ident.len == 6 && strncmp(node.ident.str, "length", 6) == 0) {
+          int res = next_reg();
+          printf("  %%t%d =w copy %d\n", res, lt.array_sizes[0]);
+          set_reg_type(res, 'w');
+          return res;
+        }
       }
       int addr = gen_addr(node);
       Type t;
