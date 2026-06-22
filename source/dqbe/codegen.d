@@ -432,7 +432,8 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
         strcmp(inst.op, "mul") == 0 || strcmp(inst.op, "div") == 0 ||
         strcmp(inst.op, "rem") == 0 || strcmp(inst.op, "and") == 0 ||
         strcmp(inst.op, "or") == 0 || strcmp(inst.op, "xor") == 0 ||
-        strcmp(inst.op, "shl") == 0 || strcmp(inst.op, "sar") == 0) {
+        strcmp(inst.op, "shl") == 0 || strcmp(inst.op, "sar") == 0 ||
+        strcmp(inst.op, "shr") == 0) {
       if (inst.dest_type == 'w') {
         load_arg(inst.arg1, "%eax", 'w', f);
         load_arg(inst.arg2, "%ecx", 'w', f);
@@ -459,6 +460,8 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
           fprintf(f, "  shll %%cl, %%eax\n");
         } else if (strcmp(inst.op, "sar") == 0) {
           fprintf(f, "  sarl %%cl, %%eax\n");
+        } else if (strcmp(inst.op, "shr") == 0) {
+          fprintf(f, "  shrl %%cl, %%eax\n");
         }
         store_reg(inst.dest, "%eax", 'w', f);
       } else if (inst.dest_type == 'l') {
@@ -487,6 +490,8 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
           fprintf(f, "  shlq %%cl, %%rax\n");
         } else if (strcmp(inst.op, "sar") == 0) {
           fprintf(f, "  sarq %%cl, %%rax\n");
+        } else if (strcmp(inst.op, "shr") == 0) {
+          fprintf(f, "  shrq %%cl, %%rax\n");
         }
         store_reg(inst.dest, "%rax", 'l', f);
       } else if (inst.dest_type == 's') {
