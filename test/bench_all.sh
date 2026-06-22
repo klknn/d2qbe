@@ -17,13 +17,13 @@ for i in "${!benchmarks[@]}"; do
   ldc2 -O3 -betterC "$src" -of=bin_ldc >/dev/null 2>&1
   
   # Compile with Ours (d2qbe_opt + dqbe + cc)
-  ./d2qbe_opt "$src" > tmp.s 2>/dev/null
+  ./d2qbe "$src" > tmp.s 2>/dev/null
   ./dqbe < tmp.s > tmp_qbe.s 2>/dev/null
   cc -o bin_our tmp_qbe.s >/dev/null 2>&1
   rm -f tmp.s tmp_qbe.s
   
   # Compile with Hybrid (d2qbe_opt + upstream QBE + cc)
-  ./d2qbe_opt "$src" > tmp.s 2>/dev/null
+  ./d2qbe "$src" > tmp.s 2>/dev/null
   ./qbe/qbe < tmp.s > tmp_qbe.s 2>/dev/null
   cc -o bin_hybrid tmp_qbe.s >/dev/null 2>&1
   rm -f tmp.s tmp_qbe.s
@@ -44,9 +44,9 @@ for i in "${!benchmarks[@]}"; do
     # Compile overhead measurements
     /usr/bin/time -f "%e %M" ldc2 -O3 -betterC "$src" -of=bin_ldc_c >/dev/null 2> /tmp/time_ldc.txt
     
-    /usr/bin/time -f "%e %M" bash -c "./d2qbe_opt $src > tmp.s && ./dqbe < tmp.s > tmp_qbe.s && cc -o bin_our_c tmp_qbe.s" >/dev/null 2> /tmp/time_our.txt
+    /usr/bin/time -f "%e %M" bash -c "./d2qbe $src > tmp.s && ./dqbe < tmp.s > tmp_qbe.s && cc -o bin_our_c tmp_qbe.s" >/dev/null 2> /tmp/time_our.txt
     
-    /usr/bin/time -f "%e %M" bash -c "./d2qbe_opt $src > tmp.s && ./qbe/qbe < tmp.s > tmp_qbe.s && cc -o bin_hybrid_c tmp_qbe.s" >/dev/null 2> /tmp/time_hybrid.txt
+    /usr/bin/time -f "%e %M" bash -c "./d2qbe $src > tmp.s && ./qbe/qbe < tmp.s > tmp_qbe.s && cc -o bin_hybrid_c tmp_qbe.s" >/dev/null 2> /tmp/time_hybrid.txt
     
     rm -f tmp.s tmp_qbe.s bin_ldc_c bin_our_c bin_hybrid_c
     
