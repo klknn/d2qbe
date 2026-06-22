@@ -47,6 +47,13 @@ int test_raii_return() {
   return 123;
 }
 
+int test_char_params(char a, int b, char c) {
+  assert(a == 'x');
+  assert(b == 500);
+  assert(c == 'y');
+  return 456;
+}
+
 int main() {
     // Arithmetic & basic operations
     assert(5+20-4 == 21);
@@ -236,6 +243,10 @@ int main() {
     int ret_val = test_raii_return();
     assert(ret_val == 123);
     assert(g_destroyed_count == 2);
+
+    // Test byte-sized parameters safety
+    int char_ret = test_char_params('x', 500, 'y');
+    assert(char_ret == 456);
 
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;

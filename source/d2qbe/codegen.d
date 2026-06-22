@@ -1930,6 +1930,8 @@ int gen(Node* node) {
           printf("  stored %%%.*s, %%%.*s_addr\n", p.len, p.str, p.len, p.str);
         } else if (strcmp(t.name, "float") == 0) {
           printf("  stores %%%.*s, %%%.*s_addr\n", p.len, p.str, p.len, p.str);
+        } else if (strcmp(t.name, "char") == 0 || strcmp(t.name, "bool") == 0) {
+          printf("  storeb %%%.*s, %%%.*s_addr\n", p.len, p.str, p.len, p.str);
         } else {
           printf("  storew %%%.*s, %%%.*s_addr\n", p.len, p.str, p.len, p.str);
         }
