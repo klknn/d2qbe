@@ -1,0 +1,20 @@
+module d2qbe.config;
+
+enum MAX_PARAM_SIZE = 10;
+enum MAX_MODULES = 100;
+enum MAX_FUNCTIONS = 200;
+enum MAX_CONSTANTS = 500;
+enum MAX_KNOWN_TYPES = 200;
+enum MAX_ALIASES = 100;
+enum MAX_STRUCT_MEMBERS = 20;
+enum MAX_STRUCTS = 50;
+enum MAX_TEMPLATES = 50;
+enum MAX_CODE = 500;
+
+enum MAX_STRING_POOL = 500;
+enum MAX_GLOBALS = 200;
+enum MAX_LOOP_STACK = 100;
+enum MAX_LOCALS = 200;
+enum MAX_REG_COUNT = 9999;
+enum MAX_REG_TYPES = 10000;
+enum MAX_ACTIVE_RAII = 500;

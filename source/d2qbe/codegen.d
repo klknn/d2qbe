@@ -1,11 +1,12 @@
 module d2qbe.codegen;
 
 import d2qbe.c_declarations;
+import d2qbe.config;
 
 import d2qbe.parse;
 import d2qbe.tokenize;
 
-const(char)*[500] string_pool;
+const(char)*[MAX_STRING_POOL] string_pool;
 int string_pool_count = 0;
 
 /**
@@ -18,7 +19,7 @@ int add_string_literal(const(Token)* tok) {
       return i;
     }
   }
-  assert(string_pool_count < 500, "string_pool overflow");
+  assert(string_pool_count < MAX_STRING_POOL, "string_pool overflow");
   char* copy = cast(char*) calloc(1, tok.len + 1);
   memcpy(copy, tok.str, tok.len);
   string_pool[string_pool_count] = copy;
@@ -39,7 +40,7 @@ struct GlobalVar {
   Type type;
 }
 
-GlobalVar[200] globals;
+GlobalVar[MAX_GLOBALS] globals;
 int globals_count = 0;
 
 /**
@@ -51,7 +52,7 @@ void add_global(const(Token)* ident, Type* type) {
       return;
     }
   }
-  assert(globals_count < 200, "globals overflow");
+  assert(globals_count < MAX_GLOBALS, "globals overflow");
   char* name = cast(char*) calloc(1, ident.len + 1);
   memcpy(name, ident.str, ident.len);
   globals[globals_count].name = name;
@@ -95,7 +96,7 @@ struct LocalVar {
   Type type;
 }
 
-LocalVar[200] locals;
+LocalVar[MAX_LOCALS] locals;
 int locals_count = 0;
 Node* current_fn;
 
@@ -103,11 +104,11 @@ struct LoopLabels {
   char type; // 'w' or 'f'
   int id;
 }
-LoopLabels[100] loop_stack;
+LoopLabels[MAX_LOOP_STACK] loop_stack;
 int loop_stack_count = 0;
 
 void push_loop(char type, int id) {
-  assert(loop_stack_count < 100, "loop_stack overflow");
+  assert(loop_stack_count < MAX_LOOP_STACK, "loop_stack overflow");
   loop_stack[loop_stack_count].type = type;
   loop_stack[loop_stack_count].id = id;
   loop_stack_count++;
@@ -161,7 +162,7 @@ void add_local(const(Token)* ident, Type* type) {
       return;
     }
   }
-  assert(locals_count < 200, "locals overflow");
+  assert(locals_count < MAX_LOCALS, "locals overflow");
   char* name = cast(char*) calloc(1, ident.len + 1);
   memcpy(name, ident.str, ident.len);
   locals[locals_count].name = name;
@@ -401,7 +402,7 @@ void collect_locals(Node* node) {
   }
 }
 
-Node*[500] active_raii_stack;
+Node*[MAX_ACTIVE_RAII] active_raii_stack;
 int active_raii_stack_count = 0;
 
 FunctionSymbol* find_destructor(const(char)* type_name) {
@@ -424,7 +425,7 @@ void emit_destructor_call(Node* var_node) {
 }
 
 // Tracks whether register %ti is 'w' (word) or 'l' (long)
-char[10000] reg_types;
+char[MAX_REG_TYPES] reg_types;
 
 int reg_counter = 0;
 
@@ -432,7 +433,7 @@ int reg_counter = 0;
  * Allocates and returns the next temporary register index.
  */
 int next_reg() {
-  assert(reg_counter < 9999, "register counter overflow");
+  assert(reg_counter < MAX_REG_COUNT, "register counter overflow");
   return ++reg_counter;
 }
 
@@ -440,15 +441,19 @@ int next_reg() {
  * Records the type of a temporary register.
  */
 void set_reg_type(int reg, char type) {
-  assert(reg < 10000, "reg_types write overflow");
+  assert(reg < MAX_REG_TYPES, "reg_types write overflow");
   reg_types[reg] = type;
 }
 
 /**
  * Retrieves the recorded type of a temporary register.
  */
+void check_reg(int reg) {
+  assert(reg < MAX_REG_TYPES, "reg_types read overflow");
+}
+
 char get_reg_type(int reg) {
-  assert(reg < 10000, "reg_types read overflow");
+  check_reg(reg);
   return reg_types[reg];
 }
 
@@ -1727,7 +1732,7 @@ int gen(Node* node) {
               Type t;
               get_local_type(stmts.value.ident, &t);
               if (find_destructor(t.name)) {
-                assert(active_raii_stack_count < 500, "active_raii_stack overflow");
+                assert(active_raii_stack_count < MAX_ACTIVE_RAII, "active_raii_stack overflow");
                 active_raii_stack[active_raii_stack_count++] = stmts.value;
               }
             }

@@ -2,7 +2,7 @@
 
 DC=ldc2
 DFLAGS=-g -w -betterC -Isource
-OBJS=tokenize.o parse.o codegen.o c_declarations.o app.o
+OBJS=tokenize.o config.o parse.o codegen.o c_declarations.o app.o
 
 all: d2qbe qbe/qbe
 
@@ -12,13 +12,15 @@ d2qbe: $(OBJS) ext.o
 %.o: source/d2qbe/%.d
 	$(DC) $(DFLAGS) -c $<
 
-parse.o: source/d2qbe/parse.d tokenize.o
+config.o: source/d2qbe/config.d
 
-codegen.o: source/d2qbe/codegen.d parse.o tokenize.o
+parse.o: source/d2qbe/parse.d tokenize.o config.o
+
+codegen.o: source/d2qbe/codegen.d parse.o tokenize.o config.o
 
 c_declarations.o: source/d2qbe/c_declarations.d
 
-app.o: source/d2qbe/app.d codegen.o parse.o tokenize.o c_declarations.o
+app.o: source/d2qbe/app.d codegen.o parse.o tokenize.o c_declarations.o config.o
 
 ext.o: test/ext.d
 	$(DC) $(DFLAGS) -c $<
@@ -27,7 +29,7 @@ test: d2qbe qbe/qbe ext.o
 	./test/run.sh
 
 unittest:
-	$(DC) -unittest -main source/d2qbe/tokenize.d source/d2qbe/parse.d source/d2qbe/codegen.d source/d2qbe/c_declarations.d test/ext.d -of=unittest_runner
+	$(DC) -unittest -main source/d2qbe/tokenize.d source/d2qbe/config.d source/d2qbe/parse.d source/d2qbe/codegen.d source/d2qbe/c_declarations.d test/ext.d -of=unittest_runner
 	./unittest_runner
 	rm -f unittest_runner
 
