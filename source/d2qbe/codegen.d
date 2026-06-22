@@ -442,19 +442,26 @@ FunctionSymbol* resolve_overload(const(char)* base_name, int* args_regs, int num
       continue;
     }
     
+    int fs_num_params = fs.num_params;
+    int start_param = 0;
+    if (fs.is_member) {
+      fs_num_params = fs_num_params - 1;
+      start_param = 1;
+    }
+    
     if (fs.is_variadic) {
-      if (num_args < fs.num_params) continue;
+      if (num_args < fs_num_params) continue;
     } else {
-      if (num_args != fs.num_params) continue;
+      if (num_args != fs_num_params) continue;
     }
     
     int total_score = 0;
     bool compatible = true;
-    for (int j = 0; j < fs.num_params; j++) {
+    for (int j = 0; j < fs_num_params; j++) {
       char arg_type = get_reg_type(args_regs[j]);
       int param_score = 999;
       
-      Type* t = &fs.params_types[j];
+      Type* t = &fs.params_types[start_param + j];
       if (t.ptr_depth > 0 || t.is_slice) {
         if (arg_type == 'l') param_score = 0;
         else if (arg_type == 'w') param_score = 1;
@@ -1654,7 +1661,11 @@ int gen(Node* node) {
         strcpy(mangled_func_name, &mangled[0]);
         mangled_func_len = cast(int) strlen(mangled_func_name);
         
-        fs = find_function(mangled_func_name);
+        fs = resolve_overload(mangled_func_name, &args_vars[1], n_arg - 1);
+        if (fs) {
+          mangled_func_name = cast(char*) fs.name;
+          mangled_func_len = cast(int) strlen(mangled_func_name);
+        }
       } else {
         char* name = cast(char*) calloc(1, node.ident.len + 1);
         memcpy(name, node.ident.str, node.ident.len);
