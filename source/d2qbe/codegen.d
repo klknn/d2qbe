@@ -1,8 +1,6 @@
 module d2qbe.codegen;
 
-import core.stdc.stdio;
-import core.stdc.string;
-import core.stdc.stdlib;
+import d2qbe.c_declarations;
 
 import d2qbe.parse;
 import d2qbe.tokenize;

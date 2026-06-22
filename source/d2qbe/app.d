@@ -1,14 +1,11 @@
 module d2qbe.app;
 
-import core.stdc.stdio;
-import core.stdc.stdlib;
-import core.stdc.string;
-
 import d2qbe.codegen;
 import d2qbe.parse;
 import d2qbe.tokenize;
+import d2qbe.c_declarations;
 
-extern (C) FILE* get_stderr();
+extern (C) void* get_stderr();
 
 extern (C)
 int main(int argc, char** argv) {
@@ -18,7 +15,7 @@ int main(int argc, char** argv) {
   }
 
   char* input_str = argv[1];
-  FILE* f_in = fopen(argv[1], "r");
+  void* f_in = fopen(argv[1], "r");
   if (f_in) {
     fseek(f_in, 0, 2);
     int size = cast(int) ftell(f_in);

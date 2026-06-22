@@ -1,0 +1,32 @@
+module d2qbe.c_declarations;
+
+extern (C) void* calloc(int nmemb, int size);
+extern (C) void* memcpy(void* dest, const void* src, int n);
+extern (C) int strcmp(const char* s1, const char* s2);
+extern (C) int strlen(const char* s);
+extern (C) int strncmp(const char* s1, const char* s2, int n);
+extern (C) int memcmp(const void* s1, const void* s2, int n);
+extern (C) int strtol(const char* nptr, char** endptr, int base);
+extern (C) int isspace(int c);
+extern (C) int isdigit(int c);
+extern (C) char* strchr(const char* s, int c);
+extern (C) int printf(const char* format, ...);
+extern (C) int fprintf(void* stream, const char* format, ...);
+extern (C) void exit(int status);
+extern (C) void* get_stderr();
+
+extern (C) void* fopen(const char* pathname, const char* mode);
+extern (C) int fread(void* ptr, int size, int nmemb, void* stream);
+extern (C) int fclose(void* stream);
+extern (C) int fseek(void* stream, int offset, int whence);
+extern (C) int ftell(void* stream);
+extern (C) int fputs(const char* s, void* stream);
+extern (C) int remove(const char* pathname);
+extern (C) int isalpha(int c);
+extern (C) int isalnum(int c);
+extern (C) int fflush(void* stream);
+extern (C) char* strcpy(char* dest, const char* src);
+extern (C) char* strcat(char* dest, const char* src);
+extern (C) void free(void* ptr);
+extern (C) int sprintf(char* str, const char* format, ...);
+extern (C) int snprintf(char* str, int size, const char* format, ...);

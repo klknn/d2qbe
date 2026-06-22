@@ -1,12 +1,8 @@
 module d2qbe.tokenize;
 
-import core.stdc.ctype;
-import core.stdc.stdarg;
-import core.stdc.stdio;
-import core.stdc.stdlib;
-import core.stdc.string;
+import d2qbe.c_declarations;
 
-extern (C) FILE* get_stderr();
+extern (C) void* get_stderr();
 
 enum TokenKind {
   TK_reserved,
@@ -214,6 +210,9 @@ bool is_keyword(const char* p) {
   if (len == 5 && strncmp(p, "debug", 5) == 0) return true;
   if (len == 4 && strncmp(p, "auto", 4) == 0) return true;
   if (len == 4 && strncmp(p, "this", 4) == 0) return true;
+  if (len == 4 && strncmp(p, "null", 4) == 0) return true;
+  if (len == 6 && strncmp(p, "module", 6) == 0) return true;
+  if (len == 6 && strncmp(p, "import", 6) == 0) return true;
   return false;
 }
 
