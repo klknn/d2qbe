@@ -519,34 +519,38 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
       return;
     }
     
-    // Comparisons
-    if (strcmp(inst.op, "csltw") == 0 || strcmp(inst.op, "cslew") == 0 ||
-        strcmp(inst.op, "ceqw") == 0 || strcmp(inst.op, "cnew") == 0) {
-      load_arg(inst.arg1, "%eax", 'w', f);
-      load_arg(inst.arg2, "%ecx", 'w', f);
-      fprintf(f, "  cmpl %%ecx, %%eax\n");
+    // Integer comparisons (ceqw, ceql, cnew, cnel, csltw, csltl, cslew, cslel, csgtw, csgtl, csgew, csgel)
+    int op_len = cast(int) strlen(inst.op);
+    char type = inst.op[op_len - 1]; // 'w', 'l', 's', 'd'
+    
+    if (inst.op[0] == 'c' && (type == 'w' || type == 'l') && (inst.op[1] == 'e' || inst.op[1] == 'n' || inst.op[1] == 's')) {
+      const(char)* set_op = null;
+      if (strncmp(inst.op, "ceq", 3) == 0) set_op = "sete";
+      else if (strncmp(inst.op, "cne", 3) == 0) set_op = "setne";
+      else if (strncmp(inst.op, "cslt", 4) == 0) set_op = "setl";
+      else if (strncmp(inst.op, "csle", 4) == 0) set_op = "setle";
+      else if (strncmp(inst.op, "csgt", 4) == 0) set_op = "setg";
+      else if (strncmp(inst.op, "csge", 4) == 0) set_op = "setge";
       
-      const(char)* set_op = "";
-      if (strcmp(inst.op, "csltw") == 0) set_op = "setl";
-      else if (strcmp(inst.op, "cslew") == 0) set_op = "setle";
-      else if (strcmp(inst.op, "ceqw") == 0) set_op = "sete";
-      else if (strcmp(inst.op, "cnew") == 0) set_op = "setne";
-      
-      fprintf(f, "  %s %%al\n", set_op);
-      fprintf(f, "  movzbl %%al, %%eax\n");
-      store_reg(inst.dest, "%eax", 'w', f);
-      return;
+      if (set_op) {
+        if (type == 'l') {
+          load_arg(inst.arg1, "%rax", 'l', f);
+          load_arg(inst.arg2, "%rcx", 'l', f);
+          fprintf(f, "  cmpq %%rcx, %%rax\n");
+        } else {
+          load_arg(inst.arg1, "%eax", 'w', f);
+          load_arg(inst.arg2, "%ecx", 'w', f);
+          fprintf(f, "  cmpl %%ecx, %%eax\n");
+        }
+        fprintf(f, "  %s %%al\n", set_op);
+        fprintf(f, "  movzbl %%al, %%eax\n");
+        store_reg(inst.dest, "%eax", 'w', f);
+        return;
+      }
     }
     
     // Floating point comparisons (ceqs, ceqd, cnes, cned, clts, cltd, cles, cled, cgts, cgtd, cges, cged)
-    if (strcmp(inst.op, "ceqs") == 0 || strcmp(inst.op, "ceqd") == 0 ||
-        strcmp(inst.op, "cnes") == 0 || strcmp(inst.op, "cned") == 0 ||
-        strcmp(inst.op, "clts") == 0 || strcmp(inst.op, "cltd") == 0 ||
-        strcmp(inst.op, "cles") == 0 || strcmp(inst.op, "cled") == 0 ||
-        strcmp(inst.op, "cgts") == 0 || strcmp(inst.op, "cgtd") == 0 ||
-        strcmp(inst.op, "cges") == 0 || strcmp(inst.op, "cged") == 0) {
-      
-      char type = inst.op[3]; // 's' or 'd'
+    if (inst.op[0] == 'c' && (type == 's' || type == 'd') && op_len == 4) {
       if (type == 's') {
         load_arg(inst.arg1, "%xmm0", 's', f);
         load_arg(inst.arg2, "%xmm1", 's', f);
@@ -564,50 +568,6 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
       else if (strncmp(inst.op, "cle", 3) == 0) set_op = "setbe";
       else if (strncmp(inst.op, "cgt", 3) == 0) set_op = "seta";
       else if (strncmp(inst.op, "cge", 3) == 0) set_op = "setae";
-      
-      fprintf(f, "  %s %%al\n", set_op);
-      fprintf(f, "  movzbl %%al, %%eax\n");
-      store_reg(inst.dest, "%eax", 'w', f);
-      return;
-    }
-
-    // Comparisons 64-bit (ceqb, ceql, cnewl, etc.)
-    if (strcmp(inst.op, "ceql") == 0 || strcmp(inst.op, "cnewl") == 0) {
-      load_arg(inst.arg1, "%rax", 'l', f);
-      load_arg(inst.arg2, "%rcx", 'l', f);
-      fprintf(f, "  cmpq %%rcx, %%rax\n");
-      
-      const(char)* set_op = "";
-      if (strcmp(inst.op, "ceql") == 0) set_op = "sete";
-      else if (strcmp(inst.op, "cnewl") == 0) set_op = "setne";
-      
-      fprintf(f, "  %s %%al\n", set_op);
-      fprintf(f, "  movzbl %%al, %%eax\n");
-      store_reg(inst.dest, "%eax", 'w', f);
-      return;
-    }
-    
-    // comparisons ceqw and cnew for registers of other types
-    if (strncmp(inst.op, "ceq", 3) == 0 || strncmp(inst.op, "cnew", 4) == 0) {
-      char type = inst.op[3]; // 'w' or 'l'
-      const(char)* set_op = "";
-      if (strncmp(inst.op, "ceq", 3) == 0) {
-        set_op = "sete";
-        type = inst.op[3];
-      } else {
-        set_op = "setne";
-        type = inst.op[4];
-      }
-      
-      if (type == 'l') {
-        load_arg(inst.arg1, "%rax", 'l', f);
-        load_arg(inst.arg2, "%rcx", 'l', f);
-        fprintf(f, "  cmpq %%rcx, %%rax\n");
-      } else {
-        load_arg(inst.arg1, "%eax", 'w', f);
-        load_arg(inst.arg2, "%ecx", 'w', f);
-        fprintf(f, "  cmpl %%ecx, %%eax\n");
-      }
       
       fprintf(f, "  %s %%al\n", set_op);
       fprintf(f, "  movzbl %%al, %%eax\n");
