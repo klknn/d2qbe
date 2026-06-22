@@ -2,6 +2,7 @@ module d2qbe.parse;
 
 import d2qbe.tokenize;
 import d2qbe.c_declarations;
+import d2qbe.config;
 
 extern (C) void* get_stderr();
 
@@ -73,13 +74,13 @@ struct Member {
 
 struct StructType {
   const(char)* name;
-  Member[20] members;
+  Member[MAX_STRUCT_MEMBERS] members;
   int members_count;
   int size;
   int alignment;
 }
 
-StructType[50] registered_structs;
+StructType[MAX_STRUCTS] registered_structs;
 int registered_structs_count = 0;
 
 struct TemplateSymbol {
@@ -88,19 +89,17 @@ struct TemplateSymbol {
   Token* body_start;
   Token* body_end;
 }
-TemplateSymbol[50] registered_templates;
+TemplateSymbol[MAX_TEMPLATES] registered_templates;
 int registered_templates_count = 0;
 
 struct TypeAlias {
   const(char)* alias_name;
   Type target_type;
 }
-TypeAlias[100] registered_aliases;
+TypeAlias[MAX_ALIASES] registered_aliases;
 int registered_aliases_count = 0;
 
-enum MAX_PARAM_SIZE = 10;
-
-const(char)*[100] parsed_modules;
+const(char)*[MAX_MODULES] parsed_modules;
 int parsed_modules_count = 0;
 
 char* read_file_to_string(const(char)* path) {
@@ -125,7 +124,7 @@ bool has_parsed_module(const(char)* mod_name) {
 
 void register_parsed_module(const(char)* mod_name) {
   if (has_parsed_module(mod_name)) return;
-  assert(parsed_modules_count < 100, "parsed_modules overflow");
+  assert(parsed_modules_count < MAX_MODULES, "parsed_modules overflow");
   parsed_modules[parsed_modules_count++] = mod_name;
 }
 
@@ -170,7 +169,7 @@ struct FunctionSymbol {
   Type return_type;
   Type[MAX_PARAM_SIZE] params_types;
 }
-FunctionSymbol[200] registered_functions;
+FunctionSymbol[MAX_FUNCTIONS] registered_functions;
 int registered_functions_count = 0;
 
 /**
@@ -182,7 +181,7 @@ void register_function(const(char)* name, const(char)* unmangled_name, bool is_e
       return;
     }
   }
-  assert(registered_functions_count < 200, "registered_functions overflow");
+  assert(registered_functions_count < MAX_FUNCTIONS, "registered_functions overflow");
   registered_functions[registered_functions_count].name = name;
   registered_functions[registered_functions_count].unmangled_name = unmangled_name;
   registered_functions[registered_functions_count].is_extern_c = is_extern_c;
@@ -291,14 +290,14 @@ struct Constant {
   int val;
 }
 
-Constant[500] constants;
+Constant[MAX_CONSTANTS] constants;
 int constants_count = 0;
 
 /**
  * Adds a compile-time constant (enum member) to the registry.
  */
 void add_constant(const(char)* name, int val) {
-  assert(constants_count < 500, "constants overflow");
+  assert(constants_count < MAX_CONSTANTS, "constants overflow");
   constants[constants_count].name = name;
   constants[constants_count].val = val;
   constants_count++;
@@ -338,14 +337,14 @@ void parse_module_decl() {
 
 void parse_import_decl();
 
-const(char)*[200] known_types;
+const(char)*[MAX_KNOWN_TYPES] known_types;
 int known_types_count = 0;
 
 /**
  * Registers a new type name in the compiler.
  */
 void register_type(const(char)* name) {
-  assert(known_types_count < 200, "known_types overflow");
+  assert(known_types_count < MAX_KNOWN_TYPES, "known_types overflow");
   known_types[known_types_count++] = name;
 }
 
@@ -448,7 +447,7 @@ void register_alias(const(char)* name, Type* target) {
       error("duplicate alias definition");
     }
   }
-  assert(registered_aliases_count < 100, "registered_aliases overflow");
+  assert(registered_aliases_count < MAX_ALIASES, "registered_aliases overflow");
   registered_aliases[registered_aliases_count].alias_name = name;
   registered_aliases[registered_aliases_count].target_type = *target;
   registered_aliases_count++;
@@ -1631,7 +1630,7 @@ void parse_struct() {
     m.type = t;
     m.offset = st.size;
     
-    assert(st.members_count < 20, "struct members overflow");
+    assert(st.members_count < MAX_STRUCT_MEMBERS, "struct members overflow");
     st.members[st.members_count++] = m;
     st.size = st.size + mem_size;
     if (mem_align > st.alignment) {
@@ -1641,7 +1640,7 @@ void parse_struct() {
   
   st.size = ((st.size + st.alignment - 1) / st.alignment) * st.alignment;
   
-  assert(registered_structs_count < 50, "registered_structs overflow");
+  assert(registered_structs_count < MAX_STRUCTS, "registered_structs overflow");
   registered_structs[registered_structs_count++] = st;
 }
 
@@ -1683,7 +1682,7 @@ void parse_template() {
     error_at(start.str, "unclosed template body");
   }
   
-  assert(registered_templates_count < 50, "registered_templates overflow");
+  assert(registered_templates_count < MAX_TEMPLATES, "registered_templates overflow");
   
   char* name = cast(char*) calloc(1, name_tok.len + 1);
   memcpy(name, name_tok.str, name_tok.len);
@@ -2125,11 +2124,11 @@ Node* parse_function(Type* ret_type, Token* func_name, const(char)* struct_name,
   return node;
 }
 
-Node*[500] code;
+Node*[MAX_CODE] code;
 int code_count = 0;
 
 void add_to_code(Node* n) {
-  assert(code_count < 500 - 1, "code array overflow");
+  assert(code_count < MAX_CODE - 1, "code array overflow");
   code[code_count++] = n;
 }
 
