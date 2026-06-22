@@ -141,3 +141,32 @@ This phase introduces support for D `float` and `double` types and floating-poin
   - Generate float arithmetic instructions (`add`, `sub`, `mul`, `div`) using `s` or `d` type tags.
   - Generate float comparison instructions (`ceqs`, `ceqd`, `cnes`, `cned`, `clts`, `cltd`, `cles`, `cled`, `cgts`, `cgtd`, `cges`, `cged`).
   - Support casting between integers and floats using QBE conversions (`stosi`, `dtosi`, `swtof`, `sltof`).
+
+---
+
+## Phase 6: Self-Assignments (Completed)
+This phase adds support for compound assignment operators to avoid expanding `x = x + y` manually.
+
+### 6.1 Tokenizer Changes (Completed)
+- Support tokenizing `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=`, `>>=`.
+
+### 6.2 Parser Desugaring (Completed)
+- Desugar compound assignment operators at parse-time into a binary operation node combined with an assignment node (e.g. `LHS += RHS` becomes `LHS = LHS + RHS`).
+
+---
+
+## Phase 7: Byte-Sized Function Parameter Safety (Completed)
+This phase addresses parameter storage bugs that could cause stack corruption.
+
+### 7.1 Parameter Codegen (Completed)
+- Use size-appropriate QBE store instructions (`storeb` for `char` and `bool`) instead of blindly using `storew` to prevent out-of-bounds stack writes.
+
+---
+
+## Phase 8: Frontend SSA Optimization (Completed)
+This phase optimizes control-flow expression results by emitting SSA `phi` instructions instead of allocating stack temporaries.
+
+### 8.1 Ternary Phi Optimization (Completed)
+- Detect ternary expressions `cond ? then : else` of size <= 8 bytes.
+- Direct code generation to emit QBE `phi` instructions (`%res =w phi ...`) inside the join block.
+
