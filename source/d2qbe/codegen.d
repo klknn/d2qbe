@@ -578,11 +578,73 @@ bool ends_with_return(Node* node) {
 int gen_binop(Node* node, const char* binop) {
   int l = gen(node.lhs);
   int r = gen(node.rhs);
-  int res = next_reg();
-  char qbe_type = get_reg_type(l);
-  if (qbe_type != 'w' && qbe_type != 'l' && qbe_type != 's' && qbe_type != 'd') {
-    qbe_type = 'w';
+  
+  char l_type = get_reg_type(l);
+  char r_type = get_reg_type(r);
+  
+  char qbe_type = 'w';
+  if (l_type == 'd' || r_type == 'd') qbe_type = 'd';
+  else if (l_type == 's' || r_type == 's') qbe_type = 's';
+  else if (l_type == 'l' || r_type == 'l') qbe_type = 'l';
+  
+  if (qbe_type == 'd') {
+    if (l_type != 'd') {
+      int cast_res = next_reg();
+      if (l_type == 'l') {
+        printf("  %%t%d =d sltof %%t%d\n", cast_res, l);
+      } else {
+        printf("  %%t%d =d swtof %%t%d\n", cast_res, l);
+      }
+      set_reg_type(cast_res, 'd');
+      l = cast_res;
+    }
+    if (r_type != 'd') {
+      int cast_res = next_reg();
+      if (r_type == 'l') {
+        printf("  %%t%d =d sltof %%t%d\n", cast_res, r);
+      } else {
+        printf("  %%t%d =d swtof %%t%d\n", cast_res, r);
+      }
+      set_reg_type(cast_res, 'd');
+      r = cast_res;
+    }
+  } else if (qbe_type == 's') {
+    if (l_type != 's') {
+      int cast_res = next_reg();
+      if (l_type == 'l') {
+        printf("  %%t%d =s sltof %%t%d\n", cast_res, l);
+      } else {
+        printf("  %%t%d =s swtof %%t%d\n", cast_res, l);
+      }
+      set_reg_type(cast_res, 's');
+      l = cast_res;
+    }
+    if (r_type != 's') {
+      int cast_res = next_reg();
+      if (r_type == 'l') {
+        printf("  %%t%d =s sltof %%t%d\n", cast_res, r);
+      } else {
+        printf("  %%t%d =s swtof %%t%d\n", cast_res, r);
+      }
+      set_reg_type(cast_res, 's');
+      r = cast_res;
+    }
+  } else if (qbe_type == 'l') {
+    if (l_type == 'w') {
+      int cast_res = next_reg();
+      printf("  %%t%d =l extsw %%t%d\n", cast_res, l);
+      set_reg_type(cast_res, 'l');
+      l = cast_res;
+    }
+    if (r_type == 'w') {
+      int cast_res = next_reg();
+      printf("  %%t%d =l extsw %%t%d\n", cast_res, r);
+      set_reg_type(cast_res, 'l');
+      r = cast_res;
+    }
   }
+  
+  int res = next_reg();
   printf("  %%t%d =%c %s %%t%d, %%t%d\n", res, qbe_type, binop, l, r);
   set_reg_type(res, qbe_type);
   return res;
