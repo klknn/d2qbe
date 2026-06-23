@@ -26,10 +26,10 @@ struct BasicBlock {
   BasicBlock*[10] successors;
   int succ_count;
   
-  bool[1000] live_in;
-  bool[1000] live_out;
-  bool[1000] use;
-  bool[1000] def;
+  bool[10000] live_in;
+  bool[10000] live_out;
+  bool[10000] use;
+  bool[10000] def;
 }
 
 __gshared BasicBlock[100] blocks;
@@ -46,7 +46,7 @@ struct TempInfo {
   int spill_offset; // stack offset if spilled
 }
 
-__gshared TempInfo[1000] temps;
+__gshared TempInfo[10000] temps;
 __gshared int temps_count = 0;
 
 const(char)*[5] gpr_callee_saved = ["%rbx", "%r12", "%r13", "%r14", "%r15"];
@@ -63,7 +63,7 @@ int get_temp_idx(const char* name, char type = '0') {
       return i;
     }
   }
-  assert(temps_count < 1000);
+  assert(temps_count < 10000);
   temps[temps_count].name = my_strdup(name);
   temps[temps_count].type = type;
   temps[temps_count].start_point = 999999;
@@ -109,7 +109,7 @@ const(char)* get_allocated_register(const char* name, char type) {
 }
 
 void insert_instruction(FunctionDef* fn, int idx, Instruction inst) {
-  assert(fn.inst_count < 1000);
+  assert(fn.inst_count < 10000);
   for (int i = fn.inst_count; i > idx; i--) {
     fn.instructions[i] = fn.instructions[i - 1];
   }
@@ -319,7 +319,7 @@ void run_liveness_analysis(FunctionDef* fn) {
     for (int i = blocks_count - 1; i >= 0; i--) {
       BasicBlock* b = &blocks[i];
       
-      bool[1000] new_live_out;
+      bool[10000] new_live_out;
       memset(new_live_out.ptr, 0, new_live_out.sizeof);
       for (int j = 0; j < b.succ_count; j++) {
         BasicBlock* succ = b.successors[j];
@@ -330,7 +330,7 @@ void run_liveness_analysis(FunctionDef* fn) {
         }
       }
       
-      bool[1000] new_live_in;
+      bool[10000] new_live_in;
       for (int k = 0; k < temps_count; k++) {
         new_live_in[k] = b.use[k] || (new_live_out[k] && !b.def[k]);
       }
@@ -427,7 +427,7 @@ struct ActiveInterval {
 }
 
 void linear_scan_reg_alloc(FunctionDef* fn) {
-  int[1000] sorted_temps;
+  int[10000] sorted_temps;
   int sorted_count = 0;
   for (int i = 0; i < temps_count; i++) {
     if (temps[i].start_point <= temps[i].end_point) {
