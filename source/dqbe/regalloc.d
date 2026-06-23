@@ -382,6 +382,19 @@ bool spans_call(FunctionDef* fn, TempInfo* t) {
   return false;
 }
 
+void update_range(const char* arg, int idx) {
+  if (!arg || arg[0] != '%') return;
+  int t_idx = get_temp_idx_no_type(arg);
+  if (t_idx != -1) {
+    if (idx < temps[t_idx].start_point) {
+      temps[t_idx].start_point = idx;
+    }
+    if (idx > temps[t_idx].end_point) {
+      temps[t_idx].end_point = idx;
+    }
+  }
+}
+
 void build_live_intervals(FunctionDef* fn) {
   for (int i = 0; i < temps_count; i++) {
     temps[i].start_point = 999999;
@@ -390,19 +403,6 @@ void build_live_intervals(FunctionDef* fn) {
   
   for (int i = 0; i < fn.inst_count; i++) {
     Instruction* inst = &fn.instructions[i];
-    
-    void update_range(const char* arg, int idx) {
-      if (!arg || arg[0] != '%') return;
-      int t_idx = get_temp_idx_no_type(arg);
-      if (t_idx != -1) {
-        if (idx < temps[t_idx].start_point) {
-          temps[t_idx].start_point = idx;
-        }
-        if (idx > temps[t_idx].end_point) {
-          temps[t_idx].end_point = idx;
-        }
-      }
-    }
     
     if (inst.kind == InstKind.IK_assign) {
       update_range(inst.dest, i);
