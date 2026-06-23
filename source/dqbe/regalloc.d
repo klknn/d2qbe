@@ -254,7 +254,12 @@ void build_cfg(FunctionDef* fn) {
   for (int i = 0; i < blocks_count; i++) {
     BasicBlock* b = &blocks[i];
     int term_idx = b.end_inst_idx - 1;
-    if (term_idx < b.start_inst_idx) continue;
+    if (term_idx < b.start_inst_idx) {
+      if (i + 1 < blocks_count) {
+        add_successor(b, &blocks[i + 1]);
+      }
+      continue;
+    }
     
     Instruction* term = &fn.instructions[term_idx];
     if (term.kind == InstKind.IK_jmp) {
@@ -593,6 +598,7 @@ void perform_register_allocation(FunctionDef* fn) {
   run_liveness_analysis(fn);
   build_live_intervals(fn);
   linear_scan_reg_alloc(fn);
+
   sync_spill_offsets();
   free(blocks);
 }

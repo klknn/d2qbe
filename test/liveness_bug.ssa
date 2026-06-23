@@ -1,0 +1,56 @@
+export function w $test_liveness(w %n) {
+@start
+  %x =w copy 42
+  jmp @loop1_cond
+@loop1_cond
+  %acc =w phi @start 0, @loop1_backedge %acc_next, @then1 %acc_next_then
+  %n_val =w phi @start %n, @loop1_backedge %n_next, @then1 %n_next_then
+  %cond1 =w csgtw %n_val, 0
+  jnz %cond1, @loop1_body, @loop1_exit
+@loop1_body
+  %branch_cond =w ceqw %n_val, 3
+  jnz %branch_cond, @then1, @else1
+@then1
+  %n_next_then =w sub %n_val, 1
+  %acc_next_then =w copy %acc
+  jmp @loop1_cond
+@else1
+@endif1
+  %sum =w add %x, %n_val
+  %acc_next_else =w add %acc, %sum
+  jmp @loop1_backedge
+@loop1_backedge
+  %t1 =w copy 1
+  %t2 =w copy 2
+  %t3 =w copy 3
+  %t4 =w copy 4
+  %t5 =w copy 5
+  %t6 =w copy 6
+  %t7 =w copy 7
+  %t8 =w copy 8
+  %t9 =w copy 9
+  %sum1 =w add %t1, %t2
+  %sum2 =w add %t3, %t4
+  %sum3 =w add %t5, %t6
+  %sum4 =w add %t7, %t8
+  %sum5 =w add %sum1, %sum2
+  %sum6 =w add %sum3, %sum4
+  %res1 =w add %sum5, %sum6
+  %res2 =w add %res1, %t9
+  %acc_next =w copy %acc_next_else
+  %n_next =w sub %n_val, 1
+  jmp @loop1_cond
+@loop1_exit
+  ret %acc
+}
+
+export function w $main() {
+@start
+  %r =w call $test_liveness(w 2)
+  %ok =w ceqw %r, 87
+  jnz %ok, @ok, @fail
+@ok
+  ret 0
+@fail
+  ret %r
+}
