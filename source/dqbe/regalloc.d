@@ -32,7 +32,7 @@ struct BasicBlock {
   bool[10000] def;
 }
 
-__gshared BasicBlock[1000] blocks;
+__gshared BasicBlock* blocks;
 __gshared int blocks_count = 0;
 
 struct TempInfo {
@@ -588,9 +588,11 @@ void sync_spill_offsets() {
 void perform_register_allocation(FunctionDef* fn) {
   temps_count = 0;
   resolve_phi_nodes(fn);
+  blocks = cast(BasicBlock*) calloc(1000, BasicBlock.sizeof);
   build_cfg(fn);
   run_liveness_analysis(fn);
   build_live_intervals(fn);
   linear_scan_reg_alloc(fn);
   sync_spill_offsets();
+  free(blocks);
 }
