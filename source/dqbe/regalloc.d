@@ -52,6 +52,7 @@ __gshared int temps_count = 0;
 __gshared const(char)*[5] gpr_callee_saved;
 __gshared const(char)*[2] gpr_caller_saved;
 __gshared const(char)*[6] fpr_caller_saved;
+__gshared int phi_tmp_counter = 0;
 
 void init_regalloc() {
   gpr_callee_saved[0] = "%rbx";
@@ -155,8 +156,6 @@ int find_block_terminator_index(FunctionDef* fn, const char* label_name) {
 }
 
 void resolve_phi_nodes(FunctionDef* fn) {
-  __gshared int phi_tmp_counter = 0;
-  
   Instruction[100] phi_instructions;
   int phi_count = 0;
   
