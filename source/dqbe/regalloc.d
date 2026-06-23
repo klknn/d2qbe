@@ -219,7 +219,7 @@ void build_cfg(FunctionDef* fn) {
       if (current_block) {
         current_block.end_inst_idx = i;
       }
-      assert(blocks_count < 100);
+      assert(blocks_count < 1000);
       current_block = &blocks[blocks_count++];
       memset(current_block, 0, current_block.sizeof);
       current_block.label = inst.label;
