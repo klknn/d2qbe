@@ -28,7 +28,6 @@ extern (C) void* get_stdin();
 extern (C) void* get_stdout();
 
 alias long = int;
-enum null = 0;
 EOF
 
 # Strip imports and modules from source files and append
