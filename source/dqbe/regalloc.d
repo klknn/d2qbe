@@ -131,12 +131,12 @@ const(char)* get_allocated_register(const char* name, char type) {
   return null;
 }
 
-void insert_instruction(FunctionDef* fn, int idx, Instruction inst) {
+void insert_instruction(FunctionDef* fn, int idx, Instruction* inst) {
   assert(fn.inst_count < 10000);
   for (int i = fn.inst_count; i > idx; i--) {
-    fn.instructions[i] = fn.instructions[i - 1];
+    memcpy(&fn.instructions[i], &fn.instructions[i - 1], Instruction.sizeof);
   }
-  fn.instructions[idx] = inst;
+  memcpy(&fn.instructions[idx], inst, Instruction.sizeof);
   fn.inst_count++;
 }
 
@@ -162,10 +162,10 @@ void resolve_phi_nodes(FunctionDef* fn) {
   for (int i = 0; i < fn.inst_count; i++) {
     if (fn.instructions[i].kind == InstKind.IK_phi) {
       assert(phi_count < 100);
-      phi_instructions[phi_count++] = fn.instructions[i];
+      memcpy(&phi_instructions[phi_count++], &fn.instructions[i], Instruction.sizeof);
       
       for (int j = i; j < fn.inst_count - 1; j++) {
-        fn.instructions[j] = fn.instructions[j + 1];
+        memcpy(&fn.instructions[j], &fn.instructions[j + 1], Instruction.sizeof);
       }
       fn.inst_count--;
       i--;
@@ -201,8 +201,8 @@ void resolve_phi_nodes(FunctionDef* fn) {
       
       int term_idx = find_block_terminator_index(fn, pred_label);
       if (term_idx != -1) {
-        insert_instruction(fn, term_idx, copy_to_dest);
-        insert_instruction(fn, term_idx, copy_to_tmp);
+        insert_instruction(fn, term_idx, &copy_to_dest);
+        insert_instruction(fn, term_idx, &copy_to_tmp);
       }
     }
   }
@@ -504,7 +504,8 @@ void linear_scan_reg_alloc(FunctionDef* fn) {
           }
         }
         for (int k = j; k < active_count - 1; k++) {
-          active[k] = active[k + 1];
+          active[k].temp_idx = active[k + 1].temp_idx;
+          active[k].end_point = active[k + 1].end_point;
         }
         active_count--;
         j--;
