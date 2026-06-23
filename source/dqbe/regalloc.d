@@ -470,9 +470,13 @@ void linear_scan_reg_alloc(FunctionDef* fn) {
     }
   }
   
-  bool[5] gpr_callee_occupied = [false, false, false, false, false];
-  bool[2] gpr_caller_occupied = [false, false];
-  bool[6] fpr_occupied = [false, false, false, false, false, false];
+  bool[5] gpr_callee_occupied;
+  bool[2] gpr_caller_occupied;
+  bool[6] fpr_occupied;
+  
+  for (int r = 0; r < 5; r++) gpr_callee_occupied[r] = false;
+  for (int r = 0; r < 2; r++) gpr_caller_occupied[r] = false;
+  for (int r = 0; r < 6; r++) fpr_occupied[r] = false;
   
   ActiveInterval[32] active;
   int active_count = 0;
