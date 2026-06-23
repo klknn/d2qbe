@@ -10,9 +10,9 @@ extern (C) FILE* get_stdin();
 extern (C) FILE* get_stdout();
 extern (C) FILE* get_stderr();
 
-extern (C)
 import dqbe.regalloc : init_regalloc;
 
+extern (C)
 int main(int argc, char** argv) {
   init_regalloc();
   // Read all inputs from stdin
