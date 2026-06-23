@@ -25,4 +25,5 @@ d2qbe-test-*
 !Makefile
 !.gitignore
 !*.json
+!tool/filter_msg.py
 tmp*
