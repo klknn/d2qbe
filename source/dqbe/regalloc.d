@@ -21,9 +21,9 @@ struct BasicBlock {
   int start_inst_idx; // inclusive
   int end_inst_idx;   // exclusive
   
-  BasicBlock*[10] predecessors;
+  BasicBlock*[200] predecessors;
   int pred_count;
-  BasicBlock*[10] successors;
+  BasicBlock*[200] successors;
   int succ_count;
   
   bool[10000] live_in;
@@ -32,7 +32,7 @@ struct BasicBlock {
   bool[10000] def;
 }
 
-__gshared BasicBlock[100] blocks;
+__gshared BasicBlock[1000] blocks;
 __gshared int blocks_count = 0;
 
 struct TempInfo {
@@ -200,13 +200,13 @@ void add_successor(BasicBlock* from, BasicBlock* to) {
   for (int i = 0; i < from.succ_count; i++) {
     if (from.successors[i] == to) return;
   }
-  assert(from.succ_count < 10);
+  assert(from.succ_count < 200);
   from.successors[from.succ_count++] = to;
   
   for (int i = 0; i < to.pred_count; i++) {
     if (to.predecessors[i] == from) return;
   }
-  assert(to.pred_count < 10);
+  assert(to.pred_count < 200);
   to.predecessors[to.pred_count++] = from;
 }
 
