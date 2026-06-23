@@ -71,7 +71,11 @@ void init_regalloc() {
   fpr_caller_saved[5] = "%xmm13";
 }
 
-int get_temp_idx(const char* name, char type = '0') {
+int get_temp_idx_no_type(const char* name) {
+  return get_temp_idx(name, '0');
+}
+
+int get_temp_idx(const char* name, char type) {
   if (!name || name[0] != '%') return -1;
   for (int i = 0; i < temps_count; i++) {
     if (strcmp(temps[i].name, name) == 0) {
@@ -386,7 +390,7 @@ void build_live_intervals(FunctionDef* fn) {
     
     void update_range(const char* arg, int idx) {
       if (!arg || arg[0] != '%') return;
-      int t_idx = get_temp_idx(arg);
+      int t_idx = get_temp_idx_no_type(arg);
       if (t_idx != -1) {
         if (idx < temps[t_idx].start_point) {
           temps[t_idx].start_point = idx;
