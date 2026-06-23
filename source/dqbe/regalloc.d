@@ -282,7 +282,7 @@ void compute_block_use_def(FunctionDef* fn, BasicBlock* b) {
   for (int i = b.start_inst_idx; i < b.end_inst_idx; i++) {
     Instruction* inst = &fn.instructions[i];
     
-    void mark_use(const char* arg, char type = '0') {
+    void mark_use(const char* arg, char type) {
       if (!arg || arg[0] != '%') return;
       int idx = get_temp_idx(arg, type);
       if (idx != -1) {
@@ -292,7 +292,11 @@ void compute_block_use_def(FunctionDef* fn, BasicBlock* b) {
       }
     }
     
-    void mark_def(const char* dest, char type = '0') {
+    void mark_use_no_type(const char* arg) {
+      mark_use(arg, '0');
+    }
+    
+    void mark_def(const char* dest, char type) {
       if (!dest || dest[0] != '%') return;
       int idx = get_temp_idx(dest, type);
       if (idx != -1) {
@@ -308,17 +312,17 @@ void compute_block_use_def(FunctionDef* fn, BasicBlock* b) {
           mark_use(inst.call_args[j].name, inst.call_args[j].type);
         }
       } else {
-        mark_use(inst.arg1);
-        mark_use(inst.arg2);
+        mark_use_no_type(inst.arg1);
+        mark_use_no_type(inst.arg2);
       }
       mark_def(inst.dest, inst.dest_type);
     } else if (inst.kind == InstKind.IK_store) {
-      mark_use(inst.arg1);
-      mark_use(inst.arg2);
+      mark_use_no_type(inst.arg1);
+      mark_use_no_type(inst.arg2);
     } else if (inst.kind == InstKind.IK_jnz) {
-      mark_use(inst.arg1);
+      mark_use_no_type(inst.arg1);
     } else if (inst.kind == InstKind.IK_ret) {
-      mark_use(inst.arg1);
+      mark_use_no_type(inst.arg1);
     } else if (inst.kind == InstKind.IK_call) {
       for (int j = 0; j < inst.call_args_count; j++) {
         mark_use(inst.call_args[j].name, inst.call_args[j].type);
