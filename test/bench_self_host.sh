@@ -4,6 +4,7 @@ set -e
 # Rebuild clean compiler
 make clean > /dev/null
 make > /dev/null
+ldc2 -betterC -c test/tmp_ext_all.d -of=test/tmp_ext_all.o
 ldc2 -O3 -betterC -Isource -c source/dqbe/tokenize.d -of=dqbe_tokenize.o
 ldc2 -O3 -betterC -Isource -c source/dqbe/parse.d -of=dqbe_parse.o
 ldc2 -O3 -betterC -Isource -c source/dqbe/regalloc.d -of=dqbe_regalloc.o
@@ -43,9 +44,6 @@ EOF
 for f in source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d source/dqbe/app.d; do
   grep -v '^import ' "$f" | grep -v '^module ' >> test/self_host_dqbe.d
 done
-
-# Compile tmp_ext_all.o
-ldc2 -betterC -c test/tmp_ext_all.d -of=test/tmp_ext_all.o
 
 # Helper to run /usr/bin/time and extract real time + max RSS
 run_timed() {
@@ -89,16 +87,23 @@ upstream_stats=$(run_timed "./qbe/qbe < test/self_host_dqbe.s > test/self_host_d
 upstream_time=$(echo "$upstream_stats" | awk '{print $1}')
 upstream_mem=$(echo "$upstream_stats" | awk '{print $2}')
 
+# 3b. Compile using standard production compiler (LDC2)
+ldc_stats=$(run_timed "ldc2 -O3 -betterC -Isource source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d source/dqbe/app.d test/tmp_ext_all.o -of=test/dqbe_ldc")
+ldc_time=$(echo "$ldc_stats" | awk '{print $1}')
+ldc_mem=$(echo "$ldc_stats" | awk '{print $2}')
+
 # Assemble and link self-hosted binaries
 cc -o test/dqbe_self_hosted test/self_host_dqbe_qbe.s test/tmp_ext_all.o
 cc -o test/dqbe_hybrid test/self_host_dqbe_upstream.s test/tmp_ext_all.o
 
 strip test/dqbe_self_hosted
 strip test/dqbe_hybrid
+strip test/dqbe_ldc
 
 # Measure binary sizes
 size_ours=$(wc -c < test/dqbe_self_hosted)
 size_hybrid=$(wc -c < test/dqbe_hybrid)
+size_ldc=$(wc -c < test/dqbe_ldc)
 
 # 4. Program execution time: Compile bench_queen.d using both, run 10 times
 # Ours
@@ -115,19 +120,26 @@ exec_hybrid=$(run_timed "./tmp_queen_hybrid")
 exec_hybrid_time=$(echo "$exec_hybrid" | awk '{print $1}')
 exec_hybrid_mem=$(echo "$exec_hybrid" | awk '{print $2}')
 
+# LDC
+./d2qbe "$(cat test/bench_queen.d)" | ./test/dqbe_ldc > tmp_queen_ldc.s
+cc -o tmp_queen_ldc tmp_queen_ldc.s test/tmp_ext_all.o
+exec_ldc=$(run_timed "./tmp_queen_ldc")
+exec_ldc_time=$(echo "$exec_ldc" | awk '{print $1}')
+exec_ldc_mem=$(echo "$exec_ldc" | awk '{print $2}')
+
 # Clean up
-rm -f tmp_time.txt tmp_queen_ours.s tmp_queen_ours tmp_queen_hybrid.s tmp_queen_hybrid
+rm -f tmp_time.txt tmp_queen_ours.s tmp_queen_ours tmp_queen_hybrid.s tmp_queen_hybrid tmp_queen_ldc.s tmp_queen_ldc test/dqbe_ldc
 
 # Output Markdown Table
 echo "=== Self-Hosting Compiler Benchmark Suite ==="
 echo ""
-echo "| Metric | Ours (d2qbe + dqbe) | Hybrid (d2qbe + QBE) |"
-echo "| :--- | :---: | :---: |"
-echo "| Frontend Compile Time | $fe_time s | $fe_time s |"
-echo "| Frontend Compile Memory | $fe_mem MB | $fe_mem MB |"
-echo "| Backend Assemble Time | $ours_time s | $upstream_time s |"
-echo "| Backend Assemble Memory | $ours_mem MB | $upstream_mem MB |"
-echo "| Self-Hosted Compiler Binary Size | $size_ours bytes | $size_hybrid bytes |"
-echo "| Executed N-Queens Time (12 Queens) | $exec_ours_time s | $exec_hybrid_time s |"
-echo "| Executed N-Queens Memory | $exec_ours_mem MB | $exec_hybrid_mem MB |"
+echo "| Metric | Ours (d2qbe + dqbe) | Hybrid (d2qbe + QBE) | LDC2 -O3 (Production) |"
+echo "| :--- | :---: | :---: | :---: |"
+echo "| Frontend Compile Time | $fe_time s | $fe_time s | $ldc_time s |"
+echo "| Frontend Compile Memory | $fe_mem MB | $fe_mem MB | $ldc_mem MB |"
+echo "| Backend Assemble Time | $ours_time s | $upstream_time s | N/A |"
+echo "| Backend Assemble Memory | $ours_mem MB | $upstream_mem MB | N/A |"
+echo "| Self-Hosted Compiler Binary Size | $size_ours bytes | $size_hybrid bytes | $size_ldc bytes |"
+echo "| Executed N-Queens Time (12 Queens) | $exec_ours_time s | $exec_hybrid_time s | $exec_ldc_time s |"
+echo "| Executed N-Queens Memory | $exec_ours_mem MB | $exec_hybrid_mem MB | $exec_ldc_mem MB |"
 echo ""
