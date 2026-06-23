@@ -49,9 +49,27 @@ struct TempInfo {
 __gshared TempInfo[10000] temps;
 __gshared int temps_count = 0;
 
-const(char)*[5] gpr_callee_saved = ["%rbx", "%r12", "%r13", "%r14", "%r15"];
-const(char)*[2] gpr_caller_saved = ["%r10", "%r11"];
-const(char)*[6] fpr_caller_saved = ["%xmm8", "%xmm9", "%xmm10", "%xmm11", "%xmm12", "%xmm13"];
+__gshared const(char)*[5] gpr_callee_saved;
+__gshared const(char)*[2] gpr_caller_saved;
+__gshared const(char)*[6] fpr_caller_saved;
+
+void init_regalloc() {
+  gpr_callee_saved[0] = "%rbx";
+  gpr_callee_saved[1] = "%r12";
+  gpr_callee_saved[2] = "%r13";
+  gpr_callee_saved[3] = "%r14";
+  gpr_callee_saved[4] = "%r15";
+  
+  gpr_caller_saved[0] = "%r10";
+  gpr_caller_saved[1] = "%r11";
+  
+  fpr_caller_saved[0] = "%xmm8";
+  fpr_caller_saved[1] = "%xmm9";
+  fpr_caller_saved[2] = "%xmm10";
+  fpr_caller_saved[3] = "%xmm11";
+  fpr_caller_saved[4] = "%xmm12";
+  fpr_caller_saved[5] = "%xmm13";
+}
 
 int get_temp_idx(const char* name, char type = '0') {
   if (!name || name[0] != '%') return -1;

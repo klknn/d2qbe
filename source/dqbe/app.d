@@ -11,7 +11,10 @@ extern (C) FILE* get_stdout();
 extern (C) FILE* get_stderr();
 
 extern (C)
+import dqbe.regalloc : init_regalloc;
+
 int main(int argc, char** argv) {
+  init_regalloc();
   // Read all inputs from stdin
   int capacity = 4 * 1024 * 1024; // 4MB starting capacity
   char* buf = cast(char*) malloc(capacity);

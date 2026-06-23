@@ -899,6 +899,8 @@ void gen_program(FILE* f) {
 }
 
 unittest {
+  import dqbe.regalloc : init_regalloc;
+  init_regalloc();
   char* input = cast(char*) "\n    data $g = { w 42 }\n    data $str = { b \"hello\\n\", b 0 }\n    \n    export function w $add(w %a, w %b) {\n    @start\n      %t1 =w add %a, %b\n      ret %t1\n    }\n  ";
   
   token = tokenize(input);
