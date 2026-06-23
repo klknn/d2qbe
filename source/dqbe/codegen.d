@@ -137,11 +137,33 @@ int get_var_offset(const char* name, int size, int align_) {
   return ret_offset;
 }
 
+bool is_same_phys_reg(const char* reg1, const char* reg2) {
+  if (strcmp(reg1, reg2) == 0) return true;
+  
+  const(char)* r1 = reg1;
+  const(char)* r2 = reg2;
+  if (r1[0] == '%') r1++;
+  if (r2[0] == '%') r2++;
+  
+  if ((r1[0] == 'r' || r1[0] == 'e') && (r2[0] == 'r' || r2[0] == 'e')) {
+    if (strcmp(r1 + 1, r2 + 1) == 0) return true;
+  }
+  
+  int len1 = cast(int) strlen(r1);
+  int len2 = cast(int) strlen(r2);
+  if (len1 > 0 && r1[len1 - 1] == 'd') len1--;
+  if (len2 > 0 && r2[len2 - 1] == 'd') len2--;
+  
+  if (len1 == len2 && strncmp(r1, r2, len1) == 0) return true;
+  
+  return false;
+}
+
 void load_arg(const char* arg, const char* reg, int type, FILE* f) {
   if (arg[0] == '%') {
     const(char)* alloc_reg = get_allocated_register(arg, cast(char) type);
     if (alloc_reg) {
-      if (strcmp(alloc_reg, reg) == 0) {
+      if (is_same_phys_reg(alloc_reg, reg)) {
         return;
       }
       if (type == 'w') {
@@ -158,7 +180,7 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
     }
     const(char)* cached_reg = lookup_cache(arg);
     if (cached_reg) {
-      if (strcmp(cached_reg, reg) == 0) {
+      if (is_same_phys_reg(cached_reg, reg)) {
         return;
       }
       bool compatible = false;
@@ -238,7 +260,7 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
 void store_reg(const char* dest, const char* reg, int type, FILE* f) {
   const(char)* alloc_reg = get_allocated_register(dest, cast(char) type);
   if (alloc_reg) {
-    if (strcmp(alloc_reg, reg) == 0) {
+    if (is_same_phys_reg(alloc_reg, reg)) {
       return;
     }
     if (type == 'w') {
