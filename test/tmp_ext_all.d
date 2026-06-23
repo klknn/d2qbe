@@ -1,0 +1,27 @@
+import core.stdc.stdio;
+
+extern (C) int foo() {
+  return printf("foo\n");
+}
+
+extern (C) int foo1(int a1) {
+  return printf("foo %d\n", a1);
+}
+
+extern (C) int foo2(int a1, int a2) {
+  return printf("foo %d %d\n", a1, a2);
+}
+
+extern (C) FILE* get_stderr() {
+  return stderr;
+}
+
+extern (C) FILE* get_stdin() {
+  return stdin;
+}
+
+extern (C) FILE* get_stdout() {
+  return stdout;
+}
+
+extern (C) __gshared int extern_global_int = 420;
