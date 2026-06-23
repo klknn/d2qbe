@@ -31,7 +31,7 @@ alias long = int;
 EOF
 
 # Strip imports and modules from source files and append
-for f in source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/codegen.d source/dqbe/app.d; do
+for f in source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d source/dqbe/app.d; do
   grep -v '^import ' "$f" | grep -v '^module ' >> test/self_host_dqbe.d
 done
 
