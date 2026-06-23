@@ -52,7 +52,7 @@ struct FunctionDef {
   int params_count;
   bool is_variadic;
   
-  Instruction[10000] instructions;
+  Instruction* instructions;
   int inst_count;
 }
 
@@ -590,6 +590,7 @@ void parse_program() {
     if (is_token("export") || is_token("function")) {
       assert(program_functions_count < 100);
       FunctionDef* fn = &program_functions[program_functions_count++];
+      fn.instructions = cast(Instruction*) calloc(10000, Instruction.sizeof);
       fn.inst_count = 0;
       fn.params_count = 0;
       fn.is_variadic = false;
