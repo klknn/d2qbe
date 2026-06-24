@@ -90,7 +90,16 @@ This document is for the next AI agent or developer taking over the development 
 
 ## 4. Missing Features & BetterC Compatibility Next Steps
 
-For a detailed roadmap of all remaining D `betterC` features (slices, RAII, CTFE, etc.) ordered by implementation complexity, refer to the [d2qbe_plan.md](file:///usr/local/google/home/karita/repos/d2qbe/docs/d2qbe_plan.md) document.
+While `d2qbe` compiles a very large and self-hosting subset of D `betterC`, the following standard D features are currently unsupported:
+* **`foreach` / `foreach_reverse` Loops**: Only standard C-style `for` and `while` loops are supported.
+* **`scope(...)` Statements**: `scope(exit)`, `scope(success)`, and `scope(failure)` constructs are not implemented.
+* **Uniform Function Call Syntax (UFCS)**: True UFCS for free-standing functions is not supported.
+* **Compile-Time Function Execution (CTFE)**: There is no interpreter to evaluate custom functions at compile-time.
+* **Advanced Templates**: Multiple parameters, variadic parameters, constraints, and specializations are not supported (only eponymous templates with a single type parameter).
+* **C++ Classes & Interfaces**: `extern(C++) class` (which is standard betterC compatible as it does not use GC) is unsupported.
+
+For a detailed roadmap of these remaining D `betterC` features ordered by implementation complexity, refer to the [d2qbe_plan.md](file:///Users/karita/repos/d2qbe/docs/d2qbe_plan.md) document.
+
 
 ---
 

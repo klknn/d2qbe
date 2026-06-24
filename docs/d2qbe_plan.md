@@ -141,3 +141,40 @@ This phase introduces support for D `float` and `double` types and floating-poin
   - Generate float arithmetic instructions (`add`, `sub`, `mul`, `div`) using `s` or `d` type tags.
   - Generate float comparison instructions (`ceqs`, `ceqd`, `cnes`, `cned`, `clts`, `cltd`, `cles`, `cled`, `cgts`, `cgtd`, `cges`, `cged`).
   - Support casting between integers and floats using QBE conversions (`stosi`, `dtosi`, `swtof`, `sltof`).
+
+---
+
+## Phase 6: Future betterC Extensions (Unsupported)
+These standard D `betterC` features are currently not implemented in `d2qbe`.
+
+### 6.1 `foreach` and `foreach_reverse` Loops
+* **Syntax**: `foreach (elem; array)` or `foreach (i, elem; slice)`
+* **Description**: Idiomatic iteration loops over arrays, pointers/ranges, and slices.
+* **Proposed Implementation**: Lower `foreach` loops in the parser directly to standard `for` loops using counter variables, array boundaries, and pointer indexing.
+
+### 6.2 `scope(...)` Statements
+* **Syntax**: `scope(exit) cleanup();`, `scope(success) commit();`
+* **Description**: Registering arbitrary cleanup/post-execution statements at scope exit.
+* **Proposed Implementation**: Similar to struct RAII destructors, register scope statements on a compiler stack during parsing and insert them automatically before return, break, or block-end boundaries.
+
+### 6.3 Uniform Function Call Syntax (UFCS)
+* **Syntax**: `value.process()` calling `process(value)`
+* **Description**: Universal calling conventions for free-standing functions.
+* **Proposed Implementation**: Update function call parser to fallback to resolving `a.func(b)` as `func(a, b)` if no member function is found.
+
+### 6.4 Compile-Time Function Execution (CTFE)
+* **Syntax**: `enum size = calculateSize(12);`
+* **Description**: Compiling and evaluating standard user-defined functions at compile-time.
+* **Proposed Implementation**: Integrate a simple AST interpreter that can evaluate D expression nodes and statement nodes before code generation.
+
+### 6.5 Advanced Templates & Constraints
+* **Syntax**: `template Map(K, V)`, `template Stack(T) if (is(T == int))`
+* **Description**: Multi-parameter templates, template specializations, constraints, and variadic template arguments.
+* **Proposed Implementation**: Expand `TemplateSymbol` to hold list arrays of parameter names/types, expand substitution parsing to map multiple argument types, and support parser-level condition checking for constraints.
+
+### 6.6 C++ Classes & Interfaces
+* **Syntax**: `extern(C++) class MyClass : BaseInterface { ... }`
+* **Description**: GC-free classes, single/multiple inheritance, and virtual function polymorphism compatible with C++ ABI.
+* **Proposed Implementation**: Implement vtable layout structures, reference pointer syntax, implicit `this` pointer routing, and vtable lookups for virtual method calls.
+
+
