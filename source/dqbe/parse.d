@@ -52,7 +52,7 @@ struct FunctionDef {
   int params_count;
   bool is_variadic;
   
-  Instruction[1000] instructions;
+  Instruction* instructions;
   int inst_count;
 }
 
@@ -199,7 +199,7 @@ void parse_function() {
       inst.kind = InstKind.IK_label;
       inst.label = token_to_str(label_tok);
       
-      assert(fn.inst_count < 1000);
+      assert(fn.inst_count < 10000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -224,7 +224,7 @@ void parse_function() {
       inst.arg1 = token_to_str(arg1_tok);
       inst.arg2 = token_to_str(arg2_tok);
       
-      assert(fn.inst_count < 1000);
+      assert(fn.inst_count < 10000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -239,7 +239,7 @@ void parse_function() {
       
       inst.label = token_to_str(label_target);
       
-      assert(fn.inst_count < 1000);
+      assert(fn.inst_count < 10000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -266,7 +266,7 @@ void parse_function() {
       inst.label = token_to_str(label_then);
       inst.label_else = token_to_str(label_else);
       
-      assert(fn.inst_count < 1000);
+      assert(fn.inst_count < 10000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -283,7 +283,7 @@ void parse_function() {
         inst.arg1 = token_to_str(ret_val_tok);
       }
       
-      assert(fn.inst_count < 1000);
+      assert(fn.inst_count < 10000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -319,7 +319,7 @@ void parse_function() {
         consume(",");
       }
       
-      assert(fn.inst_count < 1000);
+      assert(fn.inst_count < 10000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -442,7 +442,7 @@ void parse_instruction_list(FunctionDef* fn) {
         }
       }
       
-      assert(fn.inst_count < 1000);
+      assert(fn.inst_count < 10000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -470,7 +470,7 @@ void parse_instruction_list(FunctionDef* fn) {
       inst.arg1 = token_to_str(arg1_tok);
       inst.arg2 = token_to_str(arg2_tok);
       
-      assert(fn.inst_count < 1000);
+      assert(fn.inst_count < 10000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -485,7 +485,7 @@ void parse_instruction_list(FunctionDef* fn) {
       
       inst.label = token_to_str(label_target);
       
-      assert(fn.inst_count < 1000);
+      assert(fn.inst_count < 10000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -512,7 +512,7 @@ void parse_instruction_list(FunctionDef* fn) {
       inst.label = token_to_str(label_then);
       inst.label_else = token_to_str(label_else);
       
-      assert(fn.inst_count < 1000);
+      assert(fn.inst_count < 10000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -529,7 +529,7 @@ void parse_instruction_list(FunctionDef* fn) {
         inst.arg1 = token_to_str(ret_val_tok);
       }
       
-      assert(fn.inst_count < 1000);
+      assert(fn.inst_count < 10000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -569,7 +569,7 @@ void parse_instruction_list(FunctionDef* fn) {
         consume(",");
       }
       
-      assert(fn.inst_count < 1000);
+      assert(fn.inst_count < 10000);
       fn.instructions[fn.inst_count++] = inst;
       continue;
     }
@@ -590,6 +590,7 @@ void parse_program() {
     if (is_token("export") || is_token("function")) {
       assert(program_functions_count < 100);
       FunctionDef* fn = &program_functions[program_functions_count++];
+      fn.instructions = cast(Instruction*) calloc(10000, Instruction.sizeof);
       fn.inst_count = 0;
       fn.params_count = 0;
       fn.is_variadic = false;

@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+"""
+Filters Git commit messages to remove metadata tags like TAG= and CONV=.
+
+Usage:
+    git filter-branch --msg-filter "python3 tool/filter_msg.py" <rev-list>
+
+Example:
+    git filter-branch --force --msg-filter "python3 tool/filter_msg.py" origin/main..HEAD
+"""
 import sys
 
 def main():

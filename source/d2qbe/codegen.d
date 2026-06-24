@@ -6,6 +6,7 @@ import d2qbe.config;
 import d2qbe.parse;
 import d2qbe.tokenize;
 
+__gshared char[128] last_label;
 const(char)*[MAX_STRING_POOL] string_pool;
 int string_pool_count = 0;
 
@@ -900,7 +901,7 @@ void get_expr_type(Node* node, Type* out_type) {
     }
     Type lt;
     get_expr_type(node.lhs, &lt);
-    if (lt.is_slice) {
+    if (lt.is_slice || lt.array_dims > 0) {
       if (node.ident.len == 6 && strncmp(node.ident.str, "length", 6) == 0) {
         t.name = "int";
         t.ptr_depth = 1;
@@ -912,7 +913,7 @@ void get_expr_type(Node* node, Type* out_type) {
       if (node.ident.len == 3 && strncmp(node.ident.str, "ptr", 3) == 0) {
         t.name = lt.name;
         t.ptr_depth = lt.ptr_depth + 1;
-        t.array_dims = lt.array_dims;
+        t.array_dims = 0;
         t.is_slice = false;
         *out_type = t;
         return;
@@ -1483,6 +1484,9 @@ int gen(Node* node) {
       return 0;
     }
   if (node.kind == NodeKind.NK_gvar_decl) {
+      if (node.is_extern_c) {
+        return 0;
+      }
       int size = get_type_size(&node.type);
       printf("data $%.*s = ", node.ident.len, node.ident.str);
       if (node.lhs) {
@@ -2087,6 +2091,7 @@ int gen(Node* node) {
       printf("  jnz %%t%d, @and_eval_b%d, @and_false%d\n", l, label_id, label_id);
       
       printf("@and_eval_b%d\n", label_id);
+      sprintf(last_label.ptr, "@and_eval_b%d", label_id);
       int r = gen(node.rhs);
       int r_bool = next_reg();
       printf("  %%t%d =w cnew %%t%d, 0\n", r_bool, r);
@@ -2095,6 +2100,7 @@ int gen(Node* node) {
       printf("  jmp @and_end%d\n", label_id);
       
       printf("@and_false%d\n", label_id);
+      sprintf(last_label.ptr, "@and_false%d", label_id);
       int zero = next_reg();
       printf("  %%t%d =w copy 0\n", zero);
       set_reg_type(zero, 'w');
@@ -2102,6 +2108,7 @@ int gen(Node* node) {
       printf("  jmp @and_end%d\n", label_id);
       
       printf("@and_end%d\n", label_id);
+      sprintf(last_label.ptr, "@and_end%d", label_id);
       int res = next_reg();
       printf("  %%t%d =w loadw %%t%d\n", res, addr);
       set_reg_type(res, 'w');
@@ -2117,6 +2124,7 @@ int gen(Node* node) {
       printf("  jnz %%t%d, @or_true%d, @or_eval_b%d\n", l, label_id, label_id);
       
       printf("@or_eval_b%d\n", label_id);
+      sprintf(last_label.ptr, "@or_eval_b%d", label_id);
       int r = gen(node.rhs);
       int r_bool = next_reg();
       printf("  %%t%d =w cnew %%t%d, 0\n", r_bool, r);
@@ -2125,6 +2133,7 @@ int gen(Node* node) {
       printf("  jmp @or_end%d\n", label_id);
       
       printf("@or_true%d\n", label_id);
+      sprintf(last_label.ptr, "@or_true%d", label_id);
       int one = next_reg();
       printf("  %%t%d =w copy 1\n", one);
       set_reg_type(one, 'w');
@@ -2132,6 +2141,7 @@ int gen(Node* node) {
       printf("  jmp @or_end%d\n", label_id);
       
       printf("@or_end%d\n", label_id);
+      sprintf(last_label.ptr, "@or_end%d", label_id);
       int res = next_reg();
       printf("  %%t%d =w loadw %%t%d\n", res, addr);
       set_reg_type(res, 'w');
@@ -2141,6 +2151,43 @@ int gen(Node* node) {
       Type t;
       get_expr_type(node, &t);
       int size = get_type_size(&t);
+      
+      if (size <= 8) {
+        char c = 'w';
+        if (t.ptr_depth > 0) {
+          c = 'l';
+        } else if (strcmp(t.name, "double") == 0) {
+          c = 'd';
+        } else if (strcmp(t.name, "float") == 0) {
+          c = 's';
+        }
+        
+        int cond = gen(node.cond);
+        int label_id = next_reg();
+        printf("  jnz %%t%d, @ternary_then%d, @ternary_else%d\n", cond, label_id, label_id);
+        
+        printf("@ternary_then%d\n", label_id);
+        sprintf(last_label.ptr, "@ternary_then%d", label_id);
+        int val_then = gen(node.then);
+        char[128] then_pred;
+        strcpy(then_pred.ptr, last_label.ptr);
+        printf("  jmp @ternary_end%d\n", label_id);
+        
+        printf("@ternary_else%d\n", label_id);
+        sprintf(last_label.ptr, "@ternary_else%d", label_id);
+        int val_else = gen(node.else_);
+        char[128] else_pred;
+        strcpy(else_pred.ptr, last_label.ptr);
+        printf("  jmp @ternary_end%d\n", label_id);
+        
+        printf("@ternary_end%d\n", label_id);
+        sprintf(last_label.ptr, "@ternary_end%d", label_id);
+        int res = next_reg();
+        printf("  %%t%d =%c phi %s %%t%d, %s %%t%d\n", res, c, then_pred.ptr, val_then, else_pred.ptr, val_else);
+        set_reg_type(res, c);
+        return res;
+      }
+      
       int align_ = get_type_alignment(&t);
       int qbe_align = 4;
       if (align_ > 8) qbe_align = 16;
@@ -2211,10 +2258,7 @@ int gen(Node* node) {
       printf("  jmp @ternary_end%d\n", label_id);
       
       printf("@ternary_end%d\n", label_id);
-      if (size > 8) {
-        return addr;
-      }
-      return emit_load(addr, &t);
+      return addr;
     }
   if (node.kind == NodeKind.NK_logical_not) {
       int val = gen(node.lhs);
@@ -2240,6 +2284,19 @@ int gen(Node* node) {
         printf("  %%t%d =w copy %d\n", res, get_type_size(&t));
         set_reg_type(res, 'w');
         return res;
+      }
+      Type lt;
+      get_expr_type(node.lhs, &lt);
+      if (lt.array_dims > 0) {
+        if (node.ident.len == 3 && strncmp(node.ident.str, "ptr", 3) == 0) {
+          return gen_addr(node.lhs);
+        }
+        if (node.ident.len == 6 && strncmp(node.ident.str, "length", 6) == 0) {
+          int res = next_reg();
+          printf("  %%t%d =w copy %d\n", res, lt.array_sizes[0]);
+          set_reg_type(res, 'w');
+          return res;
+        }
       }
       int addr = gen_addr(node);
       Type t;

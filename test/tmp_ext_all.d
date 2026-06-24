@@ -16,4 +16,12 @@ extern (C) FILE* get_stderr() {
   return stderr;
 }
 
+extern (C) FILE* get_stdin() {
+  return stdin;
+}
+
+extern (C) FILE* get_stdout() {
+  return stdout;
+}
+
 extern (C) __gshared int extern_global_int = 420;

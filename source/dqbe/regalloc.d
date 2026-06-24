@@ -21,18 +21,18 @@ struct BasicBlock {
   int start_inst_idx; // inclusive
   int end_inst_idx;   // exclusive
   
-  BasicBlock*[10] predecessors;
+  BasicBlock*[200] predecessors;
   int pred_count;
-  BasicBlock*[10] successors;
+  BasicBlock*[200] successors;
   int succ_count;
   
-  bool[1000] live_in;
-  bool[1000] live_out;
-  bool[1000] use;
-  bool[1000] def;
+  bool[10000] live_in;
+  bool[10000] live_out;
+  bool[10000] use;
+  bool[10000] def;
 }
 
-__gshared BasicBlock[100] blocks;
+__gshared BasicBlock* blocks;
 __gshared int blocks_count = 0;
 
 struct TempInfo {
@@ -46,14 +46,37 @@ struct TempInfo {
   int spill_offset; // stack offset if spilled
 }
 
-__gshared TempInfo[1000] temps;
+__gshared TempInfo[10000] temps;
 __gshared int temps_count = 0;
 
-const(char)*[5] gpr_callee_saved = ["%rbx", "%r12", "%r13", "%r14", "%r15"];
-const(char)*[2] gpr_caller_saved = ["%r10", "%r11"];
-const(char)*[6] fpr_caller_saved = ["%xmm8", "%xmm9", "%xmm10", "%xmm11", "%xmm12", "%xmm13"];
+__gshared const(char)*[5] gpr_callee_saved;
+__gshared const(char)*[2] gpr_caller_saved;
+__gshared const(char)*[6] fpr_caller_saved;
+__gshared int phi_tmp_counter = 0;
 
-int get_temp_idx(const char* name, char type = '0') {
+void init_regalloc() {
+  gpr_callee_saved[0] = "%rbx";
+  gpr_callee_saved[1] = "%r12";
+  gpr_callee_saved[2] = "%r13";
+  gpr_callee_saved[3] = "%r14";
+  gpr_callee_saved[4] = "%r15";
+  
+  gpr_caller_saved[0] = "%r10";
+  gpr_caller_saved[1] = "%r11";
+  
+  fpr_caller_saved[0] = "%xmm8";
+  fpr_caller_saved[1] = "%xmm9";
+  fpr_caller_saved[2] = "%xmm10";
+  fpr_caller_saved[3] = "%xmm11";
+  fpr_caller_saved[4] = "%xmm12";
+  fpr_caller_saved[5] = "%xmm13";
+}
+
+int get_temp_idx_no_type(const char* name) {
+  return get_temp_idx(name, '0');
+}
+
+int get_temp_idx(const char* name, char type) {
   if (!name || name[0] != '%') return -1;
   for (int i = 0; i < temps_count; i++) {
     if (strcmp(temps[i].name, name) == 0) {
@@ -63,7 +86,7 @@ int get_temp_idx(const char* name, char type = '0') {
       return i;
     }
   }
-  assert(temps_count < 1000);
+  assert(temps_count < 10000);
   temps[temps_count].name = my_strdup(name);
   temps[temps_count].type = type;
   temps[temps_count].start_point = 999999;
@@ -108,12 +131,12 @@ const(char)* get_allocated_register(const char* name, char type) {
   return null;
 }
 
-void insert_instruction(FunctionDef* fn, int idx, Instruction inst) {
-  assert(fn.inst_count < 1000);
+void insert_instruction(FunctionDef* fn, int idx, Instruction* inst) {
+  assert(fn.inst_count < 10000);
   for (int i = fn.inst_count; i > idx; i--) {
-    fn.instructions[i] = fn.instructions[i - 1];
+    memcpy(&fn.instructions[i], &fn.instructions[i - 1], Instruction.sizeof);
   }
-  fn.instructions[idx] = inst;
+  memcpy(&fn.instructions[idx], inst, Instruction.sizeof);
   fn.inst_count++;
 }
 
@@ -133,18 +156,16 @@ int find_block_terminator_index(FunctionDef* fn, const char* label_name) {
 }
 
 void resolve_phi_nodes(FunctionDef* fn) {
-  __gshared int phi_tmp_counter = 0;
-  
   Instruction[100] phi_instructions;
   int phi_count = 0;
   
   for (int i = 0; i < fn.inst_count; i++) {
     if (fn.instructions[i].kind == InstKind.IK_phi) {
       assert(phi_count < 100);
-      phi_instructions[phi_count++] = fn.instructions[i];
+      memcpy(&phi_instructions[phi_count++], &fn.instructions[i], Instruction.sizeof);
       
       for (int j = i; j < fn.inst_count - 1; j++) {
-        fn.instructions[j] = fn.instructions[j + 1];
+        memcpy(&fn.instructions[j], &fn.instructions[j + 1], Instruction.sizeof);
       }
       fn.inst_count--;
       i--;
@@ -180,8 +201,8 @@ void resolve_phi_nodes(FunctionDef* fn) {
       
       int term_idx = find_block_terminator_index(fn, pred_label);
       if (term_idx != -1) {
-        insert_instruction(fn, term_idx, copy_to_dest);
-        insert_instruction(fn, term_idx, copy_to_tmp);
+        insert_instruction(fn, term_idx, &copy_to_dest);
+        insert_instruction(fn, term_idx, &copy_to_tmp);
       }
     }
   }
@@ -200,13 +221,13 @@ void add_successor(BasicBlock* from, BasicBlock* to) {
   for (int i = 0; i < from.succ_count; i++) {
     if (from.successors[i] == to) return;
   }
-  assert(from.succ_count < 10);
+  assert(from.succ_count < 200);
   from.successors[from.succ_count++] = to;
   
   for (int i = 0; i < to.pred_count; i++) {
     if (to.predecessors[i] == from) return;
   }
-  assert(to.pred_count < 10);
+  assert(to.pred_count < 200);
   to.predecessors[to.pred_count++] = from;
 }
 
@@ -219,7 +240,7 @@ void build_cfg(FunctionDef* fn) {
       if (current_block) {
         current_block.end_inst_idx = i;
       }
-      assert(blocks_count < 100);
+      assert(blocks_count < 1000);
       current_block = &blocks[blocks_count++];
       memset(current_block, 0, current_block.sizeof);
       current_block.label = inst.label;
@@ -233,7 +254,12 @@ void build_cfg(FunctionDef* fn) {
   for (int i = 0; i < blocks_count; i++) {
     BasicBlock* b = &blocks[i];
     int term_idx = b.end_inst_idx - 1;
-    if (term_idx < b.start_inst_idx) continue;
+    if (term_idx < b.start_inst_idx) {
+      if (i + 1 < blocks_count) {
+        add_successor(b, &blocks[i + 1]);
+      }
+      continue;
+    }
     
     Instruction* term = &fn.instructions[term_idx];
     if (term.kind == InstKind.IK_jmp) {
@@ -254,6 +280,30 @@ void build_cfg(FunctionDef* fn) {
   }
 }
 
+void mark_use(FunctionDef* fn, BasicBlock* b, const char* arg, char type) {
+  if (!arg || arg[0] != '%') return;
+  int idx = get_temp_idx(arg, type);
+  if (idx != -1) {
+    if (!b.def[idx]) {
+      b.use[idx] = true;
+    }
+  }
+}
+
+void mark_use_no_type(FunctionDef* fn, BasicBlock* b, const char* arg) {
+  mark_use(fn, b, arg, '0');
+}
+
+void mark_def(FunctionDef* fn, BasicBlock* b, const char* dest, char type) {
+  if (!dest || dest[0] != '%') return;
+  int idx = get_temp_idx(dest, type);
+  if (idx != -1) {
+    if (!b.use[idx]) {
+      b.def[idx] = true;
+    }
+  }
+}
+
 void compute_block_use_def(FunctionDef* fn, BasicBlock* b) {
   memset(b.use.ptr, 0, b.use.sizeof);
   memset(b.def.ptr, 0, b.def.sizeof);
@@ -261,46 +311,26 @@ void compute_block_use_def(FunctionDef* fn, BasicBlock* b) {
   for (int i = b.start_inst_idx; i < b.end_inst_idx; i++) {
     Instruction* inst = &fn.instructions[i];
     
-    void mark_use(const char* arg, char type = '0') {
-      if (!arg || arg[0] != '%') return;
-      int idx = get_temp_idx(arg, type);
-      if (idx != -1) {
-        if (!b.def[idx]) {
-          b.use[idx] = true;
-        }
-      }
-    }
-    
-    void mark_def(const char* dest, char type = '0') {
-      if (!dest || dest[0] != '%') return;
-      int idx = get_temp_idx(dest, type);
-      if (idx != -1) {
-        if (!b.use[idx]) {
-          b.def[idx] = true;
-        }
-      }
-    }
-    
     if (inst.kind == InstKind.IK_assign) {
       if (strcmp(inst.op, "call") == 0) {
         for (int j = 0; j < inst.call_args_count; j++) {
-          mark_use(inst.call_args[j].name, inst.call_args[j].type);
+          mark_use(fn, b, inst.call_args[j].name, inst.call_args[j].type);
         }
       } else {
-        mark_use(inst.arg1);
-        mark_use(inst.arg2);
+        mark_use_no_type(fn, b, inst.arg1);
+        mark_use_no_type(fn, b, inst.arg2);
       }
-      mark_def(inst.dest, inst.dest_type);
+      mark_def(fn, b, inst.dest, inst.dest_type);
     } else if (inst.kind == InstKind.IK_store) {
-      mark_use(inst.arg1);
-      mark_use(inst.arg2);
+      mark_use_no_type(fn, b, inst.arg1);
+      mark_use_no_type(fn, b, inst.arg2);
     } else if (inst.kind == InstKind.IK_jnz) {
-      mark_use(inst.arg1);
+      mark_use_no_type(fn, b, inst.arg1);
     } else if (inst.kind == InstKind.IK_ret) {
-      mark_use(inst.arg1);
+      mark_use_no_type(fn, b, inst.arg1);
     } else if (inst.kind == InstKind.IK_call) {
       for (int j = 0; j < inst.call_args_count; j++) {
-        mark_use(inst.call_args[j].name, inst.call_args[j].type);
+        mark_use(fn, b, inst.call_args[j].name, inst.call_args[j].type);
       }
     }
   }
@@ -319,7 +349,7 @@ void run_liveness_analysis(FunctionDef* fn) {
     for (int i = blocks_count - 1; i >= 0; i--) {
       BasicBlock* b = &blocks[i];
       
-      bool[1000] new_live_out;
+      bool[10000] new_live_out;
       memset(new_live_out.ptr, 0, new_live_out.sizeof);
       for (int j = 0; j < b.succ_count; j++) {
         BasicBlock* succ = b.successors[j];
@@ -330,7 +360,7 @@ void run_liveness_analysis(FunctionDef* fn) {
         }
       }
       
-      bool[1000] new_live_in;
+      bool[10000] new_live_in;
       for (int k = 0; k < temps_count; k++) {
         new_live_in[k] = b.use[k] || (new_live_out[k] && !b.def[k]);
       }
@@ -357,6 +387,19 @@ bool spans_call(FunctionDef* fn, TempInfo* t) {
   return false;
 }
 
+void update_range(const char* arg, int idx) {
+  if (!arg || arg[0] != '%') return;
+  int t_idx = get_temp_idx_no_type(arg);
+  if (t_idx != -1) {
+    if (idx < temps[t_idx].start_point) {
+      temps[t_idx].start_point = idx;
+    }
+    if (idx > temps[t_idx].end_point) {
+      temps[t_idx].end_point = idx;
+    }
+  }
+}
+
 void build_live_intervals(FunctionDef* fn) {
   for (int i = 0; i < temps_count; i++) {
     temps[i].start_point = 999999;
@@ -365,19 +408,6 @@ void build_live_intervals(FunctionDef* fn) {
   
   for (int i = 0; i < fn.inst_count; i++) {
     Instruction* inst = &fn.instructions[i];
-    
-    void update_range(const char* arg, int idx) {
-      if (!arg || arg[0] != '%') return;
-      int t_idx = get_temp_idx(arg);
-      if (t_idx != -1) {
-        if (idx < temps[t_idx].start_point) {
-          temps[t_idx].start_point = idx;
-        }
-        if (idx > temps[t_idx].end_point) {
-          temps[t_idx].end_point = idx;
-        }
-      }
-    }
     
     if (inst.kind == InstKind.IK_assign) {
       update_range(inst.dest, i);
@@ -427,7 +457,7 @@ struct ActiveInterval {
 }
 
 void linear_scan_reg_alloc(FunctionDef* fn) {
-  int[1000] sorted_temps;
+  int[10000] sorted_temps;
   int sorted_count = 0;
   for (int i = 0; i < temps_count; i++) {
     if (temps[i].start_point <= temps[i].end_point) {
@@ -445,9 +475,13 @@ void linear_scan_reg_alloc(FunctionDef* fn) {
     }
   }
   
-  bool[5] gpr_callee_occupied = [false, false, false, false, false];
-  bool[2] gpr_caller_occupied = [false, false];
-  bool[6] fpr_occupied = [false, false, false, false, false, false];
+  bool[5] gpr_callee_occupied;
+  bool[2] gpr_caller_occupied;
+  bool[6] fpr_occupied;
+  
+  for (int r = 0; r < 5; r++) gpr_callee_occupied[r] = false;
+  for (int r = 0; r < 2; r++) gpr_caller_occupied[r] = false;
+  for (int r = 0; r < 6; r++) fpr_occupied[r] = false;
   
   ActiveInterval[32] active;
   int active_count = 0;
@@ -475,7 +509,8 @@ void linear_scan_reg_alloc(FunctionDef* fn) {
           }
         }
         for (int k = j; k < active_count - 1; k++) {
-          active[k] = active[k + 1];
+          active[k].temp_idx = active[k + 1].temp_idx;
+          active[k].end_point = active[k + 1].end_point;
         }
         active_count--;
         j--;
@@ -558,9 +593,12 @@ void sync_spill_offsets() {
 void perform_register_allocation(FunctionDef* fn) {
   temps_count = 0;
   resolve_phi_nodes(fn);
+  blocks = cast(BasicBlock*) calloc(1000, BasicBlock.sizeof);
   build_cfg(fn);
   run_liveness_analysis(fn);
   build_live_intervals(fn);
   linear_scan_reg_alloc(fn);
+
   sync_spill_offsets();
+  free(blocks);
 }

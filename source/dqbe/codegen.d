@@ -6,7 +6,7 @@ import core.stdc.string;
 
 import dqbe.tokenize;
 import dqbe.parse;
-import dqbe.regalloc : perform_register_allocation, get_allocated_register;
+import dqbe.regalloc : perform_register_allocation, get_allocated_register, init_regalloc;
 
 struct TempMap {
   char* name;
@@ -137,11 +137,33 @@ int get_var_offset(const char* name, int size, int align_) {
   return ret_offset;
 }
 
+bool is_same_phys_reg(const char* reg1, const char* reg2) {
+  if (strcmp(reg1, reg2) == 0) return true;
+  
+  const(char)* r1 = reg1;
+  const(char)* r2 = reg2;
+  if (r1[0] == '%') r1++;
+  if (r2[0] == '%') r2++;
+  
+  if ((r1[0] == 'r' || r1[0] == 'e') && (r2[0] == 'r' || r2[0] == 'e')) {
+    if (strcmp(r1 + 1, r2 + 1) == 0) return true;
+  }
+  
+  int len1 = cast(int) strlen(r1);
+  int len2 = cast(int) strlen(r2);
+  if (len1 > 0 && r1[len1 - 1] == 'd') len1--;
+  if (len2 > 0 && r2[len2 - 1] == 'd') len2--;
+  
+  if (len1 == len2 && strncmp(r1, r2, len1) == 0) return true;
+  
+  return false;
+}
+
 void load_arg(const char* arg, const char* reg, int type, FILE* f) {
   if (arg[0] == '%') {
     const(char)* alloc_reg = get_allocated_register(arg, cast(char) type);
     if (alloc_reg) {
-      if (strcmp(alloc_reg, reg) == 0) {
+      if (is_same_phys_reg(alloc_reg, reg)) {
         return;
       }
       if (type == 'w') {
@@ -153,11 +175,12 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
       } else if (type == 'd') {
         fprintf(f, "  movsd %s, %s\n", alloc_reg, reg);
       }
+      invalidate_cache(reg);
       return;
     }
     const(char)* cached_reg = lookup_cache(arg);
     if (cached_reg) {
-      if (strcmp(cached_reg, reg) == 0) {
+      if (is_same_phys_reg(cached_reg, reg)) {
         return;
       }
       bool compatible = false;
@@ -237,7 +260,7 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
 void store_reg(const char* dest, const char* reg, int type, FILE* f) {
   const(char)* alloc_reg = get_allocated_register(dest, cast(char) type);
   if (alloc_reg) {
-    if (strcmp(alloc_reg, reg) == 0) {
+    if (is_same_phys_reg(alloc_reg, reg)) {
       return;
     }
     if (type == 'w') {
@@ -249,6 +272,7 @@ void store_reg(const char* dest, const char* reg, int type, FILE* f) {
     } else if (type == 'd') {
       fprintf(f, "  movsd %s, %s\n", reg, alloc_reg);
     }
+    invalidate_cache(alloc_reg);
     return;
   }
   int offset = get_temp_offset(dest);
@@ -388,6 +412,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
         }
       }
     }
+    fprintf(f, "  movb $%d, %%al\n", float_arg_idx);
     fprintf(f, "  call %s\n", inst.arg1 + 1);
     clear_cache();
     return;
@@ -549,6 +574,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
           }
         }
       }
+      fprintf(f, "  movb $%d, %%al\n", float_arg_idx);
       fprintf(f, "  call %s\n", inst.arg1 + 1);
       clear_cache();
       if (inst.dest_type == 'w') {
@@ -773,26 +799,47 @@ void gen_function(FunctionDef* fn, FILE* f) {
     fprintf(f, "  subq $%d, %%rsp\n", aligned_stack);
   }
   
-  // Store parameter registers into their stack slots
+  // Store parameter registers into their stack slots or allocated registers
   int int_arg_idx = 0;
   int float_arg_idx = 0;
   for (int i = 0; i < fn.params_count; i++) {
+    const(char)* alloc_reg = get_allocated_register(fn.params[i].name, fn.params[i].type);
     int offset = get_temp_offset(fn.params[i].name);
     if (fn.params[i].type == 'w') {
       if (int_arg_idx < 6) {
-        fprintf(f, "  movl %s, -%d(%%rbp)\n", get_arg_reg_32(int_arg_idx++), offset);
+        const(char)* src_reg = get_arg_reg_32(int_arg_idx++);
+        if (alloc_reg) {
+          fprintf(f, "  movl %s, %s\n", src_reg, alloc_reg);
+        } else {
+          fprintf(f, "  movl %s, -%d(%%rbp)\n", src_reg, offset);
+        }
       }
     } else if (fn.params[i].type == 'l') {
       if (int_arg_idx < 6) {
-        fprintf(f, "  movq %s, -%d(%%rbp)\n", get_arg_reg_64(int_arg_idx++), offset);
+        const(char)* src_reg = get_arg_reg_64(int_arg_idx++);
+        if (alloc_reg) {
+          fprintf(f, "  movq %s, %s\n", src_reg, alloc_reg);
+        } else {
+          fprintf(f, "  movq %s, -%d(%%rbp)\n", src_reg, offset);
+        }
       }
     } else if (fn.params[i].type == 's') {
       if (float_arg_idx < 8) {
-        fprintf(f, "  movss %s, -%d(%%rbp)\n", get_float_arg_reg(float_arg_idx++), offset);
+        const(char)* src_reg = get_float_arg_reg(float_arg_idx++);
+        if (alloc_reg) {
+          fprintf(f, "  movss %s, %s\n", src_reg, alloc_reg);
+        } else {
+          fprintf(f, "  movss %s, -%d(%%rbp)\n", src_reg, offset);
+        }
       }
     } else if (fn.params[i].type == 'd') {
       if (float_arg_idx < 8) {
-        fprintf(f, "  movsd %s, -%d(%%rbp)\n", get_float_arg_reg(float_arg_idx++), offset);
+        const(char)* src_reg = get_float_arg_reg(float_arg_idx++);
+        if (alloc_reg) {
+          fprintf(f, "  movsd %s, %s\n", src_reg, alloc_reg);
+        } else {
+          fprintf(f, "  movsd %s, -%d(%%rbp)\n", src_reg, offset);
+        }
       }
     }
   }
@@ -852,6 +899,7 @@ void gen_program(FILE* f) {
 }
 
 unittest {
+  init_regalloc();
   char* input = cast(char*) "\n    data $g = { w 42 }\n    data $str = { b \"hello\\n\", b 0 }\n    \n    export function w $add(w %a, w %b) {\n    @start\n      %t1 =w add %a, %b\n      ret %t1\n    }\n  ";
   
   token = tokenize(input);

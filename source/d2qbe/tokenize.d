@@ -213,6 +213,7 @@ bool is_keyword(const char* p) {
   if (len == 4 && strncmp(p, "null", 4) == 0) return true;
   if (len == 6 && strncmp(p, "module", 6) == 0) return true;
   if (len == 6 && strncmp(p, "import", 6) == 0) return true;
+  if (len == 9 && strncmp(p, "__gshared", 9) == 0) return true;
   return false;
 }
 

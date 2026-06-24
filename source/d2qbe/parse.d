@@ -2224,8 +2224,8 @@ void parse_top_level() {
   }
   
   bool is_extern_c = false;
-  if (is_token("extern")) {
-    while (consume("extern")) {
+  while (true) {
+    if (consume("extern")) {
       if (consume("(")) {
         Token* tok = consume_ident();
         if (!tok || tok.len != 1 || tok.str[0] != 'C') {
@@ -2234,6 +2234,10 @@ void parse_top_level() {
         expect(")");
       }
       is_extern_c = true;
+    } else if (consume("__gshared")) {
+      // Ignore __gshared keyword
+    } else {
+      break;
     }
   }
   
@@ -2295,6 +2299,9 @@ void parse_import_decl() {
   }
   
   Token* saved_token = token;
+  char* saved_user_input = user_input;
+  
+  user_input = content;
   token = tokenize(content);
   
   parse_module_decl();
@@ -2307,6 +2314,7 @@ void parse_import_decl() {
   }
   
   token = saved_token;
+  user_input = saved_user_input;
 }
 
 void program() {
