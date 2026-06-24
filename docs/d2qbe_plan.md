@@ -185,32 +185,42 @@ These standard D `betterC` features are currently not implemented in `d2qbe`.
 * **Description**: Registering arbitrary cleanup/post-execution statements at scope exit.
 * **Implementation**: Implemented `scope(exit)` by parsing the statement and pushing it onto a unified cleanup stack (`active_raii_stack`) in the code generator. The cleanups are automatically generated in reverse order at block exit and return statements. `scope(success)` and `scope(failure)` are disallowed and trigger compile-time errors to strictly match standard D `-betterC` compilers (like LDC).
 
-### 9.3 Uniform Function Call Syntax (UFCS)
+### 9.3 Reference Parameters & Variables (`ref`)
+* **Syntax**: `void foo(ref int x)` and `foreach (ref x; array)`
+* **Description**: Passing parameters by reference and defining variables that alias existing memory locations.
+* **Proposed Implementation**: Lower `ref` parameters to pointer types (e.g. `T*`) under the hood, and rewrite accesses to `ref` variables in the code generator to implicitly dereference them (e.g. rewriting `NK_lvar` occurrences to `NK_deref`).
+
+### 9.4 Uniform Function Call Syntax (UFCS)
 * **Syntax**: `value.process()` calling `process(value)`
 * **Description**: Universal calling conventions for free-standing functions.
 * **Proposed Implementation**: Update function call parser to fallback to resolving `a.func(b)` as `func(a, b)` if no member function is found.
 
-### 9.4 Compile-Time Function Execution (CTFE)
-* **Syntax**: `enum size = calculateSize(12);`
-* **Description**: Compiling and evaluating standard user-defined functions at compile-time.
-* **Proposed Implementation**: Integrate a simple AST interpreter that can evaluate D expression nodes and statement nodes before code generation.
+### 9.5 Range-Based `foreach` Iteration
+* **Syntax**: `foreach (elem; range_struct)` calling `.empty`, `.front`, and `.popFront()`
+* **Description**: Support iterating over structs that define standard D range primitives, utilizing UFCS if primitives are free functions.
+* **Proposed Implementation**: If a `foreach` statement is used with a struct that does not implement `opApply`, lower the statement in the parser to a loop utilizing `.empty`, `.front`, and `.popFront()` (or `.back` and `.popBack()` for `foreach_reverse`).
 
-### 9.5 Advanced Templates & Constraints
+### 9.6 Compile-Time Function Execution (CTFE) & Static Loops
+* **Syntax**: `enum size = calculateSize(12);` and `foreach (sym; AliasSeq!(...))`
+* **Description**: Compiling and evaluating standard user-defined functions and static loops over sequences at compile-time.
+* **Proposed Implementation**: Integrate a simple AST interpreter that can evaluate D expression nodes and statement nodes before code generation. For static loop iteration, statically duplicate the loop body once per sequence element.
+
+### 9.7 Advanced Templates & Constraints
 * **Syntax**: `template Map(K, V)`, `template Stack(T) if (is(T == int))`
 * **Description**: Multi-parameter templates, template specializations, constraints, and variadic template arguments.
 * **Proposed Implementation**: Expand `TemplateSymbol` to hold list arrays of parameter names/types, expand substitution parsing to map multiple argument types, and support parser-level condition checking for constraints.
 
-### 9.6 C++ Classes & Interfaces
+### 9.8 C++ Classes & Interfaces
 * **Syntax**: `extern(C++) class MyClass : BaseInterface { ... }`
 * **Description**: GC-free classes, single/multiple inheritance, and virtual function polymorphism compatible with C++ ABI.
 * **Proposed Implementation**: Implement vtable layout structures, reference pointer syntax, implicit `this` pointer routing, and vtable lookups for virtual method calls.
 
-### 9.7 Delegates & Lambda Functions
+### 9.9 Delegates & Lambda Functions
 * **Syntax**: `int delegate(int) dg = (x) => x + 1;` and `scope` variable declarations.
 * **Description**: Support for delegate types (context pointer + function pointer), anonymous function literals, and stack-allocation constraints for non-escaping closures (`scope`).
 * **Proposed Implementation**: Parse delegates as 16-byte structures in codegen, compile lambdas to local static functions, and verify `scope` storage constraints to prevent dynamic heap allocations.
 
-### 9.8 `opApply` Delegate-Based `foreach` Loops
+### 9.10 `opApply` Delegate-Based `foreach` Loops
 * **Syntax**: `foreach (x; custom_struct) { ... }` utilizing `int opApply(scope int delegate(ref T) dg)`
 * **Description**: Support for struct-defined aggregate iteration via callback delegates.
 * **Proposed Implementation**: Update `parse_foreach` to detect the presence of `opApply` methods in struct symbols, and lower the `foreach` statement into an `opApply` call passing the loop body statements wrapped in a compiler-generated delegate function.

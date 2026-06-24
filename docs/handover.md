@@ -96,7 +96,9 @@ This document is for the next AI agent or developer taking over the development 
 ## 4. Missing Features & BetterC Compatibility Next Steps
 
 While `d2qbe` compiles a very large and self-hosting subset of D `betterC`, the following standard D features are currently unsupported:
+* **Reference Parameters & Variables (`ref`)**: `ref` parameter passing for functions and reference storage for loop variables are not supported.
 * **Uniform Function Call Syntax (UFCS)**: True UFCS for free-standing functions is not supported.
+* **Range-Based `foreach` Loops**: Iterating over custom structs defining range primitives (`front`, `empty`, `popFront`).
 * **Compile-Time Function Execution (CTFE)**: There is no interpreter to evaluate custom functions at compile-time.
 * **Advanced Templates**: Multiple parameters, variadic parameters, constraints, and specializations are not supported (only eponymous templates with a single type parameter).
 * **C++ Classes & Interfaces**: `extern(C++) class` (which is standard betterC compatible as it does not use GC) is unsupported.

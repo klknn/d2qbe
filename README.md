@@ -46,12 +46,14 @@ cc a.s -o a.out
 While `d2qbe` compiles a very large and self-hosting subset of D `betterC`, the following standard D features are currently unsupported:
 
 1. **`scope(success)` & `scope(failure)`**: These are disallowed under `-betterC` by standard compilers (like LDC) due to disabled exception handling/unwinding; our compiler errors out on them to guide standard compliance.
-2. **Uniform Function Call Syntax (UFCS)**: True UFCS for free-standing functions is not supported.
-3. **Compile-Time Function Execution (CTFE)**: There is no interpreter to evaluate custom functions at compile-time.
-4. **Advanced Templates**: Multiple parameters, variadic parameters, constraints, and specializations are not supported (only eponymous templates with a single type parameter).
-5. **C++ Classes & Interfaces**: `extern(C++) class` (which is standard betterC compatible as it does not use GC) is unsupported.
-6. **Delegates & Lambda Functions**: Anonymous lambda literals, closure delegates, and `scope` variable storage classes/lifetime annotations are not implemented.
-7. **`opApply` Delegate-Based Loops**: Custom struct iteration using delegates.
+2. **Reference Parameters & Variables (`ref`)**: Passing parameters to functions by reference and loop variables referencing the underlying array elements are not supported.
+3. **Uniform Function Call Syntax (UFCS)**: True UFCS for free-standing functions is not supported.
+4. **Range-Based `foreach` Loops**: Iterating over custom structs defining standard range primitives (`front`, `empty`, `popFront`).
+5. **Compile-Time Function Execution (CTFE)**: There is no interpreter to evaluate custom functions at compile-time.
+6. **Advanced Templates**: Multiple parameters, variadic parameters, constraints, and specializations are not supported (only eponymous templates with a single type parameter).
+7. **C++ Classes & Interfaces**: `extern(C++) class` (which is standard betterC compatible as it does not use GC) is unsupported.
+8. **Delegates & Lambda Functions**: Anonymous lambda literals, closure delegates, and `scope` variable storage classes/lifetime annotations are not implemented.
+9. **`opApply` Delegate-Based Loops**: Custom struct iteration using delegates.
 
 
 ## benchmarks
