@@ -176,9 +176,9 @@ This phase optimizes control-flow expression results by emitting SSA `phi` instr
 These standard D `betterC` features are currently not implemented in `d2qbe`.
 
 ### 9.1 `foreach` and `foreach_reverse` Loops (Completed)
-* **Syntax**: `foreach (elem; array)` or `foreach (i, elem; slice)`
+* **Syntax**: `foreach (elem; array)`, `foreach (i, elem; slice)`, or `foreach (i; start .. end)`
 * **Description**: Idiomatic iteration loops over arrays, pointers/ranges, and slices.
-* **Implementation**: Lowered `foreach` and `foreach_reverse` loops in the parser directly to standard `for` loops (`NK_for_`) at parse-time. Resolves static arrays and slices properly, bypassing static array copying issues by using direct pointer referencing where applicable.
+* **Implementation**: Lowered `foreach` and `foreach_reverse` loops in the parser directly to standard `for` loops (`NK_for_`) at parse-time. Resolves static arrays and slices properly, bypassing static array copying issues by using direct pointer referencing where applicable. Added support for range syntax `start .. end` by parsing boundary expressions and generating simple loop indices.
 
 ### 9.2 `scope(...)` Statements (Completed)
 * **Syntax**: `scope(exit) cleanup();`

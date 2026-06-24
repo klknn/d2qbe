@@ -325,6 +325,20 @@ extern (C) int main() {
     }
     assert(reverse_sum == 321);
 
+    // Test foreach range syntax (TDD)
+    int range_sum = 0;
+    foreach (i; 0 .. 5) {
+        range_sum = range_sum + cast(int)i;
+    }
+    assert(range_sum == 10);
+
+    // Test foreach_reverse range syntax (TDD)
+    int rev_range_val = 0;
+    foreach_reverse (i; 1 .. 4) {
+        rev_range_val = rev_range_val * 10 + cast(int)i;
+    }
+    assert(rev_range_val == 321);
+
     // Test scope guards
     g_scope_val = 0;
     {

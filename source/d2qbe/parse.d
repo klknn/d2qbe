@@ -1447,9 +1447,72 @@ Node* parse_foreach() {
   }
   
   expect(";");
-  Node* arr_expr = expr();
+  Node* start_expr = expr();
+  
+  bool is_range = false;
+  Node* end_expr = null;
+  if (consume("..")) {
+    is_range = true;
+    end_expr = expr();
+  }
   expect(")");
   Node* loop_body = stmt();
+  
+  if (is_range) {
+    Node* idx_decl = new_node(NodeKind.NK_var_decl);
+    idx_decl.type = type1;
+    idx_decl.ident = ident1;
+    
+    if (!is_reverse) {
+      idx_decl.lhs = start_expr;
+    } else {
+      Node* one_node = new_node(NodeKind.NK_num);
+      one_node.val = 1;
+      
+      Node* init_sub = new_node(NodeKind.NK_sub);
+      init_sub.lhs = end_expr;
+      init_sub.rhs = one_node;
+      idx_decl.lhs = init_sub;
+    }
+    
+    Node* cond_node = null;
+    if (!is_reverse) {
+      Node* idx_var_cond = new_node(NodeKind.NK_lvar);
+      idx_var_cond.ident = ident1;
+      
+      cond_node = new_node(NodeKind.NK_lt_op);
+      cond_node.lhs = idx_var_cond;
+      cond_node.rhs = end_expr;
+    } else {
+      Node* idx_var_cond = new_node(NodeKind.NK_lvar);
+      idx_var_cond.ident = ident1;
+      
+      cond_node = new_node(NodeKind.NK_le);
+      cond_node.lhs = start_expr;
+      cond_node.rhs = idx_var_cond;
+    }
+    
+    Node* idx_var_adv = new_node(NodeKind.NK_lvar);
+    idx_var_adv.ident = ident1;
+    
+    Node* advance_node = new_node(!is_reverse ? NodeKind.NK_post_inc : NodeKind.NK_post_dec);
+    advance_node.lhs = idx_var_adv;
+    
+    Node* for_node = new_node(NodeKind.NK_for_);
+    for_node.begin = null;
+    for_node.cond = cond_node;
+    for_node.advance = advance_node;
+    for_node.then = loop_body;
+    
+    Node* outer_block = new_node(NodeKind.NK_block);
+    NodeList* outer_stmts = &outer_block.statements;
+    outer_stmts = push_back(outer_stmts, idx_decl);
+    outer_stmts = push_back(outer_stmts, for_node);
+    
+    return outer_block;
+  }
+  
+  Node* arr_expr = start_expr;
   
   char* make_unique_name(const(char)* base) {
     char[128] buf;

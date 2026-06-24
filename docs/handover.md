@@ -59,7 +59,7 @@ This document is for the next AI agent or developer taking over the development 
 - **Classic Minic Snippet Tests**:
   - `test/collatz_test.d` (collatz conjecture), `test/prime_test.d` (prime numbers), `test/queen_test.d` (eight queens), `test/switch_test.d` (switch/case branches), `test/multidim_test.d` (multidimensional array indexing/sizing), `test/template_test.d` (struct and function templates), and structured slice/member function/ternary/float/foreach integration tests inside `test/arith_test.d` are fully verified under self-hosting.
 - **`foreach` / `foreach_reverse` Loops**: Completed & Committed.
-  - Supports idiomatic loop iteration over static arrays, pointers, and slices (including explicit types, index + value loops, and reverse traversal).
+  - Supports idiomatic loop iteration over static arrays, pointers, and slices (including explicit types, index + value loops, and reverse traversal), as well as range iteration (`start .. end`).
   - Lowers foreach loops directly to standard `for` loops in the parser, with optimizations to avoid static array copy-by-value limitations.
 - **`scope(exit)` Statements**: Completed & Committed.
   - Supports registering arbitrary cleanup statements executed in reverse lexical order (LIFO) at block exit and return points.
