@@ -205,4 +205,14 @@ These standard D `betterC` features are currently not implemented in `d2qbe`.
 * **Description**: GC-free classes, single/multiple inheritance, and virtual function polymorphism compatible with C++ ABI.
 * **Proposed Implementation**: Implement vtable layout structures, reference pointer syntax, implicit `this` pointer routing, and vtable lookups for virtual method calls.
 
+### 9.7 Delegates & Lambda Functions
+* **Syntax**: `int delegate(int) dg = (x) => x + 1;` and `scope` variable declarations.
+* **Description**: Support for delegate types (context pointer + function pointer), anonymous function literals, and stack-allocation constraints for non-escaping closures (`scope`).
+* **Proposed Implementation**: Parse delegates as 16-byte structures in codegen, compile lambdas to local static functions, and verify `scope` storage constraints to prevent dynamic heap allocations.
+
+### 9.8 `opApply` Delegate-Based `foreach` Loops
+* **Syntax**: `foreach (x; custom_struct) { ... }` utilizing `int opApply(scope int delegate(ref T) dg)`
+* **Description**: Support for struct-defined aggregate iteration via callback delegates.
+* **Proposed Implementation**: Update `parse_foreach` to detect the presence of `opApply` methods in struct symbols, and lower the `foreach` statement into an `opApply` call passing the loop body statements wrapped in a compiler-generated delegate function.
+
 

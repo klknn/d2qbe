@@ -50,6 +50,8 @@ While `d2qbe` compiles a very large and self-hosting subset of D `betterC`, the 
 3. **Compile-Time Function Execution (CTFE)**: There is no interpreter to evaluate custom functions at compile-time.
 4. **Advanced Templates**: Multiple parameters, variadic parameters, constraints, and specializations are not supported (only eponymous templates with a single type parameter).
 5. **C++ Classes & Interfaces**: `extern(C++) class` (which is standard betterC compatible as it does not use GC) is unsupported.
+6. **Delegates & Lambda Functions**: Anonymous lambda literals, closure delegates, and `scope` variable storage classes/lifetime annotations are not implemented.
+7. **`opApply` Delegate-Based Loops**: Custom struct iteration using delegates.
 
 
 ## benchmarks
