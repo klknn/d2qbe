@@ -1,4 +1,4 @@
-.PHONY: all test clean unittest test-integration test-regression test-selfhost unittest-frontend unittest-backend
+.PHONY: all test clean unittest test-integration test-regression test-selfhost unittest-frontend unittest-backend benchmark
 
 DC=ldc2
 DFLAGS=-g -w -betterC -Isource
@@ -42,6 +42,10 @@ test-regression: dqbe
 
 test-selfhost: d2qbe dqbe
 	./test/self_host_dqbe.sh
+
+benchmark: d2qbe dqbe qbe/qbe
+	./test/bench_all.sh
+	./test/bench_self_host.sh
 
 unittest: unittest-frontend unittest-backend
 
