@@ -1381,6 +1381,239 @@ bool is_decl_statement() {
   return tok && tok.kind == TokenKind.TK_identifier;
 }
 
+int foreach_counter = 0;
+
+Node* parse_foreach() {
+  bool is_reverse = consume("foreach_reverse");
+  if (!is_reverse) expect("foreach");
+  expect("(");
+  
+  Type type1;
+  type1.name = "auto";
+  type1.ptr_depth = 0;
+  type1.array_dims = 0;
+  type1.is_slice = false;
+  
+  consume("ref");
+  
+  Token* ident1 = null;
+  if (is_type_name(token.str, token.len) || is_type_start(token)) {
+    Token* checkpoint = token;
+    Type t;
+    parse_type(&t);
+    Token* id = consume_ident();
+    if (id && (is_token(",") || is_token(";"))) {
+      type1 = t;
+      ident1 = id;
+    } else {
+      token = checkpoint;
+      ident1 = consume_ident();
+      if (!ident1) error_at(token.str, "identifier expected in foreach");
+    }
+  } else {
+    ident1 = consume_ident();
+    if (!ident1) error_at(token.str, "identifier expected in foreach");
+  }
+  
+  Token* ident2 = null;
+  Type type2;
+  type2.name = "auto";
+  type2.ptr_depth = 0;
+  type2.array_dims = 0;
+  type2.is_slice = false;
+  
+  if (consume(",")) {
+    consume("ref");
+    if (is_type_name(token.str, token.len) || is_type_start(token)) {
+      Token* checkpoint = token;
+      Type t;
+      parse_type(&t);
+      Token* id = consume_ident();
+      if (id && is_token(";")) {
+        type2 = t;
+        ident2 = id;
+      } else {
+        token = checkpoint;
+        ident2 = consume_ident();
+        if (!ident2) error_at(token.str, "identifier expected in foreach");
+      }
+    } else {
+      ident2 = consume_ident();
+      if (!ident2) error_at(token.str, "identifier expected in foreach");
+    }
+  }
+  
+  expect(";");
+  Node* arr_expr = expr();
+  expect(")");
+  Node* loop_body = stmt();
+  
+  char* make_unique_name(const(char)* base) {
+    char[128] buf;
+    sprintf(&buf[0], "%s_%d", base, foreach_counter++);
+    char* res = cast(char*) calloc(1, strlen(&buf[0]) + 1);
+    strcpy(res, &buf[0]);
+    return res;
+  }
+  
+  Token* make_fake_token(const(char)* name) {
+    Token* t = cast(Token*) calloc(1, Token.sizeof);
+    t.kind = TokenKind.TK_identifier;
+    t.str = cast(char*) name;
+    t.len = cast(int) strlen(name);
+    return t;
+  }
+  
+  Node* arr_decl = null;
+  Node* arr_ref_len = null;
+  Node* arr_ref_elem = null;
+  
+  if (arr_expr.kind == NodeKind.NK_lvar) {
+    arr_ref_len = new_node(NodeKind.NK_lvar);
+    arr_ref_len.ident = arr_expr.ident;
+    
+    arr_ref_elem = new_node(NodeKind.NK_lvar);
+    arr_ref_elem.ident = arr_expr.ident;
+  } else {
+    char* arr_name = make_unique_name("__foreach_arr");
+    Token* arr_tok = make_fake_token(arr_name);
+    
+    arr_decl = new_node(NodeKind.NK_var_decl);
+    arr_decl.type.name = "auto";
+    arr_decl.type.ptr_depth = 0;
+    arr_decl.type.array_dims = 0;
+    arr_decl.type.is_slice = false;
+    arr_decl.ident = arr_tok;
+    arr_decl.lhs = arr_expr;
+    
+    arr_ref_len = new_node(NodeKind.NK_lvar);
+    arr_ref_len.ident = arr_tok;
+    
+    arr_ref_elem = new_node(NodeKind.NK_lvar);
+    arr_ref_elem.ident = arr_tok;
+  }
+  
+  char* len_name = make_unique_name("__foreach_len");
+  Token* len_tok = make_fake_token(len_name);
+  
+  Token* len_property_tok = make_fake_token("length");
+  Node* arr_len_node = new_node(NodeKind.NK_dot);
+  arr_len_node.lhs = arr_ref_len;
+  arr_len_node.ident = len_property_tok;
+  
+  Node* len_decl = new_node(NodeKind.NK_var_decl);
+  len_decl.type.name = "auto";
+  len_decl.type.ptr_depth = 0;
+  len_decl.type.array_dims = 0;
+  len_decl.type.is_slice = false;
+  len_decl.ident = len_tok;
+  len_decl.lhs = arr_len_node;
+  
+  char* idx_name = make_unique_name("__foreach_i");
+  Token* idx_tok = make_fake_token(idx_name);
+  
+  Node* idx_decl = new_node(NodeKind.NK_var_decl);
+  idx_decl.type.name = "auto";
+  idx_decl.type.ptr_depth = 0;
+  idx_decl.type.array_dims = 0;
+  idx_decl.type.is_slice = false;
+  idx_decl.ident = idx_tok;
+  
+  if (!is_reverse) {
+    Node* zero_node = new_node(NodeKind.NK_num);
+    zero_node.val = 0;
+    idx_decl.lhs = zero_node;
+  } else {
+    Node* len_var = new_node(NodeKind.NK_lvar);
+    len_var.ident = len_tok;
+    
+    Node* one_node = new_node(NodeKind.NK_num);
+    one_node.val = 1;
+    
+    Node* init_sub = new_node(NodeKind.NK_sub);
+    init_sub.lhs = len_var;
+    init_sub.rhs = one_node;
+    
+    idx_decl.lhs = init_sub;
+  }
+  
+  Node* cond_node = null;
+  if (!is_reverse) {
+    Node* idx_var_cond = new_node(NodeKind.NK_lvar);
+    idx_var_cond.ident = idx_tok;
+    
+    Node* len_var_cond = new_node(NodeKind.NK_lvar);
+    len_var_cond.ident = len_tok;
+    
+    cond_node = new_node(NodeKind.NK_lt_op);
+    cond_node.lhs = idx_var_cond;
+    cond_node.rhs = len_var_cond;
+  } else {
+    Node* zero_node_cond = new_node(NodeKind.NK_num);
+    zero_node_cond.val = 0;
+    
+    Node* idx_var_cond = new_node(NodeKind.NK_lvar);
+    idx_var_cond.ident = idx_tok;
+    
+    cond_node = new_node(NodeKind.NK_le);
+    cond_node.lhs = zero_node_cond;
+    cond_node.rhs = idx_var_cond;
+  }
+  
+  Node* idx_var_adv = new_node(NodeKind.NK_lvar);
+  idx_var_adv.ident = idx_tok;
+  
+  Node* advance_node = new_node(!is_reverse ? NodeKind.NK_post_inc : NodeKind.NK_post_dec);
+  advance_node.lhs = idx_var_adv;
+  
+  Node* body_block = new_node(NodeKind.NK_block);
+  NodeList* body_stmts = &body_block.statements;
+  
+  if (ident2) {
+    Node* idx_var_init = new_node(NodeKind.NK_lvar);
+    idx_var_init.ident = idx_tok;
+    
+    Node* idx_decl_in_body = new_node(NodeKind.NK_var_decl);
+    idx_decl_in_body.type = type1;
+    idx_decl_in_body.ident = ident1;
+    idx_decl_in_body.lhs = idx_var_init;
+    
+    body_stmts = push_back(body_stmts, idx_decl_in_body);
+  }
+  
+  Node* idx_var_arr = new_node(NodeKind.NK_lvar);
+  idx_var_arr.ident = idx_tok;
+  
+  Node* elem_val_node = new_node(NodeKind.NK_index);
+  elem_val_node.lhs = arr_ref_elem;
+  elem_val_node.rhs = idx_var_arr;
+  
+  Node* elem_decl = new_node(NodeKind.NK_var_decl);
+  elem_decl.type = ident2 ? type2 : type1;
+  elem_decl.ident = ident2 ? ident2 : ident1;
+  elem_decl.lhs = elem_val_node;
+  
+  body_stmts = push_back(body_stmts, elem_decl);
+  body_stmts = push_back(body_stmts, loop_body);
+  
+  Node* for_node = new_node(NodeKind.NK_for_);
+  for_node.begin = null;
+  for_node.cond = cond_node;
+  for_node.advance = advance_node;
+  for_node.then = body_block;
+  
+  Node* outer_block = new_node(NodeKind.NK_block);
+  NodeList* outer_stmts = &outer_block.statements;
+  if (arr_decl) {
+    outer_stmts = push_back(outer_stmts, arr_decl);
+  }
+  outer_stmts = push_back(outer_stmts, len_decl);
+  outer_stmts = push_back(outer_stmts, idx_decl);
+  outer_stmts = push_back(outer_stmts, for_node);
+  
+  return outer_block;
+}
+
 /**
  * Parses a statement.
  * EBNF: stmt = expr ";" | "{" stmt* "}" | "if" "(" expr ")" stmt ("else" stmt)? | "while" "(" expr ")" stmt | "for" "(" expr? ";" expr? ";" expr? ")" stmt | "return" expr ";" | Type ident ( "=" expr )? ";"
@@ -1516,6 +1749,9 @@ Node* stmt() {
     expect(")");
     node.then = stmt();
     return node;
+  }
+  else if (is_token("foreach") || is_token("foreach_reverse")) {
+    return parse_foreach();
   }
   else if (consume("for")) {
     Node* node = new_node(NodeKind.NK_for_);

@@ -57,7 +57,10 @@ This document is for the next AI agent or developer taking over the development 
   - Generates code for floating-point arithmetic (`add`, `sub`, `mul`, `div`), comparisons (`ceq[sd]`, `cne[sd]`, `clt[sd]`, `cle[sd]`, `cgt[sd]`, `cge[sd]`), return values, and parameter signatures.
   - Implements type-promoting comparisons and casts between float/double and integers using QBE conversion instructions (`exts`, `truncd`, `swtof`, `sltof`, `stosi`, `dtosi`).
 - **Classic Minic Snippet Tests**:
-  - `test/collatz_test.d` (collatz conjecture), `test/prime_test.d` (prime numbers), `test/queen_test.d` (eight queens), `test/switch_test.d` (switch/case branches), `test/multidim_test.d` (multidimensional array indexing/sizing), `test/template_test.d` (struct and function templates), and structured slice/member function/ternary/float integration tests inside `test/arith_test.d` are fully verified under self-hosting.
+  - `test/collatz_test.d` (collatz conjecture), `test/prime_test.d` (prime numbers), `test/queen_test.d` (eight queens), `test/switch_test.d` (switch/case branches), `test/multidim_test.d` (multidimensional array indexing/sizing), `test/template_test.d` (struct and function templates), and structured slice/member function/ternary/float/foreach integration tests inside `test/arith_test.d` are fully verified under self-hosting.
+- **`foreach` / `foreach_reverse` Loops**: Completed & Committed.
+  - Supports idiomatic loop iteration over static arrays, pointers, and slices (including explicit types, index + value loops, and reverse traversal).
+  - Lowers foreach loops directly to standard `for` loops in the parser, with optimizations to avoid static array copy-by-value limitations.
 
 ---
 
@@ -90,7 +93,6 @@ This document is for the next AI agent or developer taking over the development 
 ## 4. Missing Features & BetterC Compatibility Next Steps
 
 While `d2qbe` compiles a very large and self-hosting subset of D `betterC`, the following standard D features are currently unsupported:
-* **`foreach` / `foreach_reverse` Loops**: Only standard C-style `for` and `while` loops are supported.
 * **`scope(...)` Statements**: `scope(exit)`, `scope(success)`, and `scope(failure)` constructs are not implemented.
 * **Uniform Function Call Syntax (UFCS)**: True UFCS for free-standing functions is not supported.
 * **Compile-Time Function Execution (CTFE)**: There is no interpreter to evaluate custom functions at compile-time.

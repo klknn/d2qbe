@@ -37,18 +37,18 @@ cc a.s -o a.out
   - [x] compound self-assignments (`+=`, `-=`, etc.)
   - [x] byte-sized function parameters safety (`char`/`bool` parameter stack stores)
   - [x] frontend SSA optimization (direct emission of QBE SSA `phi` instructions for ternary operations)
+  - [x] `foreach` and `foreach_reverse` loops
 - [ ] full set of betterC D language https://dlang.org/spec/betterc.html#consequences (Self-hosted compiler is 100% complete for the supported subset, but some standard betterC features are missing.)
 
 ## Unsupported / Missing betterC Features
 
 While `d2qbe` compiles a very large and self-hosting subset of D `betterC`, the following standard D features are currently unsupported:
 
-1. **`foreach` / `foreach_reverse` Loops**: Only standard C-style `for` and `while` loops are supported.
-2. **`scope(...)` Statements**: `scope(exit)`, `scope(success)`, and `scope(failure)` constructs are not implemented.
-3. **Uniform Function Call Syntax (UFCS)**: True UFCS for free-standing functions is not supported.
-4. **Compile-Time Function Execution (CTFE)**: There is no interpreter to evaluate custom functions at compile-time.
-5. **Advanced Templates**: Multiple parameters, variadic parameters, constraints, and specializations are not supported (only eponymous templates with a single type parameter).
-6. **C++ Classes & Interfaces**: `extern(C++) class` (which is standard betterC compatible as it does not use GC) is unsupported.
+1. **`scope(...)` Statements**: `scope(exit)`, `scope(success)`, and `scope(failure)` constructs are not implemented.
+2. **Uniform Function Call Syntax (UFCS)**: True UFCS for free-standing functions is not supported.
+3. **Compile-Time Function Execution (CTFE)**: There is no interpreter to evaluate custom functions at compile-time.
+4. **Advanced Templates**: Multiple parameters, variadic parameters, constraints, and specializations are not supported (only eponymous templates with a single type parameter).
+5. **C++ Classes & Interfaces**: `extern(C++) class` (which is standard betterC compatible as it does not use GC) is unsupported.
 
 
 ## benchmarks

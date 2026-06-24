@@ -181,6 +181,8 @@ unittest {
 
 bool is_keyword(const char* p) {
   int len = identifier_length(p);
+  if (len == 7 && strncmp(p, "foreach", 7) == 0) return true;
+  if (len == 15 && strncmp(p, "foreach_reverse", 15) == 0) return true;
   if (len == 6 && strncmp(p, "return", 6) == 0) return true;
   if (len == 2 && strncmp(p, "if", 2) == 0) return true;
   if (len == 4 && strncmp(p, "else", 4) == 0) return true;
@@ -218,6 +220,8 @@ bool is_keyword(const char* p) {
 }
 
 unittest {
+  assert(is_keyword("foreach (x; arr)"));
+  assert(is_keyword("foreach_reverse (x; arr)"));
   assert(is_keyword("return a;"));
   assert(!is_keyword("returna;"));
   assert(is_keyword("for (;;)"));

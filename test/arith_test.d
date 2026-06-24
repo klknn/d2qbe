@@ -267,6 +267,52 @@ int main() {
     // Test extern global variables support
     assert(extern_global_int == 420);
 
+    // Test foreach over static array (TDD)
+    int[4] foreach_arr;
+    foreach_arr[0] = 10;
+    foreach_arr[1] = 20;
+    foreach_arr[2] = 30;
+    foreach_arr[3] = 40;
+    int foreach_sum = 0;
+    foreach (x; foreach_arr) {
+        foreach_sum = foreach_sum + x;
+    }
+    assert(foreach_sum == 100);
+
+    // Test foreach with index and value
+    int index_sum = 0;
+    foreach (i, x; foreach_arr) {
+        index_sum = index_sum + i + x;
+    }
+    assert(index_sum == 106);
+
+    // Test foreach over slice
+    int[] foreach_slice = foreach_arr[1 .. 3]; // [20, 30]
+    int slice_sum = 0;
+    foreach (x; foreach_slice) {
+        slice_sum = slice_sum + x;
+    }
+    assert(slice_sum == 50);
+
+    // Test foreach with explicit type
+    int explicit_sum = 0;
+    foreach (int x; foreach_arr) {
+        explicit_sum = explicit_sum + x;
+    }
+    assert(explicit_sum == 100);
+
+    // Test foreach_reverse
+    int reverse_sum = 0;
+    int[3] rev_arr;
+    rev_arr[0] = 1;
+    rev_arr[1] = 2;
+    rev_arr[2] = 3;
+    foreach_reverse (i, x; rev_arr) {
+        reverse_sum = reverse_sum * 10 + x;
+    }
+    assert(reverse_sum == 321);
+
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;
 }
+
