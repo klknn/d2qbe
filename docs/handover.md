@@ -61,6 +61,9 @@ This document is for the next AI agent or developer taking over the development 
 - **`foreach` / `foreach_reverse` Loops**: Completed & Committed.
   - Supports idiomatic loop iteration over static arrays, pointers, and slices (including explicit types, index + value loops, and reverse traversal).
   - Lowers foreach loops directly to standard `for` loops in the parser, with optimizations to avoid static array copy-by-value limitations.
+- **`scope(exit)` Statements**: Completed & Committed.
+  - Supports registering arbitrary cleanup statements executed in reverse lexical order (LIFO) at block exit and return points.
+  - Disallows `scope(success)` and `scope(failure)` with compile-time errors to match standard compilers (like LDC under `-betterC`) which disable them due to the absence of exception handling/unwinding.
 
 ---
 
@@ -93,7 +96,6 @@ This document is for the next AI agent or developer taking over the development 
 ## 4. Missing Features & BetterC Compatibility Next Steps
 
 While `d2qbe` compiles a very large and self-hosting subset of D `betterC`, the following standard D features are currently unsupported:
-* **`scope(...)` Statements**: `scope(exit)`, `scope(success)`, and `scope(failure)` constructs are not implemented.
 * **Uniform Function Call Syntax (UFCS)**: True UFCS for free-standing functions is not supported.
 * **Compile-Time Function Execution (CTFE)**: There is no interpreter to evaluate custom functions at compile-time.
 * **Advanced Templates**: Multiple parameters, variadic parameters, constraints, and specializations are not supported (only eponymous templates with a single type parameter).

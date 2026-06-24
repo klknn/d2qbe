@@ -1263,7 +1263,11 @@ int gen(Node* node) {
   if (!node) {
     return 0;
   }
-  printf("# DEBUG: gen node=%p kind=%d\n", node, node.kind);
+  if (node.kind == NodeKind.NK_scope_exit) {
+    assert(active_raii_stack_count < MAX_ACTIVE_RAII, "active_raii_stack overflow");
+    active_raii_stack[active_raii_stack_count++] = node;
+    return 0;
+  }
   if (node.kind == NodeKind.NK_continue_) {
       char type = current_continue_type();
       int id = current_continue_id();
@@ -1597,22 +1601,30 @@ int gen(Node* node) {
         }
         
         for (int i = active_raii_stack_count - 1; i >= 0; i--) {
-          Node* var_node = active_raii_stack[i];
-          Node lvar;
-          lvar.kind = NodeKind.NK_lvar;
-          lvar.ident = var_node.ident;
-          emit_destructor_call(&lvar);
+          Node* cleanup_node = active_raii_stack[i];
+          if (cleanup_node.kind == NodeKind.NK_scope_exit) {
+            gen(cleanup_node.lhs);
+          } else {
+            Node lvar;
+            lvar.kind = NodeKind.NK_lvar;
+            lvar.ident = cleanup_node.ident;
+            emit_destructor_call(&lvar);
+          }
         }
         
         printf("  ret %%t%d\n", lhs);
         return lhs;
       } else {
         for (int i = active_raii_stack_count - 1; i >= 0; i--) {
-          Node* var_node = active_raii_stack[i];
-          Node lvar;
-          lvar.kind = NodeKind.NK_lvar;
-          lvar.ident = var_node.ident;
-          emit_destructor_call(&lvar);
+          Node* cleanup_node = active_raii_stack[i];
+          if (cleanup_node.kind == NodeKind.NK_scope_exit) {
+            gen(cleanup_node.lhs);
+          } else {
+            Node lvar;
+            lvar.kind = NodeKind.NK_lvar;
+            lvar.ident = cleanup_node.ident;
+            emit_destructor_call(&lvar);
+          }
         }
         
         printf("  ret\n");
@@ -1750,12 +1762,16 @@ int gen(Node* node) {
       }
       
       while (active_raii_stack_count > stack_base) {
-        Node* var_node = active_raii_stack[--active_raii_stack_count];
+        Node* cleanup_node = active_raii_stack[--active_raii_stack_count];
         if (!dead) {
-          Node lvar;
-          lvar.kind = NodeKind.NK_lvar;
-          lvar.ident = var_node.ident;
-          emit_destructor_call(&lvar);
+          if (cleanup_node.kind == NodeKind.NK_scope_exit) {
+            gen(cleanup_node.lhs);
+          } else {
+            Node lvar;
+            lvar.kind = NodeKind.NK_lvar;
+            lvar.ident = cleanup_node.ident;
+            emit_destructor_call(&lvar);
+          }
         }
       }
       

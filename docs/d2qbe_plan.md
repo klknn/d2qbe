@@ -180,10 +180,10 @@ These standard D `betterC` features are currently not implemented in `d2qbe`.
 * **Description**: Idiomatic iteration loops over arrays, pointers/ranges, and slices.
 * **Implementation**: Lowered `foreach` and `foreach_reverse` loops in the parser directly to standard `for` loops (`NK_for_`) at parse-time. Resolves static arrays and slices properly, bypassing static array copying issues by using direct pointer referencing where applicable.
 
-### 9.2 `scope(...)` Statements
-* **Syntax**: `scope(exit) cleanup();`, `scope(success) commit();`
+### 9.2 `scope(...)` Statements (Completed)
+* **Syntax**: `scope(exit) cleanup();`
 * **Description**: Registering arbitrary cleanup/post-execution statements at scope exit.
-* **Proposed Implementation**: Similar to struct RAII destructors, register scope statements on a compiler stack during parsing and insert them automatically before return, break, or block-end boundaries.
+* **Implementation**: Implemented `scope(exit)` by parsing the statement and pushing it onto a unified cleanup stack (`active_raii_stack`) in the code generator. The cleanups are automatically generated in reverse order at block exit and return statements. `scope(success)` and `scope(failure)` are disallowed and trigger compile-time errors to strictly match standard D `-betterC` compilers (like LDC).
 
 ### 9.3 Uniform Function Call Syntax (UFCS)
 * **Syntax**: `value.process()` calling `process(value)`

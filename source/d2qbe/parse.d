@@ -56,6 +56,9 @@ enum NodeKind {
   NK_slice, // x[start .. end]
   NK_ternary, // cond ? then : else
   NK_float_num, // float or double literal
+  NK_scope_exit, // scope(exit) stmt;
+  NK_scope_success, // scope(success) stmt;
+  NK_scope_failure, // scope(failure) stmt;
 }
 
 struct Type {
@@ -1619,6 +1622,23 @@ Node* parse_foreach() {
  * EBNF: stmt = expr ";" | "{" stmt* "}" | "if" "(" expr ")" stmt ("else" stmt)? | "while" "(" expr ")" stmt | "for" "(" expr? ";" expr? ";" expr? ")" stmt | "return" expr ";" | Type ident ( "=" expr )? ";"
  */
 Node* stmt() {
+  if (consume("scope")) {
+    expect("(");
+    Token* tok = consume_ident();
+    if (!tok) error_at(token.str, "expected exit, success, or failure in scope(...)");
+    
+    NodeKind kind;
+    if (tok.len == 4 && strncmp(tok.str, "exit", 4) == 0) {
+      kind = NodeKind.NK_scope_exit;
+    } else {
+      error_at(tok.str, "only scope(exit) is supported under betterC");
+    }
+    expect(")");
+    Node* body_stmt = stmt();
+    Node* node = new_node(kind);
+    node.lhs = body_stmt;
+    return node;
+  }
   if (is_token("alias")) {
     parse_alias();
     Node* dummy = cast(Node*) calloc(1, Node.sizeof);

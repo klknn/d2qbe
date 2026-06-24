@@ -1,5 +1,5 @@
-extern (C) int printf(const char* format, ...);
-extern (C) extern int extern_global_int;
+extern (C) extern int printf(const char* format, ...);
+extern (C) extern __gshared int extern_global_int;
 static assert(5 * 5 == 25);
 
 static if (int.sizeof == 4) {
@@ -31,6 +31,15 @@ version(Windows) {
 }
 
 int g_destroyed_count = 0;
+int g_scope_val = 0;
+
+int test_scope_guards(int x) {
+    scope(exit) g_scope_val = g_scope_val + 1;
+    if (x == 1) {
+        return 5;
+    }
+    return 6;
+}
 
 struct RaiiTester {
   int id;
@@ -55,7 +64,7 @@ int test_char_params(char a, int b, char c) {
   return 456;
 }
 
-int main() {
+extern (C) int main() {
     // Arithmetic & basic operations
     assert(5+20-4 == 21);
     assert(12 + 34 - 5 == 41);
@@ -144,7 +153,11 @@ int main() {
     static assert(int.init == 0);
     static assert(int*.alignof == 8);
 
-    assert(char.init == 0);
+    version(LDC) {
+      assert(char.init == 0xFF);
+    } else {
+      assert(char.init == 0);
+    }
     assert(char.alignof == 1);
 
     // Conditional compilation
@@ -282,7 +295,7 @@ int main() {
     // Test foreach with index and value
     int index_sum = 0;
     foreach (i, x; foreach_arr) {
-        index_sum = index_sum + i + x;
+        index_sum = index_sum + cast(int)i + x;
     }
     assert(index_sum == 106);
 
@@ -311,6 +324,20 @@ int main() {
         reverse_sum = reverse_sum * 10 + x;
     }
     assert(reverse_sum == 321);
+
+    // Test scope guards
+    g_scope_val = 0;
+    {
+        scope(exit) g_scope_val = g_scope_val + 2;
+        assert(g_scope_val == 0);
+    }
+    assert(g_scope_val == 2);
+
+    // Test scope guards with return
+    g_scope_val = 0;
+    int scope_ret = test_scope_guards(1);
+    assert(scope_ret == 5);
+    assert(g_scope_val == 1);
 
     printf("Arithmetic and basic operator tests passed!\n");
     return 0;

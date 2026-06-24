@@ -38,13 +38,14 @@ cc a.s -o a.out
   - [x] byte-sized function parameters safety (`char`/`bool` parameter stack stores)
   - [x] frontend SSA optimization (direct emission of QBE SSA `phi` instructions for ternary operations)
   - [x] `foreach` and `foreach_reverse` loops
+  - [x] `scope(exit)` statements
 - [ ] full set of betterC D language https://dlang.org/spec/betterc.html#consequences (Self-hosted compiler is 100% complete for the supported subset, but some standard betterC features are missing.)
 
 ## Unsupported / Missing betterC Features
 
 While `d2qbe` compiles a very large and self-hosting subset of D `betterC`, the following standard D features are currently unsupported:
 
-1. **`scope(...)` Statements**: `scope(exit)`, `scope(success)`, and `scope(failure)` constructs are not implemented.
+1. **`scope(success)` & `scope(failure)`**: These are disallowed under `-betterC` by standard compilers (like LDC) due to disabled exception handling/unwinding; our compiler errors out on them to guide standard compliance.
 2. **Uniform Function Call Syntax (UFCS)**: True UFCS for free-standing functions is not supported.
 3. **Compile-Time Function Execution (CTFE)**: There is no interpreter to evaluate custom functions at compile-time.
 4. **Advanced Templates**: Multiple parameters, variadic parameters, constraints, and specializations are not supported (only eponymous templates with a single type parameter).

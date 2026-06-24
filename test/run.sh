@@ -45,4 +45,9 @@ assert_v2 0 "$(cat test/switch_test.d)"
 assert_v2 0 "$(cat test/multidim_test.d)"
 assert_v2 0 "$(cat test/template_test.d)"
 
+# ==============================================================================
+# Death Tests (Assert failure resulting in non-zero exit)
+# ==============================================================================
+assert_v2 1 "extern(C) int main() { assert(0); return 0; }"
+
 echo OK
