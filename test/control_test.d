@@ -23,7 +23,7 @@ int test_if(int x) {
     }
 }
 
-int main() {
+extern (C) int main() {
     // Variables
     int returnx = 12;
     assert(returnx == 12);

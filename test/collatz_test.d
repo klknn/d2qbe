@@ -1,7 +1,7 @@
 extern (C) void* malloc(int size);
 extern (C) int printf(const char* format, ...);
 
-int main() {
+extern (C) int main() {
     int n;
     int nv;
     int c;

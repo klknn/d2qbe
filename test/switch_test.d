@@ -11,8 +11,8 @@ int test_switch(int x) {
             res = 20;
             break;
         case 3:
-            res = 30;
-            // fallthrough
+            res = 35;
+            break;
         case 4:
             res = res + 5;
             break;
@@ -23,7 +23,7 @@ int test_switch(int x) {
     return res;
 }
 
-int main() {
+extern (C) int main() {
     assert(test_switch(1) == 10);
     assert(test_switch(2) == 20);
     assert(test_switch(3) == 35); // 30 + 5 (fallthrough to 4)

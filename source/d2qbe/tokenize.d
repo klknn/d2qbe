@@ -189,6 +189,7 @@ bool is_keyword(const char* p) {
   if (len == 4 && strncmp(p, "else", 4) == 0) return true;
   if (len == 5 && strncmp(p, "while", 5) == 0) return true;
   if (len == 3 && strncmp(p, "for", 3) == 0) return true;
+  if (len == 3 && strncmp(p, "ref", 3) == 0) return true;
   if (len == 6 && strncmp(p, "struct", 6) == 0) return true;
   if (len == 4 && strncmp(p, "enum", 4) == 0) return true;
   if (len == 4 && strncmp(p, "cast", 4) == 0) return true;

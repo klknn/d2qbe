@@ -67,6 +67,7 @@ struct Type {
   int[5] array_sizes;
   int array_dims;
   bool is_slice;
+  bool is_ref;
 }
 
 struct Member {
@@ -225,6 +226,9 @@ char* mangle_function_name(const(char)* base_name, Type* params_types, int num_p
   for (int i = 0; i < num_params; i++) {
     strcat(buf, "_");
     Type* t = &params_types[i];
+    if (t.is_ref) {
+      strcat(buf, "ref");
+    }
     for (int p = 0; p < t.ptr_depth; p++) {
       strcat(buf, "p");
     }
@@ -482,6 +486,7 @@ void parse_type(Type* out_type) {
   t.ptr_depth = 0;
   t.array_dims = 0;
   t.is_slice = false;
+  t.is_ref = false;
   for (int i = 0; i < 5; i++) {
     t.array_sizes[i] = 0;
   }
@@ -1214,6 +1219,12 @@ Node* parse_bitwise_or() {
   }
 }
 
+void check_not_assign(Node* node, const(char)* msg) {
+  if (node && node.kind == NodeKind.NK_assign) {
+    error_at(token.str, msg);
+  }
+}
+
 /**
  * Parses a logical AND expression (&&).
  * EBNF: logical_and = bitwise_or ("&&" bitwise_or)*
@@ -1222,7 +1233,10 @@ Node* parse_logical_and() {
   Node* node = parse_bitwise_or();
   for (;;) {
     if (consume("&&")) {
-      node = new_node_binop(NodeKind.NK_logical_and, node, parse_bitwise_or());
+      Node* rhs = parse_bitwise_or();
+      check_not_assign(node, "assignment cannot be used as a condition");
+      check_not_assign(rhs, "assignment cannot be used as a condition");
+      node = new_node_binop(NodeKind.NK_logical_and, node, rhs);
     } else {
       return node;
     }
@@ -1237,7 +1251,10 @@ Node* parse_logical_or() {
   Node* node = parse_logical_and();
   for (;;) {
     if (consume("||")) {
-      node = new_node_binop(NodeKind.NK_logical_or, node, parse_logical_and());
+      Node* rhs = parse_logical_and();
+      check_not_assign(node, "assignment cannot be used as a condition");
+      check_not_assign(rhs, "assignment cannot be used as a condition");
+      node = new_node_binop(NodeKind.NK_logical_or, node, rhs);
     } else {
       return node;
     }
@@ -1386,6 +1403,22 @@ bool is_decl_statement() {
 
 int foreach_counter = 0;
 
+char* make_unique_name(const(char)* base) {
+  char[128] buf;
+  sprintf(&buf[0], "%s_%d", base, foreach_counter++);
+  char* res = cast(char*) calloc(1, strlen(&buf[0]) + 1);
+  strcpy(res, &buf[0]);
+  return res;
+}
+
+Token* make_fake_token(const(char)* name) {
+  Token* t = cast(Token*) calloc(1, Token.sizeof);
+  t.kind = TokenKind.TK_identifier;
+  t.str = cast(char*) name;
+  t.len = cast(int) strlen(name);
+  return t;
+}
+
 Node* parse_foreach() {
   bool is_reverse = consume("foreach_reverse");
   if (!is_reverse) expect("foreach");
@@ -1396,8 +1429,9 @@ Node* parse_foreach() {
   type1.ptr_depth = 0;
   type1.array_dims = 0;
   type1.is_slice = false;
+  type1.is_ref = false;
   
-  consume("ref");
+  bool is_ref1 = consume("ref");
   
   Token* ident1 = null;
   if (is_type_name(token.str, token.len) || is_type_start(token)) {
@@ -1424,9 +1458,11 @@ Node* parse_foreach() {
   type2.ptr_depth = 0;
   type2.array_dims = 0;
   type2.is_slice = false;
+  type2.is_ref = false;
   
+  bool is_ref2 = false;
   if (consume(",")) {
-    consume("ref");
+    is_ref2 = consume("ref");
     if (is_type_name(token.str, token.len) || is_type_start(token)) {
       Token* checkpoint = token;
       Type t;
@@ -1513,22 +1549,6 @@ Node* parse_foreach() {
   }
   
   Node* arr_expr = start_expr;
-  
-  char* make_unique_name(const(char)* base) {
-    char[128] buf;
-    sprintf(&buf[0], "%s_%d", base, foreach_counter++);
-    char* res = cast(char*) calloc(1, strlen(&buf[0]) + 1);
-    strcpy(res, &buf[0]);
-    return res;
-  }
-  
-  Token* make_fake_token(const(char)* name) {
-    Token* t = cast(Token*) calloc(1, Token.sizeof);
-    t.kind = TokenKind.TK_identifier;
-    t.str = cast(char*) name;
-    t.len = cast(int) strlen(name);
-    return t;
-  }
   
   Node* arr_decl = null;
   Node* arr_ref_len = null;
@@ -1657,7 +1677,14 @@ Node* parse_foreach() {
   Node* elem_decl = new_node(NodeKind.NK_var_decl);
   elem_decl.type = ident2 ? type2 : type1;
   elem_decl.ident = ident2 ? ident2 : ident1;
-  elem_decl.lhs = elem_val_node;
+  if (ident2 ? is_ref2 : is_ref1) {
+    elem_decl.type.is_ref = true;
+    Node* addr_node = new_node(NodeKind.NK_addr);
+    addr_node.lhs = elem_val_node;
+    elem_decl.lhs = addr_node;
+  } else {
+    elem_decl.lhs = elem_val_node;
+  }
   
   body_stmts = push_back(body_stmts, elem_decl);
   body_stmts = push_back(body_stmts, loop_body);
@@ -1741,6 +1768,8 @@ Node* stmt() {
       t.name = "auto";
       t.ptr_depth = 0;
       t.array_dims = 0;
+      t.is_slice = false;
+      t.is_ref = false;
     } else {
       parse_type(&t);
     }
@@ -1792,6 +1821,24 @@ Node* stmt() {
     node.lhs = expr();
     expect(")");
     node.rhs = stmt();
+    
+    if (node.rhs && node.rhs.kind == NodeKind.NK_block) {
+      bool check_terminator = false;
+      for (NodeList* curr = &node.rhs.statements; curr; curr = curr.next) {
+        if (!curr.value) continue;
+        if (curr.value.kind == NodeKind.NK_case_ || curr.value.kind == NodeKind.NK_default_) {
+          if (check_terminator) {
+            error_at(token.str, "switch case fallthrough is disallowed; case must end with break, return, or continue");
+          }
+          check_terminator = true;
+        } else if (curr.value.kind == NodeKind.NK_break_ || curr.value.kind == NodeKind.NK_return_ || curr.value.kind == NodeKind.NK_continue_) {
+          check_terminator = false;
+        }
+      }
+      if (check_terminator) {
+        error_at(token.str, "switch case fallthrough is disallowed; last case must end with break, return, or continue");
+      }
+    }
     return node;
   }
   else if (consume("case")) {
@@ -1818,6 +1865,7 @@ Node* stmt() {
     Node* node = new_node(NodeKind.NK_if_);
     expect("(");
     node.cond = expr();
+    check_not_assign(node.cond, "assignment cannot be used as a condition");
     expect(")");
     node.then = stmt();
     if (consume("else")) {
@@ -1829,6 +1877,7 @@ Node* stmt() {
     Node* node = new_node(NodeKind.NK_while_);
     expect("(");
     node.cond = expr();
+    check_not_assign(node.cond, "assignment cannot be used as a condition");
     expect(")");
     node.then = stmt();
     return node;
@@ -2439,7 +2488,9 @@ Node* parse_function(Type* ret_type, Token* func_name, const(char)* struct_name,
       break;
     }
     assert(i < MAX_PARAM_SIZE);
+    bool is_param_ref = consume("ref");
     parse_type(&node.params_types[i]);
+    node.params_types[i].is_ref = is_param_ref;
     node.params[i] = consume_ident();
     i++;
     consume(",");

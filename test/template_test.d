@@ -15,7 +15,7 @@ template swap(T) {
     }
 }
 
-int main() {
+extern (C) int main() {
     // Test struct template instantiation
     Stack!int s;
     s.top = 0;

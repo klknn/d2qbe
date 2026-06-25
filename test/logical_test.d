@@ -8,7 +8,12 @@ void void_func(int* p) {
   return;
 }
 
-int main() {
+int assign(int* p, int val) {
+  *p = val;
+  return val;
+}
+
+extern (C) int main() {
   assert(MyEnum.Foo == 100);
   assert(MyEnum.Bar == 101);
   assert((1 && 1) == 1);
@@ -31,23 +36,23 @@ int main() {
   int* p = &x;
   
   // if LHS is false, RHS should NOT be evaluated
-  int res = 0 && (*p = 1);
+  int res = 0 && assign(p, 1);
   assert(x == 0);
   assert(res == 0);
 
   // if LHS is true, RHS SHOULD be evaluated
-  res = 1 && (*p = 2);
+  res = 1 && assign(p, 2);
   assert(x == 2);
   assert(res == 1);
   
   // if LHS is true, RHS should NOT be evaluated for OR
   x = 0;
-  res = 1 || (*p = 3);
+  res = 1 || assign(p, 3);
   assert(x == 0);
   assert(res == 1);
 
   // if LHS is false, RHS SHOULD be evaluated for OR
-  res = 0 || (*p = 4);
+  res = 0 || assign(p, 4);
   assert(x == 4);
   assert(res == 1);
 

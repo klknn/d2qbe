@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+ARCH=$(uname -m)
+if [ "$ARCH" != "x86_64" ] && [ "$ARCH" != "amd64" ]; then
+  echo "Skipping selfhost verification: dqbe only supports x86_64 architecture (host is $ARCH)"
+  exit 0
+fi
+
 # Concatenate compiler source files
 cat << 'EOF' > test/self_host_dqbe.d
 // C stdlib declarations

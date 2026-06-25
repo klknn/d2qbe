@@ -8,7 +8,7 @@ struct Rect {
   Point p2;
 }
 
-int main() {
+extern (C) int main() {
   Point p;
   p.x = 10;
   p.y = 20;

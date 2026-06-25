@@ -4,7 +4,7 @@ struct S {
     int[2][2] mat;
 }
 
-int main() {
+extern (C) int main() {
     int[3][2] arr;
     
     // Assign values

@@ -6,7 +6,7 @@ enum {
   C
 }
 
-int main() {
+extern (C) int main() {
   assert(Val == 42);
   assert(A == 0);
   assert(B == 10);

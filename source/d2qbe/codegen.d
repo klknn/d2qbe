@@ -89,6 +89,7 @@ void get_global_type(const(Token)* ident, Type* out_type) {
   t.ptr_depth = 0;
   t.array_dims = 0;
   t.is_slice = false;
+  t.is_ref = false;
   *out_type = t;
 }
 
@@ -246,6 +247,7 @@ void get_local_type(const(Token)* ident, Type* out_type) {
   t.ptr_depth = 0;
   t.array_dims = 0;
   t.is_slice = false;
+  t.is_ref = false;
   printf("# DEBUG: get_local_type '%.*s' -> DEFAULT 'int'\n", ident.len, ident.str);
   *out_type = t;
 }
@@ -259,6 +261,7 @@ void infer_type(Node* node, Type* out_type) {
   t.ptr_depth = 0;
   t.array_dims = 0;
   t.is_slice = false;
+  t.is_ref = false;
   if (!node) {
     *out_type = t;
     return;
@@ -340,7 +343,14 @@ void collect_locals(Node* node) {
   if (node.kind == NodeKind.NK_var_decl) {
     if (node.type.name && strcmp(node.type.name, "auto") == 0) {
       Type inferred;
+      inferred.is_ref = false;
       infer_type(node.lhs, &inferred);
+      if (node.type.is_ref) {
+        if (inferred.ptr_depth > 0) {
+          inferred.ptr_depth--;
+        }
+        inferred.is_ref = true;
+      }
       node.type = inferred;
     }
     add_local(node.ident, &node.type);
@@ -778,6 +788,7 @@ void get_expr_type(Node* node, Type* out_type) {
   t.ptr_depth = 0;
   t.array_dims = 0;
   t.is_slice = false;
+  t.is_ref = false;
   if (!node) {
     *out_type = t;
     return;
@@ -985,7 +996,13 @@ int gen_addr(Node* node) {
     if (!is_local(node.ident) && is_global(node.ident)) {
       printf("  %%t%d =l copy $%.*s\n", res, node.ident.len, node.ident.str);
     } else {
-      printf("  %%t%d =l copy %%%.*s_addr\n", res, node.ident.len, node.ident.str);
+      Type t;
+      get_local_type(node.ident, &t);
+      if (t.is_ref) {
+        printf("  %%t%d =l loadl %%%.*s_addr\n", res, node.ident.len, node.ident.str);
+      } else {
+        printf("  %%t%d =l copy %%%.*s_addr\n", res, node.ident.len, node.ident.str);
+      }
     }
     set_reg_type(res, 'l');
     return res;
@@ -1450,7 +1467,14 @@ int gen(Node* node) {
         Node lvar_node;
         lvar_node.kind = NodeKind.NK_lvar;
         lvar_node.ident = node.ident;
-        int lhs_addr = gen_addr(&lvar_node);
+        int lhs_addr;
+        if (t.is_ref) {
+          lhs_addr = next_reg();
+          printf("  %%t%d =l copy %%%.*s_addr\n", lhs_addr, node.ident.len, node.ident.str);
+          set_reg_type(lhs_addr, 'l');
+        } else {
+          lhs_addr = gen_addr(&lvar_node);
+        }
         if ((t.ptr_depth == 0 && find_struct(t.name)) || t.is_slice) {
           int rhs_addr;
           if (node.lhs.kind == NodeKind.NK_slice || node.lhs.kind == NodeKind.NK_ternary || node.lhs.kind == NodeKind.NK_funcall) {
@@ -1481,7 +1505,18 @@ int gen(Node* node) {
           return rhs_addr;
         } else {
           int rhs = gen(node.lhs);
-          emit_store(rhs, lhs_addr, &t);
+          if (t.is_ref) {
+            char val_type = get_reg_type(rhs);
+            if (val_type == 'w') {
+              int ext_res = next_reg();
+              printf("  %%t%d =l extsw %%t%d\n", ext_res, rhs);
+              set_reg_type(ext_res, 'l');
+              rhs = ext_res;
+            }
+            printf("  storel %%t%d, %%t%d\n", rhs, lhs_addr);
+          } else {
+            emit_store(rhs, lhs_addr, &t);
+          }
           return rhs;
         }
       }
@@ -1810,10 +1845,53 @@ int gen(Node* node) {
         start_arg_idx = 1;
       }
 
-      n_arg = start_arg_idx;
+      int num_args = 0;
       for (NodeList* args = &node.args; args.value; args = args.next) {
-        args_vars[n_arg] = gen(args.value);
+        num_args++;
+      }
+
+      FunctionSymbol* candidate_fs = null;
+      if (node.lhs) {
+        Type lt;
+        get_expr_type(node.lhs.lhs, &lt);
+        char[256] mangled;
+        snprintf(&mangled[0], 256, "_D_struct_%s_%.*s", lt.name, node.lhs.ident.len, node.lhs.ident.str);
+        for (int idx = 0; idx < registered_functions_count; idx++) {
+          FunctionSymbol* tmp_fs = &registered_functions[idx];
+          if (strcmp(tmp_fs.unmangled_name, &mangled[0]) == 0 || strcmp(tmp_fs.name, &mangled[0]) == 0) {
+            int fs_num_params = tmp_fs.num_params - (tmp_fs.is_member ? 1 : 0);
+            if (tmp_fs.is_variadic ? (num_args >= fs_num_params) : (num_args == fs_num_params)) {
+              candidate_fs = tmp_fs;
+              break;
+            }
+          }
+        }
+      } else {
+        char* name = cast(char*) calloc(1, node.ident.len + 1);
+        memcpy(name, node.ident.str, node.ident.len);
+        for (int idx = 0; idx < registered_functions_count; idx++) {
+          FunctionSymbol* tmp_fs = &registered_functions[idx];
+          if (strcmp(tmp_fs.unmangled_name, name) == 0) {
+            int fs_num_params = tmp_fs.num_params - (tmp_fs.is_member ? 1 : 0);
+            if (tmp_fs.is_variadic ? (num_args >= fs_num_params) : (num_args == fs_num_params)) {
+              candidate_fs = tmp_fs;
+              break;
+            }
+          }
+        }
+      }
+
+      n_arg = start_arg_idx;
+      int user_arg_idx = 0;
+      for (NodeList* args = &node.args; args.value; args = args.next) {
+        int param_idx = (candidate_fs && candidate_fs.is_member) ? (user_arg_idx + 1) : user_arg_idx;
+        if (candidate_fs && param_idx < candidate_fs.num_params && candidate_fs.params_types[param_idx].is_ref) {
+          args_vars[n_arg] = gen_addr(args.value);
+        } else {
+          args_vars[n_arg] = gen(args.value);
+        }
         n_arg++;
+        user_arg_idx++;
       }
       assert(n_arg < 21);
 
@@ -1912,7 +1990,7 @@ int gen(Node* node) {
         const(Token)* p = node.params[i];
         Type t = node.params_types[i];
         const(char)* t_str = "w";
-        if (t.ptr_depth > 0) {
+        if (t.is_ref || t.ptr_depth > 0) {
           t_str = "l";
         } else if (strcmp(t.name, "float") == 0) {
           t_str = "s";
@@ -1932,8 +2010,8 @@ int gen(Node* node) {
       // Emit stack allocations for all variables and parameters
       for (int i = 0; i < locals_count; ++i) {
         Type t = locals[i].type;
-        int size = get_type_size(&t);
-        int align_ = get_type_alignment(&t);
+        int size = t.is_ref ? 8 : get_type_size(&t);
+        int align_ = t.is_ref ? 8 : get_type_alignment(&t);
         int qbe_align = 4;
         if (align_ > 8) qbe_align = 16;
         else if (align_ > 4) qbe_align = 8;
@@ -1944,7 +2022,7 @@ int gen(Node* node) {
       for (int i = 0; node.params[i]; ++i) {
         const(Token)* p = node.params[i];
         Type t = node.params_types[i];
-        if (t.is_slice || t.ptr_depth > 0) {
+        if (t.is_ref || t.is_slice || t.ptr_depth > 0) {
           printf("  storel %%%.*s, %%%.*s_addr\n", p.len, p.str, p.len, p.str);
         } else if (strcmp(t.name, "double") == 0) {
           printf("  stored %%%.*s, %%%.*s_addr\n", p.len, p.str, p.len, p.str);

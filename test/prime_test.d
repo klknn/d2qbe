@@ -1,6 +1,6 @@
 extern (C) int printf(const char* format, ...);
 
-int main() {
+extern (C) int main() {
     int n;
     int t;
     int c;

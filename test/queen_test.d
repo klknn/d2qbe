@@ -58,7 +58,7 @@ void go(int y) {
     }
 }
 
-int main() {
+extern (C) int main() {
     int i;
 
     Q = 8;

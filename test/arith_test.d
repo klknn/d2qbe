@@ -40,6 +40,9 @@ int test_scope_guards(int x) {
     }
     return 6;
 }
+void increment_by_ref(ref int a) {
+    a = a + 1;
+}
 
 struct RaiiTester {
   int id;
@@ -338,6 +341,23 @@ extern (C) int main() {
         rev_range_val = rev_range_val * 10 + cast(int)i;
     }
     assert(rev_range_val == 321);
+
+    // Test ref parameters (TDD)
+    int ref_val = 10;
+    increment_by_ref(ref_val);
+    assert(ref_val == 11);
+
+    // Test ref foreach (TDD)
+    int[3] ref_foreach_arr;
+    ref_foreach_arr[0] = 1;
+    ref_foreach_arr[1] = 2;
+    ref_foreach_arr[2] = 3;
+    foreach (ref rx; ref_foreach_arr) {
+        rx = rx * 2;
+    }
+    assert(ref_foreach_arr[0] == 2);
+    assert(ref_foreach_arr[1] == 4);
+    assert(ref_foreach_arr[2] == 6);
 
     // Test scope guards
     g_scope_val = 0;
