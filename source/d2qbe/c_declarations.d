@@ -1,11 +1,11 @@
 module d2qbe.c_declarations;
 
-extern (C) void* calloc(int nmemb, int size);
-extern (C) void* memcpy(void* dest, const void* src, int n);
+extern (C) void* calloc(size_t nmemb, size_t size);
+extern (C) void* memcpy(void* dest, const void* src, size_t n);
 extern (C) int strcmp(const char* s1, const char* s2);
-extern (C) int strlen(const char* s);
-extern (C) int strncmp(const char* s1, const char* s2, int n);
-extern (C) int memcmp(const void* s1, const void* s2, int n);
+extern (C) size_t strlen(const char* s);
+extern (C) int strncmp(const char* s1, const char* s2, size_t n);
+extern (C) int memcmp(const void* s1, const void* s2, size_t n);
 extern (C) int strtol(const char* nptr, char** endptr, int base);
 extern (C) int isspace(int c);
 extern (C) int isdigit(int c);
@@ -16,7 +16,7 @@ extern (C) void exit(int status);
 extern (C) void* get_stderr();
 
 extern (C) void* fopen(const char* pathname, const char* mode);
-extern (C) int fread(void* ptr, int size, int nmemb, void* stream);
+extern (C) size_t fread(void* ptr, size_t size, size_t nmemb, void* stream);
 extern (C) int fclose(void* stream);
 extern (C) int fseek(void* stream, int offset, int whence);
 extern (C) int ftell(void* stream);

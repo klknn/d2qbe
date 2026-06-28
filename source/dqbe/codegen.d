@@ -7,6 +7,19 @@ import core.stdc.string;
 import dqbe.tokenize;
 import dqbe.parse;
 import dqbe.regalloc : perform_register_allocation, get_allocated_register, init_regalloc;
+import dqbe.sysv;
+import dqbe.win64;
+
+enum {
+  TARGET_OS_SYSV,
+  TARGET_OS_WINDOWS
+}
+
+version(Windows) {
+  __gshared int target_os = TARGET_OS_WINDOWS;
+} else {
+  __gshared int target_os = TARGET_OS_SYSV;
+}
 
 struct TempMap {
   char* name;
@@ -236,7 +249,7 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
       double val = strtod(arg + 2, null);
       long* bits = cast(long*) &val;
       invalidate_cache("%rax");
-      fprintf(f, "  movabsq $%ld, %%rax\n", *bits);
+      fprintf(f, "  movabsq $%lld, %%rax\n", *bits);
       fprintf(f, "  movq %%rax, %s\n", reg);
     } else {
       // Raw integer literal
@@ -289,35 +302,35 @@ void store_reg(const char* dest, const char* reg, int type, FILE* f) {
 }
 
 const(char)* get_arg_reg_32(int idx) {
-  if (idx == 0) return "%edi";
-  if (idx == 1) return "%esi";
-  if (idx == 2) return "%edx";
-  if (idx == 3) return "%ecx";
-  if (idx == 4) return "%r8d";
-  if (idx == 5) return "%r9d";
-  return null;
+  if (target_os == TARGET_OS_WINDOWS) {
+    return win64_get_arg_reg_32(idx);
+  } else {
+    return sysv_get_arg_reg_32(idx);
+  }
 }
 
 const(char)* get_arg_reg_64(int idx) {
-  if (idx == 0) return "%rdi";
-  if (idx == 1) return "%rsi";
-  if (idx == 2) return "%rdx";
-  if (idx == 3) return "%rcx";
-  if (idx == 4) return "%r8";
-  if (idx == 5) return "%r9";
-  return null;
+  if (target_os == TARGET_OS_WINDOWS) {
+    return win64_get_arg_reg_64(idx);
+  } else {
+    return sysv_get_arg_reg_64(idx);
+  }
 }
 
 const(char)* get_float_arg_reg(int idx) {
-  if (idx == 0) return "%xmm0";
-  if (idx == 1) return "%xmm1";
-  if (idx == 2) return "%xmm2";
-  if (idx == 3) return "%xmm3";
-  if (idx == 4) return "%xmm4";
-  if (idx == 5) return "%xmm5";
-  if (idx == 6) return "%xmm6";
-  if (idx == 7) return "%xmm7";
-  return null;
+  if (target_os == TARGET_OS_WINDOWS) {
+    return win64_get_float_arg_reg(idx);
+  } else {
+    return sysv_get_float_arg_reg(idx);
+  }
+}
+
+const(char)* get_param_reg(int arg_idx, char type, int int_arg_idx, int float_arg_idx) {
+  if (target_os == TARGET_OS_WINDOWS) {
+    return win64_get_param_reg(arg_idx, type, int_arg_idx, float_arg_idx);
+  } else {
+    return sysv_get_param_reg(arg_idx, type, int_arg_idx, float_arg_idx);
+  }
 }
 
 const(char)* current_fn_name;
@@ -394,25 +407,17 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
     int float_arg_idx = 0;
     for (int i = 0; i < inst.call_args_count && i < 20; i++) {
       char type = inst.call_args[i].type;
-      if (type == 'w') {
-        if (int_arg_idx < 6) {
-          load_arg(inst.call_args[i].name, get_arg_reg_32(int_arg_idx++), 'w', f);
-        }
-      } else if (type == 'l') {
-        if (int_arg_idx < 6) {
-          load_arg(inst.call_args[i].name, get_arg_reg_64(int_arg_idx++), 'l', f);
-        }
-      } else if (type == 's') {
-        if (float_arg_idx < 8) {
-          load_arg(inst.call_args[i].name, get_float_arg_reg(float_arg_idx++), 's', f);
-        }
-      } else if (type == 'd') {
-        if (float_arg_idx < 8) {
-          load_arg(inst.call_args[i].name, get_float_arg_reg(float_arg_idx++), 'd', f);
-        }
+      const(char)* reg = get_param_reg(i, type, int_arg_idx, float_arg_idx);
+      if (type == 'w' || type == 'l') int_arg_idx++;
+      else if (type == 's' || type == 'd') float_arg_idx++;
+
+      if (reg) {
+        load_arg(inst.call_args[i].name, reg, type, f);
       }
     }
-    fprintf(f, "  movb $%d, %%al\n", float_arg_idx);
+    if (target_os == TARGET_OS_SYSV) {
+      fprintf(f, "  movb $%d, %%al\n", float_arg_idx);
+    }
     fprintf(f, "  call %s\n", inst.arg1 + 1);
     clear_cache();
     return;
@@ -556,25 +561,17 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
       int float_arg_idx = 0;
       for (int i = 0; i < inst.call_args_count && i < 20; i++) {
         char type = inst.call_args[i].type;
-        if (type == 'w') {
-          if (int_arg_idx < 6) {
-            load_arg(inst.call_args[i].name, get_arg_reg_32(int_arg_idx++), 'w', f);
-          }
-        } else if (type == 'l') {
-          if (int_arg_idx < 6) {
-            load_arg(inst.call_args[i].name, get_arg_reg_64(int_arg_idx++), 'l', f);
-          }
-        } else if (type == 's') {
-          if (float_arg_idx < 8) {
-            load_arg(inst.call_args[i].name, get_float_arg_reg(float_arg_idx++), 's', f);
-          }
-        } else if (type == 'd') {
-          if (float_arg_idx < 8) {
-            load_arg(inst.call_args[i].name, get_float_arg_reg(float_arg_idx++), 'd', f);
-          }
+        const(char)* reg = get_param_reg(i, type, int_arg_idx, float_arg_idx);
+        if (type == 'w' || type == 'l') int_arg_idx++;
+        else if (type == 's' || type == 'd') float_arg_idx++;
+
+        if (reg) {
+          load_arg(inst.call_args[i].name, reg, type, f);
         }
       }
-      fprintf(f, "  movb $%d, %%al\n", float_arg_idx);
+      if (target_os == TARGET_OS_SYSV) {
+        fprintf(f, "  movb $%d, %%al\n", float_arg_idx);
+      }
       fprintf(f, "  call %s\n", inst.arg1 + 1);
       clear_cache();
       if (inst.dest_type == 'w') {
@@ -780,8 +777,12 @@ void gen_function(FunctionDef* fn, FILE* f) {
     }
   }
   
-  // Align total stack size to 16 bytes for ABI compliance
-  int aligned_stack = ((stack_offset_counter + 15) / 16) * 16;
+  // Align total stack size to 16 bytes for ABI compliance, accounting for 40 bytes of saved registers
+  int total_frame = ((stack_offset_counter + 15) / 16) * 16;
+  if (target_os == TARGET_OS_WINDOWS) {
+    total_frame = total_frame + 32; // Reserve 32 bytes of shadow space
+  }
+  int aligned_stack = total_frame - 40;
   
   // Emit prologue
   if (fn.is_export) {
@@ -796,7 +797,21 @@ void gen_function(FunctionDef* fn, FILE* f) {
   fprintf(f, "  pushq %%r14\n");
   fprintf(f, "  pushq %%r15\n");
   if (aligned_stack > 0) {
-    fprintf(f, "  subq $%d, %%rsp\n", aligned_stack);
+    if (target_os == TARGET_OS_WINDOWS && aligned_stack >= 4096) {
+      fprintf(f, "  movq $%d, %%rax\n", aligned_stack);
+      fprintf(f, "  movq %%rsp, %%r11\n");
+      fprintf(f, ".Lprobe_loop_%s:\n", fn.name + 1);
+      fprintf(f, "  subq $4096, %%r11\n");
+      fprintf(f, "  testq %%rax, (%%r11)\n");
+      fprintf(f, "  subq $4096, %%rax\n");
+      fprintf(f, "  cmpq $4096, %%rax\n");
+      fprintf(f, "  jae .Lprobe_loop_%s\n", fn.name + 1);
+      fprintf(f, "  subq %%rax, %%r11\n");
+      fprintf(f, "  testq %%rax, (%%r11)\n");
+      fprintf(f, "  movq %%r11, %%rsp\n");
+    } else {
+      fprintf(f, "  subq $%d, %%rsp\n", aligned_stack);
+    }
   }
   
   // Store parameter registers into their stack slots or allocated registers
@@ -805,36 +820,31 @@ void gen_function(FunctionDef* fn, FILE* f) {
   for (int i = 0; i < fn.params_count; i++) {
     const(char)* alloc_reg = get_allocated_register(fn.params[i].name, fn.params[i].type);
     int offset = get_temp_offset(fn.params[i].name);
-    if (fn.params[i].type == 'w') {
-      if (int_arg_idx < 6) {
-        const(char)* src_reg = get_arg_reg_32(int_arg_idx++);
+    char type = fn.params[i].type;
+    const(char)* src_reg = get_param_reg(i, type, int_arg_idx, float_arg_idx);
+    if (type == 'w' || type == 'l') int_arg_idx++;
+    else if (type == 's' || type == 'd') float_arg_idx++;
+
+    if (src_reg) {
+      if (type == 'w') {
         if (alloc_reg) {
           fprintf(f, "  movl %s, %s\n", src_reg, alloc_reg);
         } else {
           fprintf(f, "  movl %s, -%d(%%rbp)\n", src_reg, offset);
         }
-      }
-    } else if (fn.params[i].type == 'l') {
-      if (int_arg_idx < 6) {
-        const(char)* src_reg = get_arg_reg_64(int_arg_idx++);
+      } else if (type == 'l') {
         if (alloc_reg) {
           fprintf(f, "  movq %s, %s\n", src_reg, alloc_reg);
         } else {
           fprintf(f, "  movq %s, -%d(%%rbp)\n", src_reg, offset);
         }
-      }
-    } else if (fn.params[i].type == 's') {
-      if (float_arg_idx < 8) {
-        const(char)* src_reg = get_float_arg_reg(float_arg_idx++);
+      } else if (type == 's') {
         if (alloc_reg) {
           fprintf(f, "  movss %s, %s\n", src_reg, alloc_reg);
         } else {
           fprintf(f, "  movss %s, -%d(%%rbp)\n", src_reg, offset);
         }
-      }
-    } else if (fn.params[i].type == 'd') {
-      if (float_arg_idx < 8) {
-        const(char)* src_reg = get_float_arg_reg(float_arg_idx++);
+      } else if (type == 'd') {
         if (alloc_reg) {
           fprintf(f, "  movsd %s, %s\n", src_reg, alloc_reg);
         } else {
@@ -896,6 +906,63 @@ void gen_program(FILE* f) {
     perform_register_allocation(&program_functions[i]);
     gen_function(&program_functions[i], f);
   }
+}
+
+unittest {
+  int original_target = target_os;
+  
+  printf("  Testing TargetOS.sysv...\n");
+  target_os = TARGET_OS_SYSV;
+  assert(strcmp(get_arg_reg_32(0), "%edi") == 0);
+  assert(strcmp(get_arg_reg_32(1), "%esi") == 0);
+  assert(strcmp(get_arg_reg_32(2), "%edx") == 0);
+  assert(strcmp(get_arg_reg_32(3), "%ecx") == 0);
+  assert(strcmp(get_arg_reg_32(4), "%r8d") == 0);
+  assert(strcmp(get_arg_reg_32(5), "%r9d") == 0);
+  assert(get_arg_reg_32(6) == null);
+
+  assert(strcmp(get_arg_reg_64(0), "%rdi") == 0);
+  assert(strcmp(get_arg_reg_64(1), "%rsi") == 0);
+  assert(strcmp(get_arg_reg_64(2), "%rdx") == 0);
+  assert(strcmp(get_arg_reg_64(3), "%rcx") == 0);
+  assert(strcmp(get_arg_reg_64(4), "%r8") == 0);
+  assert(strcmp(get_arg_reg_64(5), "%r9") == 0);
+  assert(get_arg_reg_64(6) == null);
+
+  assert(strcmp(get_float_arg_reg(0), "%xmm0") == 0);
+  assert(strcmp(get_float_arg_reg(7), "%xmm7") == 0);
+  assert(get_float_arg_reg(8) == null);
+
+  assert(strcmp(get_param_reg(0, 'w', 0, 0), "%edi") == 0);
+  assert(strcmp(get_param_reg(1, 's', 0, 0), "%xmm0") == 0);
+  assert(strcmp(get_param_reg(2, 'w', 1, 1), "%esi") == 0);
+
+  printf("  Testing TargetOS.windows...\n");
+  target_os = TARGET_OS_WINDOWS;
+  assert(strcmp(get_arg_reg_32(0), "%ecx") == 0);
+  assert(strcmp(get_arg_reg_32(1), "%edx") == 0);
+  assert(strcmp(get_arg_reg_32(2), "%r8d") == 0);
+  assert(strcmp(get_arg_reg_32(3), "%r9d") == 0);
+  assert(get_arg_reg_32(4) == null);
+
+  assert(strcmp(get_arg_reg_64(0), "%rcx") == 0);
+  assert(strcmp(get_arg_reg_64(1), "%rdx") == 0);
+  assert(strcmp(get_arg_reg_64(2), "%r8") == 0);
+  assert(strcmp(get_arg_reg_64(3), "%r9") == 0);
+  assert(get_arg_reg_64(4) == null);
+
+  assert(strcmp(get_float_arg_reg(0), "%xmm0") == 0);
+  assert(strcmp(get_float_arg_reg(1), "%xmm1") == 0);
+  assert(strcmp(get_float_arg_reg(2), "%xmm2") == 0);
+  assert(strcmp(get_float_arg_reg(3), "%xmm3") == 0);
+  assert(get_float_arg_reg(4) == null);
+
+  assert(strcmp(get_param_reg(0, 'w', 0, 0), "%ecx") == 0);
+  assert(strcmp(get_param_reg(1, 's', 0, 0), "%xmm1") == 0);
+  assert(strcmp(get_param_reg(2, 'w', 1, 1), "%r8d") == 0);
+  assert(get_param_reg(4, 'w', 2, 1) == null);
+  
+  target_os = original_target;
 }
 
 unittest {

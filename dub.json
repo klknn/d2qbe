@@ -5,5 +5,24 @@
     "copyright": "Copyright © 2026, klknn",
     "description": "A minimal D application.",
     "license": "BSL-1.0",
-    "name": "d2qbe"
+    "name": "d2qbe",
+    "configurations": [
+        {
+            "name": "d2qbe",
+            "targetType": "executable",
+            "targetName": "d2qbe",
+            "mainSourceFile": "source/d2qbe/app.d",
+            "sourcePaths": ["source/d2qbe"],
+            "sourceFiles": ["test/tmp_ext_all.d"],
+            "excludedSourceFiles": ["source/dqbe/*"]
+        },
+        {
+            "name": "dqbe",
+            "targetType": "executable",
+            "targetName": "dqbe",
+            "mainSourceFile": "source/dqbe/app.d",
+            "sourcePaths": ["source/dqbe"],
+            "excludedSourceFiles": ["source/d2qbe/*"]
+        }
+    ]
 }

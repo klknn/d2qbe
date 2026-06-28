@@ -386,6 +386,7 @@ void init_types() {
   register_type("float");
   register_type("double");
   register_type("FILE");
+  register_type("size_t");
 }
 
 /**
@@ -405,6 +406,7 @@ int get_type_size(Type* t) {
     else if (strcmp(t.name, "double") == 0) base_size = 8;
     else if (strcmp(t.name, "char") == 0 || strcmp(t.name, "bool") == 0) base_size = 1;
     else if (strcmp(t.name, "void") == 0) base_size = 1;
+    else if (strcmp(t.name, "size_t") == 0) base_size = 8;
     else {
       StructType* st = find_struct(t.name);
       if (st) {
@@ -693,8 +695,13 @@ Node* stmt();
 void parse_top_level();
 
 bool is_version_active(Token* ident) {
-  if (ident.len == 5 && strncmp(ident.str, "Posix", 5) == 0) return true;
-  if (ident.len == 5 && strncmp(ident.str, "Linux", 5) == 0) return true;
+  version (Windows) {
+    if (ident.len == 7 && strncmp(ident.str, "Windows", 7) == 0) return true;
+  }
+  version (Posix) {
+    if (ident.len == 5 && strncmp(ident.str, "Posix", 5) == 0) return true;
+    if (ident.len == 5 && strncmp(ident.str, "Linux", 5) == 0) return true;
+  }
   return false;
 }
 
@@ -773,7 +780,14 @@ Node* parse_conditional_block(bool is_top_level, bool active) {
 Node* parse_version(bool is_top_level) {
   expect("version");
   expect("(");
-  Token* ident = consume_ident();
+  Token* ident = null;
+  if (token.kind == TokenKind.TK_identifier) {
+    ident = token;
+    token = token.next;
+  } else if (token.kind == TokenKind.TK_reserved && token.len == 8 && strncmp(token.str, "unittest", 8) == 0) {
+    ident = token;
+    token = token.next;
+  }
   if (!ident) error_at(token.str, "version identifier expected");
   expect(")");
   return parse_conditional_block(is_top_level, is_version_active(ident));
@@ -2950,9 +2964,14 @@ unittest {
   user_input = cast(char*) "version(Posix) { void posix_func() {} } version(Windows) { void win_func() {} } else { void other_func() {} }";
   token = tokenize(user_input);
   program();
-  assert(registered_functions_count == 2);
-  assert(strcmp(registered_functions[0].unmangled_name, "posix_func") == 0);
-  assert(strcmp(registered_functions[1].unmangled_name, "other_func") == 0);
+  version (Windows) {
+    assert(registered_functions_count == 1);
+    assert(strcmp(registered_functions[0].unmangled_name, "win_func") == 0);
+  } else {
+    assert(registered_functions_count == 2);
+    assert(strcmp(registered_functions[0].unmangled_name, "posix_func") == 0);
+    assert(strcmp(registered_functions[1].unmangled_name, "other_func") == 0);
+  }
 
   // Test auto declaration parsing
   user_input = cast(char*) "auto val = 123;";

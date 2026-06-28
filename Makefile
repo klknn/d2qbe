@@ -2,36 +2,50 @@
 
 DC=ldc2
 DFLAGS=-g -w -betterC -Isource
-OBJS=tokenize.o config.o parse.o codegen.o c_declarations.o app.o
+
+ifeq ($(OS),Windows_NT)
+    OBJ_EXT = obj
+else
+    OBJ_EXT = o
+endif
+
+OBJS=tokenize.$(OBJ_EXT) config.$(OBJ_EXT) parse.$(OBJ_EXT) codegen.$(OBJ_EXT) c_declarations.$(OBJ_EXT) app.$(OBJ_EXT)
 
 all: d2qbe dqbe qbe/qbe
 
-d2qbe: $(OBJS) ext.o
-	$(DC) $(DFLAGS) $(OBJS) ext.o -of=$@
+d2qbe: $(OBJS) ext.$(OBJ_EXT)
+	$(DC) $(DFLAGS) $(OBJS) ext.$(OBJ_EXT) -of=$@
 
-dqbe: source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d source/dqbe/app.d test/tmp_ext_all.d
+dqbe: source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d source/dqbe/sysv.d source/dqbe/win64.d source/dqbe/app.d test/tmp_ext_all.d
 	$(DC) $(DFLAGS) $^ -of=$@
 
-%.o: source/d2qbe/%.d
+%.$(OBJ_EXT): source/d2qbe/%.d
 	$(DC) $(DFLAGS) -c $<
 
-config.o: source/d2qbe/config.d
+config.$(OBJ_EXT): source/d2qbe/config.d
 
-parse.o: source/d2qbe/parse.d tokenize.o config.o
+parse.$(OBJ_EXT): source/d2qbe/parse.d tokenize.$(OBJ_EXT) config.$(OBJ_EXT)
 
-codegen.o: source/d2qbe/codegen.d parse.o tokenize.o config.o
+codegen.$(OBJ_EXT): source/d2qbe/codegen.d parse.$(OBJ_EXT) tokenize.$(OBJ_EXT) config.$(OBJ_EXT)
 
-c_declarations.o: source/d2qbe/c_declarations.d
+c_declarations.$(OBJ_EXT): source/d2qbe/c_declarations.d
 
-app.o: source/d2qbe/app.d codegen.o parse.o tokenize.o c_declarations.o config.o
+app.$(OBJ_EXT): source/d2qbe/app.d codegen.$(OBJ_EXT) parse.$(OBJ_EXT) tokenize.$(OBJ_EXT) c_declarations.$(OBJ_EXT) config.$(OBJ_EXT)
 
-ext.o: test/ext.d
+ext.$(OBJ_EXT): test/ext.d
 	$(DC) $(DFLAGS) -c $<
 
-test: unittest test-integration test-regression test-selfhost
+ifeq ($(OS),Windows_NT)
+test: unittest test-regression test-selfhost-dqbe
+	dub test
 	@echo "All tests passed successfully!"
+else
+test: unittest test-integration test-regression test-selfhost
+	dub test
+	@echo "All tests passed successfully!"
+endif
 
-test-integration: d2qbe qbe/qbe ext.o
+test-integration: d2qbe qbe/qbe ext.$(OBJ_EXT)
 	./test/run.sh
 
 test-regression: dqbe
@@ -45,8 +59,11 @@ test-regression: dqbe
 		echo "Skipping test-regression: dqbe only supports x86_64 architecture (host is $$ARCH)"; \
 	fi
 
-test-selfhost: d2qbe dqbe qbe/qbe ext.o
+test-selfhost: d2qbe dqbe qbe/qbe ext.$(OBJ_EXT)
 	./test/self_host.sh
+	./test/self_host_dqbe.sh
+
+test-selfhost-dqbe: d2qbe dqbe ext.$(OBJ_EXT)
 	./test/self_host_dqbe.sh
 
 benchmark: d2qbe dqbe qbe/qbe
@@ -56,17 +73,17 @@ benchmark: d2qbe dqbe qbe/qbe
 unittest: unittest-frontend unittest-backend
 
 unittest-frontend:
-	$(DC) $(DFLAGS) -unittest -main source/d2qbe/tokenize.d source/d2qbe/config.d source/d2qbe/parse.d source/d2qbe/codegen.d source/d2qbe/c_declarations.d test/ext.d -of=unittest_frontend
+	$(DC) -g -w -Isource -unittest -main source/d2qbe/tokenize.d source/d2qbe/config.d source/d2qbe/parse.d source/d2qbe/codegen.d source/d2qbe/c_declarations.d test/ext.d -of=unittest_frontend
 	./unittest_frontend
 	rm -f unittest_frontend
 
 unittest-backend:
-	$(DC) $(DFLAGS) -unittest -main source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d test/tmp_ext_all.d -of=unittest_backend
+	$(DC) -g -w -Isource -unittest -main source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d source/dqbe/sysv.d source/dqbe/win64.d test/tmp_ext_all.d -of=unittest_backend
 	./unittest_backend
 	rm -f unittest_backend
 
 clean:
-	rm -f d2qbe dqbe *.o *.di tmp* unittest_frontend unittest_backend
+	rm -f d2qbe dqbe *.o *.obj *.di tmp* unittest_frontend unittest_backend
 
 qbe/qbe:
 	make -C qbe

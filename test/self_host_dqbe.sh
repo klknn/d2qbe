@@ -37,19 +37,25 @@ alias long = int;
 EOF
 
 # Strip imports and modules from source files and append
-for f in source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d source/dqbe/app.d; do
+for f in source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/sysv.d source/dqbe/win64.d source/dqbe/codegen.d source/dqbe/app.d; do
   grep -v '^import ' "$f" | grep -v '^module ' >> test/self_host_dqbe.d
 done
 
+if [ "$OS" = "Windows_NT" ]; then
+  OBJ_EXT="obj"
+else
+  OBJ_EXT="o"
+fi
+
 # Compile stream helper functions
-ldc2 -betterC -c test/tmp_ext_all.d -of=test/tmp_ext_all.o
+ldc2 -betterC -c test/tmp_ext_all.d -of=test/tmp_ext_all.${OBJ_EXT}
 
 echo "Compiling self_host_dqbe.d using bootstrap compiler..."
-./d2qbe "$(cat test/self_host_dqbe.d)" > test/self_host_dqbe.s
+./d2qbe test/self_host_dqbe.d > test/self_host_dqbe.s
 
 echo "Assembling self_host_dqbe.s using dqbe..."
 ./dqbe < test/self_host_dqbe.s > test/self_host_dqbe_qbe.s
-cc -o test/dqbe_self_hosted test/self_host_dqbe_qbe.s test/tmp_ext_all.o
+cc -o test/dqbe_self_hosted test/self_host_dqbe_qbe.s test/tmp_ext_all.${OBJ_EXT}
 
 echo "Verifying self-hosted compiler using dqbe backend..."
 
@@ -58,7 +64,7 @@ assert_dqbe() {
   input="$2"
   echo "Testing: $input => $expected"
   ./d2qbe "$input" | ./test/dqbe_self_hosted > tmp.s
-  cc -o tmp tmp.s test/tmp_ext_all.o
+  cc -o tmp tmp.s test/tmp_ext_all.${OBJ_EXT}
   actual=0
   ./tmp || actual="$?"
   if [ "$actual" -ne "$expected" ]; then
@@ -71,8 +77,8 @@ assert_dqbe_file() {
   expected="$1"
   file_path="$2"
   echo "Testing file: $file_path => $expected"
-  ./d2qbe "$(cat $file_path)" | ./test/dqbe_self_hosted > tmp.s
-  cc -o tmp tmp.s test/tmp_ext_all.o
+  ./d2qbe "$file_path" | ./test/dqbe_self_hosted > tmp.s
+  cc -o tmp tmp.s test/tmp_ext_all.${OBJ_EXT}
   actual=0
   ./tmp || actual="$?"
   if [ "$actual" -ne "$expected" ]; then

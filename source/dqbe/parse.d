@@ -67,7 +67,7 @@ struct DataDef {
   int items_count;
 }
 
-__gshared FunctionDef[100] program_functions;
+__gshared FunctionDef[1000] program_functions;
 __gshared int program_functions_count = 0;
 
 __gshared DataDef[500] program_data;
@@ -588,7 +588,7 @@ void parse_program() {
       continue;
     }
     if (is_token("export") || is_token("function")) {
-      assert(program_functions_count < 100);
+      assert(program_functions_count < 1000);
       FunctionDef* fn = &program_functions[program_functions_count++];
       fn.instructions = cast(Instruction*) calloc(10000, Instruction.sizeof);
       fn.inst_count = 0;
