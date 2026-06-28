@@ -36,17 +36,20 @@ ext.$(OBJ_EXT): test/ext.d
 	$(DC) $(DFLAGS) -c $<
 
 ifeq ($(OS),Windows_NT)
-test: unittest test-regression test-selfhost-dqbe
+test: unittest test-integration-dqbe test-regression test-selfhost-dqbe
 	dub test
 	@echo "All tests passed successfully!"
 else
-test: unittest test-integration test-regression test-selfhost
+test: unittest test-integration test-integration-dqbe test-regression test-selfhost test-selfhost-dqbe
 	dub test
 	@echo "All tests passed successfully!"
 endif
 
 test-integration: d2qbe qbe/qbe ext.$(OBJ_EXT)
 	./test/run.sh
+
+test-integration-dqbe: d2qbe dqbe ext.$(OBJ_EXT)
+	QBE=./dqbe ./test/run.sh
 
 test-regression: dqbe
 	@ARCH=$$(uname -m); \

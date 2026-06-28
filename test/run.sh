@@ -1,14 +1,21 @@
 #!/bin/bash
 
 D2QBE=${D2QBE:-./d2qbe}
+QBE=${QBE:-./qbe/qbe}
+
+if [ "$OS" = "Windows_NT" ]; then
+  OBJ_EXT="obj"
+else
+  OBJ_EXT="o"
+fi
 
 assert_v2() {
   expected="$1"
   input="$2"
   output="$3"
 
-  $D2QBE "$input" | ./qbe/qbe > tmp.s
-  cc -o tmp tmp.s ext.o
+  $D2QBE "$input" | $QBE > tmp.s
+  cc -o tmp tmp.s ext.${OBJ_EXT}
   actual_output=$(./tmp)
   actual="$?"
 
