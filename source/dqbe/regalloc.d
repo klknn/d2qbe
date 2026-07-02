@@ -49,27 +49,77 @@ struct TempInfo {
 __gshared TempInfo[10000] temps;
 __gshared int temps_count = 0;
 
-__gshared const(char)*[5] gpr_callee_saved;
-__gshared const(char)*[2] gpr_caller_saved;
-__gshared const(char)*[6] fpr_caller_saved;
+__gshared const(char)*[32] gpr_callee_saved;
+__gshared int num_gpr_callee_saved = 0;
+
+__gshared const(char)*[32] gpr_caller_saved;
+__gshared int num_gpr_caller_saved = 0;
+
+__gshared const(char)*[32] fpr_caller_saved;
+__gshared int num_fpr_caller_saved = 0;
+
 __gshared int phi_tmp_counter = 0;
 
 void init_regalloc() {
-  gpr_callee_saved[0] = "%rbx";
-  gpr_callee_saved[1] = "%r12";
-  gpr_callee_saved[2] = "%r13";
-  gpr_callee_saved[3] = "%r14";
-  gpr_callee_saved[4] = "%r15";
-  
-  gpr_caller_saved[0] = "%r10";
-  gpr_caller_saved[1] = "%r11";
-  
-  fpr_caller_saved[0] = "%xmm8";
-  fpr_caller_saved[1] = "%xmm9";
-  fpr_caller_saved[2] = "%xmm10";
-  fpr_caller_saved[3] = "%xmm11";
-  fpr_caller_saved[4] = "%xmm12";
-  fpr_caller_saved[5] = "%xmm13";
+  if (target_arch == TargetArch.ARM64) {
+    num_gpr_callee_saved = 10;
+    gpr_callee_saved[0] = "x19";
+    gpr_callee_saved[1] = "x20";
+    gpr_callee_saved[2] = "x21";
+    gpr_callee_saved[3] = "x22";
+    gpr_callee_saved[4] = "x23";
+    gpr_callee_saved[5] = "x24";
+    gpr_callee_saved[6] = "x25";
+    gpr_callee_saved[7] = "x26";
+    gpr_callee_saved[8] = "x27";
+    gpr_callee_saved[9] = "x28";
+
+    num_gpr_caller_saved = 7;
+    gpr_caller_saved[0] = "x9";
+    gpr_caller_saved[1] = "x10";
+    gpr_caller_saved[2] = "x11";
+    gpr_caller_saved[3] = "x12";
+    gpr_caller_saved[4] = "x13";
+    gpr_caller_saved[5] = "x14";
+    gpr_caller_saved[6] = "x15";
+
+    num_fpr_caller_saved = 16;
+    fpr_caller_saved[0] = "v16";
+    fpr_caller_saved[1] = "v17";
+    fpr_caller_saved[2] = "v18";
+    fpr_caller_saved[3] = "v19";
+    fpr_caller_saved[4] = "v20";
+    fpr_caller_saved[5] = "v21";
+    fpr_caller_saved[6] = "v22";
+    fpr_caller_saved[7] = "v23";
+    fpr_caller_saved[8] = "v24";
+    fpr_caller_saved[9] = "v25";
+    fpr_caller_saved[10] = "v26";
+    fpr_caller_saved[11] = "v27";
+    fpr_caller_saved[12] = "v28";
+    fpr_caller_saved[13] = "v29";
+    fpr_caller_saved[14] = "v30";
+    fpr_caller_saved[15] = "v31";
+  } else {
+    num_gpr_callee_saved = 5;
+    gpr_callee_saved[0] = "%rbx";
+    gpr_callee_saved[1] = "%r12";
+    gpr_callee_saved[2] = "%r13";
+    gpr_callee_saved[3] = "%r14";
+    gpr_callee_saved[4] = "%r15";
+    
+    num_gpr_caller_saved = 2;
+    gpr_caller_saved[0] = "%r10";
+    gpr_caller_saved[1] = "%r11";
+    
+    num_fpr_caller_saved = 6;
+    fpr_caller_saved[0] = "%xmm8";
+    fpr_caller_saved[1] = "%xmm9";
+    fpr_caller_saved[2] = "%xmm10";
+    fpr_caller_saved[3] = "%xmm11";
+    fpr_caller_saved[4] = "%xmm12";
+    fpr_caller_saved[5] = "%xmm13";
+  }
 }
 
 int get_temp_idx_no_type(const char* name) {
@@ -104,10 +154,98 @@ const(char)* get_allocated_register(const char* name, char type) {
       if (reg_idx == -1) return null;
       
       bool is_float = (temps[i].type == 's' || temps[i].type == 'd');
+      if (target_arch == TargetArch.ARM64) {
+        if (is_float) {
+          if (type == 's') {
+            if (reg_idx == 0) return "s16";
+            if (reg_idx == 1) return "s17";
+            if (reg_idx == 2) return "s18";
+            if (reg_idx == 3) return "s19";
+            if (reg_idx == 4) return "s20";
+            if (reg_idx == 5) return "s21";
+            if (reg_idx == 6) return "s22";
+            if (reg_idx == 7) return "s23";
+            if (reg_idx == 8) return "s24";
+            if (reg_idx == 9) return "s25";
+            if (reg_idx == 10) return "s26";
+            if (reg_idx == 11) return "s27";
+            if (reg_idx == 12) return "s28";
+            if (reg_idx == 13) return "s29";
+            if (reg_idx == 14) return "s30";
+            if (reg_idx == 15) return "s31";
+          } else {
+            if (reg_idx == 0) return "d16";
+            if (reg_idx == 1) return "d17";
+            if (reg_idx == 2) return "d18";
+            if (reg_idx == 3) return "d19";
+            if (reg_idx == 4) return "d20";
+            if (reg_idx == 5) return "d21";
+            if (reg_idx == 6) return "d22";
+            if (reg_idx == 7) return "d23";
+            if (reg_idx == 8) return "d24";
+            if (reg_idx == 9) return "d25";
+            if (reg_idx == 10) return "d26";
+            if (reg_idx == 11) return "d27";
+            if (reg_idx == 12) return "d28";
+            if (reg_idx == 13) return "d29";
+            if (reg_idx == 14) return "d30";
+            if (reg_idx == 15) return "d31";
+          }
+        } else {
+          if (reg_idx < num_gpr_callee_saved) {
+            int num = 19 + reg_idx;
+            if (type == 'w') {
+              if (num == 19) return "w19";
+              if (num == 20) return "w20";
+              if (num == 21) return "w21";
+              if (num == 22) return "w22";
+              if (num == 23) return "w23";
+              if (num == 24) return "w24";
+              if (num == 25) return "w25";
+              if (num == 26) return "w26";
+              if (num == 27) return "w27";
+              if (num == 28) return "w28";
+            } else {
+              if (num == 19) return "x19";
+              if (num == 20) return "x20";
+              if (num == 21) return "x21";
+              if (num == 22) return "x22";
+              if (num == 23) return "x23";
+              if (num == 24) return "x24";
+              if (num == 25) return "x25";
+              if (num == 26) return "x26";
+              if (num == 27) return "x27";
+              if (num == 28) return "x28";
+            }
+          } else {
+            int num = 9 + (reg_idx - num_gpr_callee_saved);
+            if (type == 'w') {
+              if (num == 9) return "w9";
+              if (num == 10) return "w10";
+              if (num == 11) return "w11";
+              if (num == 12) return "w12";
+              if (num == 13) return "w13";
+              if (num == 14) return "w14";
+              if (num == 15) return "w15";
+            } else {
+              if (num == 9) return "x9";
+              if (num == 10) return "x10";
+              if (num == 11) return "x11";
+              if (num == 12) return "x12";
+              if (num == 13) return "x13";
+              if (num == 14) return "x14";
+              if (num == 15) return "x15";
+            }
+          }
+        }
+        return null;
+      }
+      
+      // X86_64 mapping
       if (is_float) {
         return fpr_caller_saved[reg_idx];
       } else {
-        if (reg_idx < 5) {
+        if (reg_idx < num_gpr_callee_saved) {
           if (type == 'w') {
             if (reg_idx == 0) return "%ebx";
             if (reg_idx == 1) return "%r12d";
@@ -122,7 +260,7 @@ const(char)* get_allocated_register(const char* name, char type) {
             if (reg_idx == 5) return "%r10d";
             if (reg_idx == 6) return "%r11d";
           } else {
-            return gpr_caller_saved[reg_idx - 5];
+            return gpr_caller_saved[reg_idx - num_gpr_callee_saved];
           }
         }
       }
@@ -475,13 +613,13 @@ void linear_scan_reg_alloc(FunctionDef* fn) {
     }
   }
   
-  bool[5] gpr_callee_occupied;
-  bool[2] gpr_caller_occupied;
-  bool[6] fpr_occupied;
+  bool[32] gpr_callee_occupied;
+  bool[32] gpr_caller_occupied;
+  bool[32] fpr_occupied;
   
-  for (int r = 0; r < 5; r++) gpr_callee_occupied[r] = false;
-  for (int r = 0; r < 2; r++) gpr_caller_occupied[r] = false;
-  for (int r = 0; r < 6; r++) fpr_occupied[r] = false;
+  for (int r = 0; r < num_gpr_callee_saved; r++) gpr_callee_occupied[r] = false;
+  for (int r = 0; r < num_gpr_caller_saved; r++) gpr_caller_occupied[r] = false;
+  for (int r = 0; r < num_fpr_caller_saved; r++) fpr_occupied[r] = false;
   
   ActiveInterval[32] active;
   int active_count = 0;
@@ -501,10 +639,10 @@ void linear_scan_reg_alloc(FunctionDef* fn) {
           if (r_type == 's' || r_type == 'd') {
             fpr_occupied[reg_idx] = false;
           } else {
-            if (reg_idx < 5) {
+            if (reg_idx < num_gpr_callee_saved) {
               gpr_callee_occupied[reg_idx] = false;
             } else {
-              gpr_caller_occupied[reg_idx - 5] = false;
+              gpr_caller_occupied[reg_idx - num_gpr_callee_saved] = false;
             }
           }
         }
@@ -526,7 +664,7 @@ void linear_scan_reg_alloc(FunctionDef* fn) {
       if (has_call) {
         assigned = -1;
       } else {
-        for (int r = 0; r < 6; r++) {
+        for (int r = 0; r < num_fpr_caller_saved; r++) {
           if (!fpr_occupied[r]) {
             fpr_occupied[r] = true;
             assigned = r;
@@ -536,7 +674,7 @@ void linear_scan_reg_alloc(FunctionDef* fn) {
       }
     } else {
       if (has_call) {
-        for (int r = 0; r < 5; r++) {
+        for (int r = 0; r < num_gpr_callee_saved; r++) {
           if (!gpr_callee_occupied[r]) {
             gpr_callee_occupied[r] = true;
             assigned = r;
@@ -544,7 +682,7 @@ void linear_scan_reg_alloc(FunctionDef* fn) {
           }
         }
       } else {
-        for (int r = 0; r < 5; r++) {
+        for (int r = 0; r < num_gpr_callee_saved; r++) {
           if (!gpr_callee_occupied[r]) {
             gpr_callee_occupied[r] = true;
             assigned = r;
@@ -552,10 +690,10 @@ void linear_scan_reg_alloc(FunctionDef* fn) {
           }
         }
         if (assigned == -1) {
-          for (int r = 0; r < 2; r++) {
+          for (int r = 0; r < num_gpr_caller_saved; r++) {
             if (!gpr_caller_occupied[r]) {
               gpr_caller_occupied[r] = true;
-              assigned = r + 5;
+              assigned = r + num_gpr_callee_saved;
               break;
             }
           }
@@ -602,3 +740,39 @@ void perform_register_allocation(FunctionDef* fn) {
   sync_spill_offsets();
   free(blocks);
 }
+
+unittest {
+  TargetArch original_arch = target_arch;
+  target_arch = TargetArch.ARM64;
+  
+  init_regalloc();
+  
+  // Verify sizes
+  assert(num_gpr_callee_saved == 10);
+  assert(num_gpr_caller_saved == 7);
+  assert(num_fpr_caller_saved == 16); // v16-v31 (16 registers)
+  
+  // Create a dummy temp to test register allocation mapping
+  int original_temps_count = temps_count;
+  temps_count = 0;
+  assert(get_temp_idx("%t1", 'w') == 0);
+  
+  temps[0].assigned_reg = 0; // Callee-saved index 0
+  assert(strcmp(get_allocated_register("%t1", 'w'), "w19") == 0);
+  assert(strcmp(get_allocated_register("%t1", 'l'), "x19") == 0);
+  
+  temps[0].assigned_reg = 10; // Caller-saved index 0 (after 10 callee-saved)
+  assert(strcmp(get_allocated_register("%t1", 'w'), "w9") == 0);
+  assert(strcmp(get_allocated_register("%t1", 'l'), "x9") == 0);
+
+  // Test float allocation
+  temps[0].type = 's'; // float
+  temps[0].assigned_reg = 0; // Float index 0
+  assert(strcmp(get_allocated_register("%t1", 's'), "s16") == 0);
+  assert(strcmp(get_allocated_register("%t1", 'd'), "d16") == 0);
+
+  temps_count = original_temps_count;
+  target_arch = original_arch;
+  init_regalloc();
+}
+
