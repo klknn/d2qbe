@@ -48,15 +48,7 @@ test-integration-dqbe: d2qbe dqbe ext.$(OBJ_EXT)
 	QBE=./dqbe ./test/run.sh
 
 test-regression: dqbe
-	@ARCH=$$(uname -m); \
-	if [ "$$ARCH" = "x86_64" ] || [ "$$ARCH" = "amd64" ]; then \
-		./dqbe < test/liveness_bug.ssa > tmp_liveness_bug.s && \
-		cc -o tmp_liveness_bug tmp_liveness_bug.s && \
-		./tmp_liveness_bug && \
-		rm -f tmp_liveness_bug.s tmp_liveness_bug; \
-	else \
-		echo "Skipping test-regression: dqbe only supports x86_64 architecture (host is $$ARCH)"; \
-	fi
+	./test/regression.sh
 
 test-selfhost: d2qbe qbe/qbe ext.$(OBJ_EXT)
 	./test/self_host.sh
