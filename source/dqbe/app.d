@@ -45,6 +45,31 @@ int main(int argc, char** argv) {
         fprintf(get_stderr(), "Error: Missing argument for %s\n", argv[i]);
         return 1;
       }
+    } else if (strcmp(argv[i], "-t") == 0) {
+      if (i + 1 < argc) {
+        char* qbe_target = argv[i + 1];
+        i++;
+        
+        if (strcmp(qbe_target, "amd64_sysv") == 0 || strcmp(qbe_target, "amd64_apple") == 0) {
+          target_arch = TargetArch.X86_64;
+          target_os = TARGET_OS_SYSV;
+        } else if (strcmp(qbe_target, "amd64_windows") == 0 || strcmp(qbe_target, "amd64_win") == 0) {
+          target_arch = TargetArch.X86_64;
+          target_os = TARGET_OS_WINDOWS;
+        } else if (strcmp(qbe_target, "arm64") == 0 || strcmp(qbe_target, "arm64_apple") == 0) {
+          target_arch = TargetArch.ARM64;
+          target_os = TARGET_OS_SYSV;
+        } else if (strcmp(qbe_target, "arm64_windows") == 0 || strcmp(qbe_target, "arm64_win") == 0) {
+          target_arch = TargetArch.ARM64;
+          target_os = TARGET_OS_WINDOWS;
+        } else {
+          fprintf(get_stderr(), "Error: Unknown QBE target '%s'\n", qbe_target);
+          return 1;
+        }
+      } else {
+        fprintf(get_stderr(), "Error: Missing argument for -t\n");
+        return 1;
+      }
     } else {
       fprintf(get_stderr(), "Error: Unknown argument '%s'\n", argv[i]);
       return 1;
