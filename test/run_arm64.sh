@@ -47,5 +47,11 @@ assert_v2 0 "extern(C) int main() { return 0; }"
 # Test 2: Simple return exit code 42
 assert_v2 42 "extern(C) int main() { return 42; }"
 
+# Test 3: Basic addition
+assert_v2 42 "extern(C) int main() { return 10 + 32; }"
+
+# Test 4: Basic subtract, multiply, and divide
+assert_v2 20 "extern(C) int main() { return (50 - 10) * 2 / 4; }"
+
 rm -f tmp tmp.s
 echo "All ARM64 subset tests passed!"

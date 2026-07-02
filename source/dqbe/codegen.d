@@ -699,95 +699,185 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
         strcmp(inst.op, "shl") == 0 || strcmp(inst.op, "sar") == 0 ||
         strcmp(inst.op, "shr") == 0) {
       if (inst.dest_type == 'w') {
-        load_arg(inst.arg1, "%eax", 'w', f);
-        load_arg(inst.arg2, "%ecx", 'w', f);
-        if (strcmp(inst.op, "add") == 0) {
-          fprintf(f, "  addl %%ecx, %%eax\n");
-        } else if (strcmp(inst.op, "sub") == 0) {
-          fprintf(f, "  subl %%ecx, %%eax\n");
-        } else if (strcmp(inst.op, "mul") == 0) {
-          fprintf(f, "  imull %%ecx, %%eax\n");
-        } else if (strcmp(inst.op, "div") == 0) {
-          invalidate_cache("%edx");
-          fprintf(f, "  cltd\n");
-          fprintf(f, "  idivl %%ecx\n");
-        } else if (strcmp(inst.op, "rem") == 0) {
-          invalidate_cache("%edx");
-          fprintf(f, "  cltd\n");
-          fprintf(f, "  idivl %%ecx\n");
-          fprintf(f, "  movl %%edx, %%eax\n");
-        } else if (strcmp(inst.op, "and") == 0) {
-          fprintf(f, "  andl %%ecx, %%eax\n");
-        } else if (strcmp(inst.op, "or") == 0) {
-          fprintf(f, "  orl %%ecx, %%eax\n");
-        } else if (strcmp(inst.op, "xor") == 0) {
-          fprintf(f, "  xorl %%ecx, %%eax\n");
-        } else if (strcmp(inst.op, "shl") == 0) {
-          fprintf(f, "  shll %%cl, %%eax\n");
-        } else if (strcmp(inst.op, "sar") == 0) {
-          fprintf(f, "  sarl %%cl, %%eax\n");
-        } else if (strcmp(inst.op, "shr") == 0) {
-          fprintf(f, "  shrl %%cl, %%eax\n");
+        if (target_arch == TargetArch.ARM64) {
+          load_arg(inst.arg1, "w9", 'w', f);
+          load_arg(inst.arg2, "w10", 'w', f);
+          if (strcmp(inst.op, "add") == 0) {
+            fprintf(f, "  add w9, w9, w10\n");
+          } else if (strcmp(inst.op, "sub") == 0) {
+            fprintf(f, "  sub w9, w9, w10\n");
+          } else if (strcmp(inst.op, "mul") == 0) {
+            fprintf(f, "  mul w9, w9, w10\n");
+          } else if (strcmp(inst.op, "div") == 0) {
+            fprintf(f, "  sdiv w9, w9, w10\n");
+          } else if (strcmp(inst.op, "rem") == 0) {
+            fprintf(f, "  sdiv w11, w9, w10\n");
+            fprintf(f, "  msub w9, w11, w10, w9\n");
+          } else if (strcmp(inst.op, "and") == 0) {
+            fprintf(f, "  and w9, w9, w10\n");
+          } else if (strcmp(inst.op, "or") == 0) {
+            fprintf(f, "  orr w9, w9, w10\n");
+          } else if (strcmp(inst.op, "xor") == 0) {
+            fprintf(f, "  eor w9, w9, w10\n");
+          } else if (strcmp(inst.op, "shl") == 0) {
+            fprintf(f, "  lsl w9, w9, w10\n");
+          } else if (strcmp(inst.op, "sar") == 0) {
+            fprintf(f, "  asr w9, w9, w10\n");
+          } else if (strcmp(inst.op, "shr") == 0) {
+            fprintf(f, "  lsr w9, w9, w10\n");
+          }
+          store_reg(inst.dest, "w9", 'w', f);
+        } else {
+          load_arg(inst.arg1, "%eax", 'w', f);
+          load_arg(inst.arg2, "%ecx", 'w', f);
+          if (strcmp(inst.op, "add") == 0) {
+            fprintf(f, "  addl %%ecx, %%eax\n");
+          } else if (strcmp(inst.op, "sub") == 0) {
+            fprintf(f, "  subl %%ecx, %%eax\n");
+          } else if (strcmp(inst.op, "mul") == 0) {
+            fprintf(f, "  imull %%ecx, %%eax\n");
+          } else if (strcmp(inst.op, "div") == 0) {
+            invalidate_cache("%edx");
+            fprintf(f, "  cltd\n");
+            fprintf(f, "  idivl %%ecx\n");
+          } else if (strcmp(inst.op, "rem") == 0) {
+            invalidate_cache("%edx");
+            fprintf(f, "  cltd\n");
+            fprintf(f, "  idivl %%ecx\n");
+            fprintf(f, "  movl %%edx, %%eax\n");
+          } else if (strcmp(inst.op, "and") == 0) {
+            fprintf(f, "  andl %%ecx, %%eax\n");
+          } else if (strcmp(inst.op, "or") == 0) {
+            fprintf(f, "  orl %%ecx, %%eax\n");
+          } else if (strcmp(inst.op, "xor") == 0) {
+            fprintf(f, "  xorl %%ecx, %%eax\n");
+          } else if (strcmp(inst.op, "shl") == 0) {
+            fprintf(f, "  shll %%cl, %%eax\n");
+          } else if (strcmp(inst.op, "sar") == 0) {
+            fprintf(f, "  sarl %%cl, %%eax\n");
+          } else if (strcmp(inst.op, "shr") == 0) {
+            fprintf(f, "  shrl %%cl, %%eax\n");
+          }
+          store_reg(inst.dest, "%eax", 'w', f);
         }
-        store_reg(inst.dest, "%eax", 'w', f);
       } else if (inst.dest_type == 'l') {
-        load_arg(inst.arg1, "%rax", 'l', f);
-        load_arg(inst.arg2, "%rcx", 'l', f);
-        if (strcmp(inst.op, "add") == 0) {
-          fprintf(f, "  addq %%rcx, %%rax\n");
-        } else if (strcmp(inst.op, "sub") == 0) {
-          fprintf(f, "  subq %%rcx, %%rax\n");
-        } else if (strcmp(inst.op, "mul") == 0) {
-          fprintf(f, "  imulq %%rcx, %%rax\n");
-        } else if (strcmp(inst.op, "div") == 0) {
-          invalidate_cache("%rdx");
-          fprintf(f, "  cqto\n");
-          fprintf(f, "  idivq %%rcx\n");
-        } else if (strcmp(inst.op, "rem") == 0) {
-          invalidate_cache("%rdx");
-          fprintf(f, "  cqto\n");
-          fprintf(f, "  idivq %%rcx\n");
-          fprintf(f, "  movq %%rdx, %%rax\n");
-        } else if (strcmp(inst.op, "and") == 0) {
-          fprintf(f, "  andq %%rcx, %%rax\n");
-        } else if (strcmp(inst.op, "or") == 0) {
-          fprintf(f, "  orq %%rcx, %%rax\n");
-        } else if (strcmp(inst.op, "xor") == 0) {
-          fprintf(f, "  xorq %%rcx, %%rax\n");
-        } else if (strcmp(inst.op, "shl") == 0) {
-          fprintf(f, "  shlq %%cl, %%rax\n");
-        } else if (strcmp(inst.op, "sar") == 0) {
-          fprintf(f, "  sarq %%cl, %%rax\n");
-        } else if (strcmp(inst.op, "shr") == 0) {
-          fprintf(f, "  shrq %%cl, %%rax\n");
+        if (target_arch == TargetArch.ARM64) {
+          load_arg(inst.arg1, "x9", 'l', f);
+          load_arg(inst.arg2, "x10", 'l', f);
+          if (strcmp(inst.op, "add") == 0) {
+            fprintf(f, "  add x9, x9, x10\n");
+          } else if (strcmp(inst.op, "sub") == 0) {
+            fprintf(f, "  sub x9, x9, x10\n");
+          } else if (strcmp(inst.op, "mul") == 0) {
+            fprintf(f, "  mul x9, x9, x10\n");
+          } else if (strcmp(inst.op, "div") == 0) {
+            fprintf(f, "  sdiv x9, x9, x10\n");
+          } else if (strcmp(inst.op, "rem") == 0) {
+            fprintf(f, "  sdiv x11, x9, x10\n");
+            fprintf(f, "  msub x9, x11, x10, x9\n");
+          } else if (strcmp(inst.op, "and") == 0) {
+            fprintf(f, "  and x9, x9, x10\n");
+          } else if (strcmp(inst.op, "or") == 0) {
+            fprintf(f, "  orr x9, x9, x10\n");
+          } else if (strcmp(inst.op, "xor") == 0) {
+            fprintf(f, "  eor x9, x9, x10\n");
+          } else if (strcmp(inst.op, "shl") == 0) {
+            fprintf(f, "  lsl x9, x9, x10\n");
+          } else if (strcmp(inst.op, "sar") == 0) {
+            fprintf(f, "  asr x9, x9, x10\n");
+          } else if (strcmp(inst.op, "shr") == 0) {
+            fprintf(f, "  lsr x9, x9, x10\n");
+          }
+          store_reg(inst.dest, "x9", 'l', f);
+        } else {
+          load_arg(inst.arg1, "%rax", 'l', f);
+          load_arg(inst.arg2, "%rcx", 'l', f);
+          if (strcmp(inst.op, "add") == 0) {
+            fprintf(f, "  addq %%rcx, %%rax\n");
+          } else if (strcmp(inst.op, "sub") == 0) {
+            fprintf(f, "  subq %%rcx, %%rax\n");
+          } else if (strcmp(inst.op, "mul") == 0) {
+            fprintf(f, "  imulq %%rcx, %%rax\n");
+          } else if (strcmp(inst.op, "div") == 0) {
+            invalidate_cache("%rdx");
+            fprintf(f, "  cqto\n");
+            fprintf(f, "  idivq %%rcx\n");
+          } else if (strcmp(inst.op, "rem") == 0) {
+            invalidate_cache("%rdx");
+            fprintf(f, "  cqto\n");
+            fprintf(f, "  idivq %%rcx\n");
+            fprintf(f, "  movq %%rdx, %%rax\n");
+          } else if (strcmp(inst.op, "and") == 0) {
+            fprintf(f, "  andq %%rcx, %%rax\n");
+          } else if (strcmp(inst.op, "or") == 0) {
+            fprintf(f, "  orq %%rcx, %%rax\n");
+          } else if (strcmp(inst.op, "xor") == 0) {
+            fprintf(f, "  xorq %%rcx, %%rax\n");
+          } else if (strcmp(inst.op, "shl") == 0) {
+            fprintf(f, "  shlq %%cl, %%rax\n");
+          } else if (strcmp(inst.op, "sar") == 0) {
+            fprintf(f, "  sarq %%cl, %%rax\n");
+          } else if (strcmp(inst.op, "shr") == 0) {
+            fprintf(f, "  shrq %%cl, %%rax\n");
+          }
+          store_reg(inst.dest, "%rax", 'l', f);
         }
-        store_reg(inst.dest, "%rax", 'l', f);
       } else if (inst.dest_type == 's') {
-        load_arg(inst.arg1, "%xmm0", 's', f);
-        load_arg(inst.arg2, "%xmm1", 's', f);
-        if (strcmp(inst.op, "add") == 0) {
-          fprintf(f, "  addss %%xmm1, %%xmm0\n");
-        } else if (strcmp(inst.op, "sub") == 0) {
-          fprintf(f, "  subss %%xmm1, %%xmm0\n");
-        } else if (strcmp(inst.op, "mul") == 0) {
-          fprintf(f, "  mulss %%xmm1, %%xmm0\n");
-        } else if (strcmp(inst.op, "div") == 0) {
-          fprintf(f, "  divss %%xmm1, %%xmm0\n");
+        if (target_arch == TargetArch.ARM64) {
+          load_arg(inst.arg1, "s16", 's', f);
+          load_arg(inst.arg2, "s17", 's', f);
+          if (strcmp(inst.op, "add") == 0) {
+            fprintf(f, "  fadd s16, s16, s17\n");
+          } else if (strcmp(inst.op, "sub") == 0) {
+            fprintf(f, "  fsub s16, s16, s17\n");
+          } else if (strcmp(inst.op, "mul") == 0) {
+            fprintf(f, "  fmul s16, s16, s17\n");
+          } else if (strcmp(inst.op, "div") == 0) {
+            fprintf(f, "  fdiv s16, s16, s17\n");
+          }
+          store_reg(inst.dest, "s16", 's', f);
+        } else {
+          load_arg(inst.arg1, "%xmm0", 's', f);
+          load_arg(inst.arg2, "%xmm1", 's', f);
+          if (strcmp(inst.op, "add") == 0) {
+            fprintf(f, "  addss %%xmm1, %%xmm0\n");
+          } else if (strcmp(inst.op, "sub") == 0) {
+            fprintf(f, "  subss %%xmm1, %%xmm0\n");
+          } else if (strcmp(inst.op, "mul") == 0) {
+            fprintf(f, "  mulss %%xmm1, %%xmm0\n");
+          } else if (strcmp(inst.op, "div") == 0) {
+            fprintf(f, "  divss %%xmm1, %%xmm0\n");
+          }
+          store_reg(inst.dest, "%xmm0", 's', f);
         }
-        store_reg(inst.dest, "%xmm0", 's', f);
       } else if (inst.dest_type == 'd') {
-        load_arg(inst.arg1, "%xmm0", 'd', f);
-        load_arg(inst.arg2, "%xmm1", 'd', f);
-        if (strcmp(inst.op, "add") == 0) {
-          fprintf(f, "  addsd %%xmm1, %%xmm0\n");
-        } else if (strcmp(inst.op, "sub") == 0) {
-          fprintf(f, "  subsd %%xmm1, %%xmm0\n");
-        } else if (strcmp(inst.op, "mul") == 0) {
-          fprintf(f, "  mulsd %%xmm1, %%xmm0\n");
-        } else if (strcmp(inst.op, "div") == 0) {
-          fprintf(f, "  divsd %%xmm1, %%xmm0\n");
+        if (target_arch == TargetArch.ARM64) {
+          load_arg(inst.arg1, "d16", 'd', f);
+          load_arg(inst.arg2, "d17", 'd', f);
+          if (strcmp(inst.op, "add") == 0) {
+            fprintf(f, "  fadd d16, d16, d17\n");
+          } else if (strcmp(inst.op, "sub") == 0) {
+            fprintf(f, "  fsub d16, d16, d17\n");
+          } else if (strcmp(inst.op, "mul") == 0) {
+            fprintf(f, "  fmul d16, d16, d17\n");
+          } else if (strcmp(inst.op, "div") == 0) {
+            fprintf(f, "  fdiv d16, d16, d17\n");
+          }
+          store_reg(inst.dest, "d16", 'd', f);
+        } else {
+          load_arg(inst.arg1, "%xmm0", 'd', f);
+          load_arg(inst.arg2, "%xmm1", 'd', f);
+          if (strcmp(inst.op, "add") == 0) {
+            fprintf(f, "  addsd %%xmm1, %%xmm0\n");
+          } else if (strcmp(inst.op, "sub") == 0) {
+            fprintf(f, "  subsd %%xmm1, %%xmm0\n");
+          } else if (strcmp(inst.op, "mul") == 0) {
+            fprintf(f, "  mulsd %%xmm1, %%xmm0\n");
+          } else if (strcmp(inst.op, "div") == 0) {
+            fprintf(f, "  divsd %%xmm1, %%xmm0\n");
+          }
+          store_reg(inst.dest, "%xmm0", 'd', f);
         }
-        store_reg(inst.dest, "%xmm0", 'd', f);
       }
       return;
     }
