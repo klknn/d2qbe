@@ -3,6 +3,14 @@
 D2QBE=${D2QBE:-./d2qbe}
 QBE=${QBE:-./qbe/qbe}
 
+if [[ "$QBE" == *"dqbe"* ]]; then
+  ARCH=$(uname -m)
+  if [ "$ARCH" != "x86_64" ] && [ "$ARCH" != "amd64" ]; then
+    echo "Skipping run.sh: dqbe only supports x86_64 architecture (host is $ARCH)"
+    exit 0
+  fi
+fi
+
 if [ "$OS" = "Windows_NT" ]; then
   OBJ_EXT="obj"
 else

@@ -37,12 +37,8 @@ ext.$(OBJ_EXT): test/ext.d
 
 ifeq ($(OS),Windows_NT)
 test: unittest test-integration-dqbe test-regression test-selfhost-dqbe
-	dub test
-	@echo "All tests passed successfully!"
 else
 test: unittest test-integration test-integration-dqbe test-regression test-selfhost test-selfhost-dqbe
-	dub test
-	@echo "All tests passed successfully!"
 endif
 
 test-integration: d2qbe qbe/qbe ext.$(OBJ_EXT)
@@ -62,9 +58,8 @@ test-regression: dqbe
 		echo "Skipping test-regression: dqbe only supports x86_64 architecture (host is $$ARCH)"; \
 	fi
 
-test-selfhost: d2qbe dqbe qbe/qbe ext.$(OBJ_EXT)
+test-selfhost: d2qbe qbe/qbe ext.$(OBJ_EXT)
 	./test/self_host.sh
-	./test/self_host_dqbe.sh
 
 test-selfhost-dqbe: d2qbe dqbe ext.$(OBJ_EXT)
 	./test/self_host_dqbe.sh
@@ -74,6 +69,7 @@ benchmark: d2qbe dqbe qbe/qbe
 	./test/bench_self_host.sh
 
 unittest: unittest-frontend unittest-backend
+	dub test
 
 unittest-frontend:
 	$(DC) -g -w -Isource -unittest -main source/d2qbe/tokenize.d source/d2qbe/config.d source/d2qbe/parse.d source/d2qbe/codegen.d source/d2qbe/c_declarations.d test/ext.d -of=unittest_frontend
