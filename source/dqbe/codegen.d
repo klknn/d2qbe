@@ -21,6 +21,19 @@ version(Windows) {
   __gshared int target_os = TARGET_OS_SYSV;
 }
 
+enum TargetArch {
+  X86_64,
+  ARM64
+}
+
+version(AArch64) {
+  __gshared TargetArch target_arch = TargetArch.ARM64;
+} else version(ARM) {
+  __gshared TargetArch target_arch = TargetArch.ARM64;
+} else {
+  __gshared TargetArch target_arch = TargetArch.X86_64;
+}
+
 struct TempMap {
   char* name;
   int offset;

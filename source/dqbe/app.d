@@ -2,6 +2,7 @@ module dqbe.app;
 
 import core.stdc.stdio;
 import core.stdc.stdlib;
+import core.stdc.string;
 
 import dqbe.tokenize;
 import dqbe.parse;
@@ -15,6 +16,40 @@ import dqbe.regalloc : init_regalloc;
 extern (C)
 int main(int argc, char** argv) {
   init_regalloc();
+
+  // Parse command line arguments
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "-mtriple") == 0 || strcmp(argv[i], "--mtriple") == 0 ||
+        strcmp(argv[i], "-target") == 0 || strcmp(argv[i], "--target") == 0) {
+      if (i + 1 < argc) {
+        char* triple = argv[i + 1];
+        i++;
+        
+        // Parse arch
+        if (strstr(triple, "x86_64") || strstr(triple, "amd64")) {
+          target_arch = TargetArch.X86_64;
+        } else if (strstr(triple, "aarch64") || strstr(triple, "arm64")) {
+          target_arch = TargetArch.ARM64;
+        } else {
+          fprintf(get_stderr(), "Warning: Unknown architecture in triple '%s', defaulting to x86_64\n", triple);
+          target_arch = TargetArch.X86_64;
+        }
+        
+        // Parse OS
+        if (strstr(triple, "windows") || strstr(triple, "win32") || strstr(triple, "mingw") || strstr(triple, "msvc")) {
+          target_os = TARGET_OS_WINDOWS;
+        } else {
+          target_os = TARGET_OS_SYSV;
+        }
+      } else {
+        fprintf(get_stderr(), "Error: Missing argument for %s\n", argv[i]);
+        return 1;
+      }
+    } else {
+      fprintf(get_stderr(), "Error: Unknown argument '%s'\n", argv[i]);
+      return 1;
+    }
+  }
   // Read all inputs from stdin
   int capacity = 4 * 1024 * 1024; // 4MB starting capacity
   char* buf = cast(char*) malloc(capacity);
