@@ -38,8 +38,13 @@ int main(int argc, char** argv) {
         // Parse OS
         if (strstr(triple, "windows") || strstr(triple, "win32") || strstr(triple, "mingw") || strstr(triple, "msvc")) {
           target_os = TARGET_OS_WINDOWS;
+          target_apple = false;
+        } else if (strstr(triple, "apple") || strstr(triple, "darwin")) {
+          target_os = TARGET_OS_SYSV;
+          target_apple = true;
         } else {
           target_os = TARGET_OS_SYSV;
+          target_apple = false;
         }
       } else {
         fprintf(get_stderr(), "Error: Missing argument for %s\n", argv[i]);
@@ -50,18 +55,30 @@ int main(int argc, char** argv) {
         char* qbe_target = argv[i + 1];
         i++;
         
-        if (strcmp(qbe_target, "amd64_sysv") == 0 || strcmp(qbe_target, "amd64_apple") == 0) {
+        if (strcmp(qbe_target, "amd64_sysv") == 0) {
           target_arch = TargetArch.X86_64;
           target_os = TARGET_OS_SYSV;
+          target_apple = false;
+        } else if (strcmp(qbe_target, "amd64_apple") == 0) {
+          target_arch = TargetArch.X86_64;
+          target_os = TARGET_OS_SYSV;
+          target_apple = true;
         } else if (strcmp(qbe_target, "amd64_windows") == 0 || strcmp(qbe_target, "amd64_win") == 0) {
           target_arch = TargetArch.X86_64;
           target_os = TARGET_OS_WINDOWS;
-        } else if (strcmp(qbe_target, "arm64") == 0 || strcmp(qbe_target, "arm64_apple") == 0) {
+          target_apple = false;
+        } else if (strcmp(qbe_target, "arm64") == 0) {
           target_arch = TargetArch.ARM64;
           target_os = TARGET_OS_SYSV;
+          target_apple = false;
+        } else if (strcmp(qbe_target, "arm64_apple") == 0) {
+          target_arch = TargetArch.ARM64;
+          target_os = TARGET_OS_SYSV;
+          target_apple = true;
         } else if (strcmp(qbe_target, "arm64_windows") == 0 || strcmp(qbe_target, "arm64_win") == 0) {
           target_arch = TargetArch.ARM64;
           target_os = TARGET_OS_WINDOWS;
+          target_apple = false;
         } else {
           fprintf(get_stderr(), "Error: Unknown QBE target '%s'\n", qbe_target);
           return 1;
