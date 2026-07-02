@@ -9,6 +9,7 @@ import dqbe.parse;
 import dqbe.regalloc : perform_register_allocation, get_allocated_register, init_regalloc;
 import dqbe.sysv;
 import dqbe.win64;
+import dqbe.arm64_abi;
 
 enum {
   TARGET_OS_SYSV,
@@ -315,6 +316,9 @@ void store_reg(const char* dest, const char* reg, int type, FILE* f) {
 }
 
 const(char)* get_arg_reg_32(int idx) {
+  if (target_arch == TargetArch.ARM64) {
+    return arm64_get_arg_reg_32(idx);
+  }
   if (target_os == TARGET_OS_WINDOWS) {
     return win64_get_arg_reg_32(idx);
   } else {
@@ -323,6 +327,9 @@ const(char)* get_arg_reg_32(int idx) {
 }
 
 const(char)* get_arg_reg_64(int idx) {
+  if (target_arch == TargetArch.ARM64) {
+    return arm64_get_arg_reg_64(idx);
+  }
   if (target_os == TARGET_OS_WINDOWS) {
     return win64_get_arg_reg_64(idx);
   } else {
@@ -331,6 +338,9 @@ const(char)* get_arg_reg_64(int idx) {
 }
 
 const(char)* get_float_arg_reg(int idx) {
+  if (target_arch == TargetArch.ARM64) {
+    return arm64_get_float_arg_reg(idx, 's');
+  }
   if (target_os == TARGET_OS_WINDOWS) {
     return win64_get_float_arg_reg(idx);
   } else {
@@ -339,6 +349,9 @@ const(char)* get_float_arg_reg(int idx) {
 }
 
 const(char)* get_param_reg(int arg_idx, char type, int int_arg_idx, int float_arg_idx) {
+  if (target_arch == TargetArch.ARM64) {
+    return arm64_get_param_reg(arg_idx, type, int_arg_idx, float_arg_idx);
+  }
   if (target_os == TARGET_OS_WINDOWS) {
     return win64_get_param_reg(arg_idx, type, int_arg_idx, float_arg_idx);
   } else {
@@ -923,6 +936,8 @@ void gen_program(FILE* f) {
 
 unittest {
   int original_target = target_os;
+  TargetArch original_arch = target_arch;
+  target_arch = TargetArch.X86_64;
   
   printf("  Testing TargetOS.sysv...\n");
   target_os = TARGET_OS_SYSV;
@@ -976,9 +991,12 @@ unittest {
   assert(get_param_reg(4, 'w', 2, 1) == null);
   
   target_os = original_target;
+  target_arch = original_arch;
 }
 
 unittest {
+  TargetArch original_arch = target_arch;
+  target_arch = TargetArch.X86_64;
   init_regalloc();
   char* input = cast(char*) "\n    data $g = { w 42 }\n    data $str = { b \"hello\\n\", b 0 }\n    \n    export function w $add(w %a, w %b) {\n    @start\n      %t1 =w add %a, %b\n      ret %t1\n    }\n  ";
   
@@ -1011,4 +1029,28 @@ unittest {
   assert(found_globl_g);
   assert(found_add_label);
   assert(found_addl);
+  target_arch = original_arch;
 }
+
+unittest {
+  TargetArch original_arch = target_arch;
+  target_arch = TargetArch.ARM64;
+  
+  // Test ARM64 register mappings
+  assert(strcmp(get_arg_reg_32(0), "w0") == 0);
+  assert(strcmp(get_arg_reg_32(7), "w7") == 0);
+  assert(get_arg_reg_32(8) == null);
+
+  assert(strcmp(get_arg_reg_64(0), "x0") == 0);
+  assert(strcmp(get_arg_reg_64(7), "x7") == 0);
+  assert(get_arg_reg_64(8) == null);
+
+  assert(strcmp(get_param_reg(0, 'w', 0, 0), "w0") == 0);
+  assert(strcmp(get_param_reg(1, 'l', 1, 0), "x1") == 0);
+  assert(strcmp(get_param_reg(2, 's', 1, 0), "s0") == 0);
+  assert(strcmp(get_param_reg(3, 'd', 1, 1), "d1") == 0);
+  assert(get_param_reg(9, 'w', 8, 1) == null); // Stack argument (spilled)
+
+  target_arch = original_arch;
+}
+

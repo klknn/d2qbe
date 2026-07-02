@@ -16,7 +16,7 @@ all: d2qbe dqbe qbe/qbe
 d2qbe: $(OBJS) ext.$(OBJ_EXT)
 	$(DC) $(DFLAGS) $(OBJS) ext.$(OBJ_EXT) -of=$@
 
-dqbe: source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d source/dqbe/sysv.d source/dqbe/win64.d source/dqbe/app.d test/tmp_ext_all.d
+dqbe: source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d source/dqbe/sysv.d source/dqbe/win64.d source/dqbe/arm64_abi.d source/dqbe/app.d test/tmp_ext_all.d
 	$(DC) $(DFLAGS) $^ -of=$@
 
 %.$(OBJ_EXT): source/d2qbe/%.d
@@ -69,7 +69,7 @@ unittest-frontend:
 	rm -f unittest_frontend
 
 unittest-backend:
-	$(DC) -g -w -Isource -unittest -main source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d source/dqbe/sysv.d source/dqbe/win64.d test/tmp_ext_all.d -of=unittest_backend
+	$(DC) -g -w -Isource -unittest -main source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d source/dqbe/sysv.d source/dqbe/win64.d source/dqbe/arm64_abi.d test/tmp_ext_all.d -of=unittest_backend
 	./unittest_backend
 	rm -f unittest_backend
 
