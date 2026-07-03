@@ -3,18 +3,57 @@
 D2QBE=${D2QBE:-./d2qbe}
 QBE=${QBE:-./qbe/qbe}
 
-if [[ "$QBE" == *"dqbe"* ]]; then
-  ARCH=$(uname -m)
-  if [ "$ARCH" != "x86_64" ] && [ "$ARCH" != "amd64" ]; then
-    echo "Skipping run.sh: dqbe only supports x86_64 architecture (host is $ARCH)"
-    exit 0
-  fi
+# ==============================================================================
+# Host Platform Resolution
+# ==============================================================================
+HOST_OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+HOST_ARCH=$(uname -m)
+
+case "$HOST_OS" in
+  linux*)   HOST_OS="linux" ;;
+  darwin*)  HOST_OS="macos" ;;
+  msys*|mingw*|cygwin*) HOST_OS="windows" ;;
+  *)        HOST_OS="unknown" ;;
+esac
+
+case "$HOST_ARCH" in
+  x86_64|amd64) HOST_ARCH="x64" ;;
+  arm64|aarch64) HOST_ARCH="arm64" ;;
+esac
+
+# ==============================================================================
+# Target Platform Configuration (Default to Host OS, fallback to x64)
+# ==============================================================================
+TARGET_ARCH=${TARGET_ARCH:-x86_64}
+case "$TARGET_ARCH" in
+  x86_64|x64) TARGET_ARCH="x64" ;;
+  arm64)      TARGET_ARCH="arm64" ;;
+esac
+TARGET_OS=${TARGET_OS:-$HOST_OS}
+
+# Default native configuration
+CC_CROSS="cc"
+RUN_CROSS=""
+QBE_ARGS=""
+OBJ_EXT="o"
+LDC_FLAGS="-betterC"
+
+# Resolve tools and environment based on matrix
+if [ "$TARGET_OS" = "windows" ]; then
+  OBJ_EXT="obj"
 fi
 
-if [ "$OS" = "Windows_NT" ]; then
-  OBJ_EXT="obj"
-else
-  OBJ_EXT="o"
+if [ "$TARGET_ARCH" = "arm64" ]; then
+  QBE_ARGS="-t arm64"
+  OBJ_EXT="arm64.o"
+  
+  if [ "$HOST_OS" = "linux" ] && [ "$HOST_ARCH" = "x64" ]; then
+    # Cross compiling linux-x64 -> linux-arm64 via QEMU
+    CC_CROSS="aarch64-linux-gnu-gcc"
+    RUN_CROSS="qemu-aarch64 -L /usr/aarch64-linux-gnu/"
+    LDC_FLAGS="-mtriple=aarch64-linux-gnu -gcc=aarch64-linux-gnu-gcc -betterC"
+  fi
+  # (Native ARM64 Linux and macOS targets default to CC="cc" and RUN_CROSS="")
 fi
 
 assert_v2() {
@@ -22,15 +61,18 @@ assert_v2() {
   input="$2"
   output="$3"
 
-  $D2QBE "$input" | $QBE > tmp.s
-  cc -o tmp tmp.s ext.${OBJ_EXT}
-  actual_output=$(./tmp)
+  $D2QBE "$input" | $QBE $QBE_ARGS > tmp.s
+  $CC_CROSS -o tmp tmp.s ext.${OBJ_EXT} || { echo "Compilation failed for tmp.s!"; exit 1; }
+  actual_output=$($RUN_CROSS ./tmp)
   actual="$?"
 
   if [ "$actual" = "$expected" ]; then
     echo "SUCCESS"
   else
     echo "FAILED: $expected expected, but got $actual"
+    echo "--- Output ---"
+    echo "$actual_output"
+    echo "--------------"
     exit 1
   fi
   if [ -n "$output" ]; then
@@ -90,14 +132,14 @@ assert_compile_fail "extern(C) int main() { int x = 3; switch (x) { case 3: x = 
 echo "Running LDC reference compiler verification on all test files..."
 for test_file in test/arith_test.d test/control_test.d test/logical_test.d test/enum_test.d test/struct_test.d test/collatz_test.d test/prime_test.d test/queen_test.d test/switch_test.d test/multidim_test.d test/template_test.d; do
   echo "Verifying $test_file with LDC..."
-  ldc2 -betterC "$test_file" test/ext.d -of=tmp_ldc_test
+  ldc2 $LDC_FLAGS "$test_file" test/ext.d -of=tmp_ldc_test
   actual_ldc="$?"
   if [ "$actual_ldc" != 0 ]; then
     echo "LDC compilation failed for $test_file"
     rm -f tmp_ldc_test
     exit 1
   fi
-  ./tmp_ldc_test
+  $RUN_CROSS ./tmp_ldc_test
   actual_ldc_exit="$?"
   rm -f tmp_ldc_test
   if [ "$actual_ldc_exit" != 0 ]; then

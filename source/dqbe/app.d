@@ -15,6 +15,7 @@ import dqbe.regalloc : init_regalloc;
 
 extern (C)
 int main(int argc, char** argv) {
+  fprintf(get_stderr(), "DEBUG_APP_START: dqbe is starting!\n");
   init_regalloc();
 
   // Parse command line arguments

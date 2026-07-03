@@ -35,6 +35,9 @@ app.$(OBJ_EXT): source/d2qbe/app.d codegen.$(OBJ_EXT) parse.$(OBJ_EXT) tokenize.
 ext.$(OBJ_EXT): test/ext.d
 	$(DC) $(DFLAGS) -c $<
 
+ext.arm64.o: test/ext.d
+	$(DC) -mtriple=aarch64-linux-gnu $(DFLAGS) -c $< -of=$@
+
 ifeq ($(OS),Windows_NT)
 test: unittest test-integration-dqbe test-regression test-selfhost-dqbe
 else
@@ -55,6 +58,12 @@ test-selfhost: d2qbe qbe/qbe ext.$(OBJ_EXT)
 
 test-selfhost-dqbe: d2qbe dqbe ext.$(OBJ_EXT)
 	./test/self_host_dqbe.sh
+
+test-qemu-arm64: d2qbe dqbe ext.arm64.o
+	TARGET_ARCH=arm64 QBE=./dqbe ./test/run.sh
+
+test-qemu-arm64-qbe: d2qbe qbe/qbe ext.arm64.o
+	TARGET_ARCH=arm64 QBE=./qbe/qbe ./test/run.sh
 
 benchmark: d2qbe dqbe qbe/qbe
 	./test/bench_all.sh
