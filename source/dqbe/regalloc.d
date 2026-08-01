@@ -745,8 +745,8 @@ unittest {
   
   // Verify sizes
   assert(num_gpr_callee_saved == 10);
-  assert(num_gpr_caller_saved == 7);
-  assert(num_fpr_caller_saved == 16); // v16-v31 (16 registers)
+  assert(num_gpr_caller_saved == 4);
+  assert(num_fpr_caller_saved == 13); // v19-v31 (13 registers)
   
   // Create a dummy temp to test register allocation mapping
   int original_temps_count = temps_count;
@@ -758,14 +758,14 @@ unittest {
   assert(strcmp(get_allocated_register("%t1", 'l'), "x19") == 0);
   
   temps[0].assigned_reg = 10; // Caller-saved index 0 (after 10 callee-saved)
-  assert(strcmp(get_allocated_register("%t1", 'w'), "w9") == 0);
-  assert(strcmp(get_allocated_register("%t1", 'l'), "x9") == 0);
+  assert(strcmp(get_allocated_register("%t1", 'w'), "w12") == 0);
+  assert(strcmp(get_allocated_register("%t1", 'l'), "x12") == 0);
 
   // Test float allocation
   temps[0].type = 's'; // float
   temps[0].assigned_reg = 0; // Float index 0
-  assert(strcmp(get_allocated_register("%t1", 's'), "s16") == 0);
-  assert(strcmp(get_allocated_register("%t1", 'd'), "d16") == 0);
+  assert(strcmp(get_allocated_register("%t1", 's'), "s19") == 0);
+  assert(strcmp(get_allocated_register("%t1", 'd'), "d19") == 0);
 
   temps_count = original_temps_count;
   target_arch = original_arch;

@@ -362,7 +362,11 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
         fprintf(f, "  add %s, %s, #:lo12:%s\n", reg, reg, arg + 1);
       }
     } else {
-      fprintf(f, "  leaq %s(%%rip), %s\n", arg + 1, reg);
+      if (target_apple) {
+        fprintf(f, "  leaq _%s(%%rip), %s\n", arg + 1, reg);
+      } else {
+        fprintf(f, "  leaq %s(%%rip), %s\n", arg + 1, reg);
+      }
     }
   } else {
     invalidate_cache(reg);
@@ -373,7 +377,8 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
       int* bits = cast(int*) &val_f;
       if (target_arch == TargetArch.ARM64) {
         // Temp float constant load
-        fprintf(f, "  ldr %s, =%u\n", reg, *bits);
+        fprintf(f, "  ldr w17, =%u\n", *bits);
+        fprintf(f, "  fmov %s, w17\n", reg);
       } else {
         invalidate_cache("%eax");
         fprintf(f, "  movl $%u, %%eax\n", *bits);
@@ -384,7 +389,8 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
       long* bits = cast(long*) &val;
       if (target_arch == TargetArch.ARM64) {
         // Temp double constant load
-        fprintf(f, "  ldr %s, =%lld\n", reg, *bits); // ldr xd, =literal is a common pseudo-instruction supported by gas/clang
+        fprintf(f, "  ldr x17, =%lld\n", *bits);
+        fprintf(f, "  fmov %s, x17\n", reg);
       } else {
         invalidate_cache("%rax");
         fprintf(f, "  movabsq $%lld, %%rax\n", *bits);
@@ -625,12 +631,20 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
       }
     }
     if (target_arch == TargetArch.ARM64) {
-      fprintf(f, "  bl %s\n", inst.arg1 + 1);
+      if (target_apple) {
+        fprintf(f, "  bl _%s\n", inst.arg1 + 1);
+      } else {
+        fprintf(f, "  bl %s\n", inst.arg1 + 1);
+      }
     } else {
       if (target_os == TARGET_OS_SYSV) {
         fprintf(f, "  movb $%d, %%al\n", float_arg_idx);
       }
-      fprintf(f, "  call %s\n", inst.arg1 + 1);
+      if (target_apple) {
+        fprintf(f, "  call _%s\n", inst.arg1 + 1);
+      } else {
+        fprintf(f, "  call %s\n", inst.arg1 + 1);
+      }
     }
     clear_cache();
     return;
@@ -885,12 +899,20 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
         }
       }
       if (target_arch == TargetArch.ARM64) {
-        fprintf(f, "  bl %s\n", inst.arg1 + 1);
+        if (target_apple) {
+          fprintf(f, "  bl _%s\n", inst.arg1 + 1);
+        } else {
+          fprintf(f, "  bl %s\n", inst.arg1 + 1);
+        }
       } else {
         if (target_os == TARGET_OS_SYSV) {
           fprintf(f, "  movb $%d, %%al\n", float_arg_idx);
         }
-        fprintf(f, "  call %s\n", inst.arg1 + 1);
+        if (target_apple) {
+          fprintf(f, "  call _%s\n", inst.arg1 + 1);
+        } else {
+          fprintf(f, "  call %s\n", inst.arg1 + 1);
+        }
       }
       clear_cache();
       if (target_arch == TargetArch.ARM64) {
@@ -1443,7 +1465,9 @@ unittest {
 
 unittest {
   TargetArch original_arch = target_arch;
+  bool original_apple = target_apple;
   target_arch = TargetArch.X86_64;
+  target_apple = false;
   init_regalloc();
   char* input = cast(char*) "\n    data $g = { w 42 }\n    data $str = { b \"hello\\n\", b 0 }\n    \n    export function w $add(w %a, w %b) {\n    @start\n      %t1 =w add %a, %b\n      ret %t1\n    }\n  ";
   
@@ -1477,6 +1501,7 @@ unittest {
   assert(found_add_label);
   assert(found_addl);
   target_arch = original_arch;
+  target_apple = original_apple;
 }
 
 unittest {
