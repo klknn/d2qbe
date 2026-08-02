@@ -15,6 +15,12 @@ enum ubyte WASM_CALL = 0x10;
 enum ubyte WASM_LOCAL_GET = 0x20;
 enum ubyte WASM_LOCAL_SET = 0x21;
 enum ubyte WASM_I32_CONST = 0x41;
+enum ubyte WASM_UNREACHABLE = 0x00;
+enum ubyte WASM_LOOP = 0x03;
+enum ubyte WASM_IF = 0x04;
+enum ubyte WASM_ELSE = 0x05;
+enum ubyte WASM_BR = 0x0c;
+enum ubyte WASM_EMPTY_BLOCK = 0x40;
 
 struct ByteBuffer {
   ubyte* data;
@@ -225,15 +231,170 @@ bool append_assign(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
     append_u32(body, cast(uint) destination);
 }
 
+struct WasmBlock {
+  char* label;
+  int start;
+  int end;
+}
+
+bool append_return(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
+  if (fn.ret_type == 'w') {
+    if (!inst.arg1 || !append_value(body, fn, inst.arg1)) return false;
+  } else if (inst.arg1) {
+    wasm_error("void function cannot return a value");
+    return false;
+  }
+  return append_byte(body, WASM_RETURN);
+}
+
+bool append_next_block(ref ByteBuffer body, int program_counter, int block) {
+  return append_byte(body, WASM_I32_CONST) && append_i32(body, block) &&
+    append_byte(body, WASM_LOCAL_SET) && append_u32(body, cast(uint) program_counter) &&
+    append_byte(body, WASM_BR) && append_u32(body, 1);
+}
+
+int find_block(WasmBlock[10000]* blocks, int block_count, const(char)* label) {
+  for (int i = 0; i < block_count; i++) {
+    if (strcmp(blocks[0][i].label, label) == 0) return i;
+  }
+  return -1;
+}
+
+bool append_dispatcher_body(ref ByteBuffer body, FunctionDef* fn, int program_counter) {
+  WasmBlock[10000] blocks;
+  int block_count = 0;
+  for (int i = 0; i < fn.inst_count; i++) {
+    Instruction* inst = &fn.instructions[i];
+    if (inst.kind != InstKind.IK_label) continue;
+    if (block_count == blocks.length) {
+      wasm_error("too many basic blocks");
+      return false;
+    }
+    if (block_count != 0) blocks[block_count - 1].end = i;
+    blocks[block_count].label = inst.label;
+    blocks[block_count].start = i + 1;
+    block_count++;
+  }
+  if (block_count == 0 || blocks[0].start != 1) {
+    wasm_error("control-flow function must begin with a label");
+    return false;
+  }
+  blocks[block_count - 1].end = fn.inst_count;
+
+  if (!append_byte(body, WASM_I32_CONST) || !append_i32(body, 0) ||
+      !append_byte(body, WASM_LOCAL_SET) ||
+      !append_u32(body, cast(uint) program_counter) ||
+      !append_byte(body, WASM_LOOP) || !append_byte(body, WASM_EMPTY_BLOCK)) {
+    return false;
+  }
+
+  for (int block = 0; block < block_count; block++) {
+    if (!append_byte(body, WASM_LOCAL_GET) ||
+        !append_u32(body, cast(uint) program_counter) ||
+        !append_byte(body, WASM_I32_CONST) || !append_i32(body, block) ||
+        !append_byte(body, 0x46) || !append_byte(body, WASM_IF) ||
+        !append_byte(body, WASM_EMPTY_BLOCK)) {
+      return false;
+    }
+
+    bool terminates = false;
+    for (int i = blocks[block].start; i < blocks[block].end; i++) {
+      Instruction* inst = &fn.instructions[i];
+      if (inst.kind == InstKind.IK_assign) {
+        if (!append_assign(body, fn, inst)) return false;
+        continue;
+      }
+      if (inst.kind == InstKind.IK_ret) {
+        if (!append_return(body, fn, inst)) return false;
+        terminates = true;
+        continue;
+      }
+      if (inst.kind == InstKind.IK_jmp) {
+        int target = find_block(&blocks, block_count, inst.label);
+        if (target < 0) {
+          wasm_error("jump target is undefined");
+          return false;
+        }
+        if (!append_next_block(body, program_counter, target)) return false;
+        terminates = true;
+        continue;
+      }
+      if (inst.kind == InstKind.IK_jnz) {
+        int then_target = find_block(&blocks, block_count, inst.label);
+        int else_target = find_block(&blocks, block_count, inst.label_else);
+        if (then_target < 0 || else_target < 0) {
+          wasm_error("conditional jump target is undefined");
+          return false;
+        }
+        if (!append_value(body, fn, inst.arg1) || !append_byte(body, WASM_IF) ||
+            !append_byte(body, WASM_EMPTY_BLOCK) ||
+            !append_byte(body, WASM_I32_CONST) || !append_i32(body, then_target) ||
+            !append_byte(body, WASM_LOCAL_SET) ||
+            !append_u32(body, cast(uint) program_counter) ||
+            !append_byte(body, WASM_ELSE) ||
+            !append_byte(body, WASM_I32_CONST) || !append_i32(body, else_target) ||
+            !append_byte(body, WASM_LOCAL_SET) ||
+            !append_u32(body, cast(uint) program_counter) ||
+            !append_byte(body, WASM_END) || !append_byte(body, WASM_BR) ||
+            !append_u32(body, 1)) {
+          return false;
+        }
+        terminates = true;
+        continue;
+      }
+      wasm_error("unsupported instruction in wasm control-flow lowering");
+      return false;
+    }
+
+    if (!terminates) {
+      if (block + 1 == block_count) {
+        wasm_error("last basic block has no terminator");
+        return false;
+      }
+      if (!append_next_block(body, program_counter, block + 1)) return false;
+    }
+    if (!append_byte(body, WASM_END)) return false;
+  }
+
+  return append_byte(body, WASM_UNREACHABLE) && append_byte(body, WASM_END);
+}
+
+bool needs_dispatcher(FunctionDef* fn) {
+  for (int i = 0; i < fn.inst_count; i++) {
+    InstKind kind = fn.instructions[i].kind;
+    if (kind == InstKind.IK_jmp || kind == InstKind.IK_jnz) return true;
+  }
+  int labels = 0;
+  for (int i = 0; i < fn.inst_count; i++) {
+    if (fn.instructions[i].kind == InstKind.IK_label) labels++;
+  }
+  return labels > 1;
+}
+
 bool append_function_body(ref ByteBuffer code, FunctionDef* fn) {
   ByteBuffer body;
-  int locals = local_count(fn);
+  bool dispatcher = needs_dispatcher(fn);
+  int locals = local_count(fn) + (dispatcher ? 1 : 0);
   if (!append_u32(body, cast(uint) locals)) return false;
   for (int i = 0; i < locals; i++) {
     if (!append_u32(body, 1) || !append_byte(body, WASM_I32)) {
       dispose(body);
       return false;
     }
+  }
+
+  if (dispatcher) {
+    if (!append_dispatcher_body(body, fn, fn.params_count + local_count(fn))) {
+      dispose(body);
+      return false;
+    }
+    if (!append_byte(body, WASM_END) || !append_u32(code, cast(uint) body.length) ||
+        !append_bytes(code, body.data, body.length)) {
+      dispose(body);
+      return false;
+    }
+    dispose(body);
+    return true;
   }
 
   bool has_return = false;
@@ -255,17 +416,7 @@ bool append_function_body(ref ByteBuffer code, FunctionDef* fn) {
       continue;
     }
     if (inst.kind == InstKind.IK_ret) {
-      if (fn.ret_type == 'w') {
-        if (!inst.arg1 || !append_value(body, fn, inst.arg1)) {
-          dispose(body);
-          return false;
-        }
-      } else if (inst.arg1) {
-        wasm_error("void function cannot return a value");
-        dispose(body);
-        return false;
-      }
-      if (!append_byte(body, WASM_RETURN)) {
+      if (!append_return(body, fn, inst)) {
         dispose(body);
         return false;
       }
@@ -383,4 +534,16 @@ unittest {
     0x0a, 0x07, 0x01, 0x05, 0x00, 0x41, 0x2a, 0x0f, 0x0b,
   ];
   assert(binary == expected);
+}
+
+unittest {
+  char* input = cast(char*) "export function w $main(w %condition) {\n@start\njnz %condition, @then, @else\n@then\nret 42\n@else\nret 7\n}\n";
+  token = tokenize(input);
+  parse_program();
+
+  FILE* output = fopen("tmp_wasm_control_test.wasm", "wb");
+  assert(output != null);
+  assert(emit_wasm_program(output));
+  fclose(output);
+  remove("tmp_wasm_control_test.wasm");
 }

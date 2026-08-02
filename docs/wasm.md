@@ -59,7 +59,8 @@ Therefore the milestones are deliberately staged:
    runnable browser module without pretending that 64-bit host layout works.
 2. **M2: structured control and memory.** Lower QBE CFG to structured Wasm
    (a dispatcher-loop lowering is the reliable general strategy) and add one
-   linear memory. Still reject ambiguous `l` values.
+   linear memory. Structured control is complete; memory still rejects
+   ambiguous `l` values until the target-aware frontend work lands.
 3. **M3: target-aware `d2qbe -t wasm32`.** Make pointer width, alignment,
    `sizeof`, struct layout, and pointer arithmetic target-specific; emit
    pointer values in a distinguishable wasm-compatible representation. Only
@@ -85,8 +86,12 @@ a compiler bug wearing a tiny fake moustache.
   stdout; diagnostics remain on stderr.
 - Implemented the documented straight-line `w` subset: `copy`, integer
   arithmetic, bitwise operations, shifts, signed comparisons, direct calls,
-  locals, and `ret`. Unsupported data, `l`, floating point, stores/loads,
-  multiple basic blocks, and unstructured control flow fail with a diagnostic.
+  locals, and `ret`.
+- Extended M2 with a dispatcher-loop lowering for labelled QBE CFGs. `jmp`,
+  `jnz`, fall-through edges, and returns now work across arbitrary basic
+  blocks; the program-counter local is internal to the emitted Wasm function.
+  Unsupported data, `l`, floating point, stores/loads, and external calls
+  still fail with a diagnostic.
 - Added test-first coverage in `source/dqbe/wasm.d` and
   `test/dqbe_wasm_test.sh`. The unit locks down the full 38-byte encoding of
   `export function w $main() { ret 42 }`; the integration test checks both
@@ -179,11 +184,12 @@ Only a single `i32` result is supported initially.
 ### Control flow
 
 WebAssembly branches are structured; QBE labels and jumps are arbitrary CFG.
-M1 supports only a single entry block ending in `ret`. M2 will represent each
-QBE block with a program-counter local in a Wasm `loop`, use nested `block`
-and `br_table` dispatch, and translate `jmp`/`jnz` by setting the next block
-index. This is less pretty than hand-shaped `if`/`loop`, but it is general and
-correct before optimisation.
+The backend represents each QBE block with a program-counter local in a Wasm
+`loop`, dispatches with nested `if` checks, and translates `jmp`/`jnz` by
+setting the next block index before branching back to the loop. This is less
+pretty than hand-shaped `if`/`loop`, but it is general and correct before
+optimisation. A future optimisation can replace the dispatch checks with a
+`br_table` ladder without changing the source-level semantics.
 
 ## Test strategy
 
@@ -238,8 +244,8 @@ against an independent Wasm runtime as a conformance gate.
 
 ## Immediate next task
 
-Add failing tests for each newly supported integer operation and direct call,
-then run the emitted module in an independent browser or standalone runtime
-when one is available. After those semantics are verified, begin M2 with a
-test-first structured-control lowering; do not add an external runtime
-dependency merely to make the unit tests pass.
+Add an optional independent runtime check when a browser, Node, Wasmtime, or
+WABT is available, without making it a compiler dependency. The next required
+self-hosting work is target-aware wasm32 layout, then linear memory/data and
+the minimal browser host ABI. Each capability begins with a failing test; do
+not add an external runtime dependency merely to make the unit tests pass.
