@@ -1,4 +1,4 @@
-.PHONY: all test clean unittest test-integration test-regression test-selfhost unittest-frontend unittest-backend benchmark
+.PHONY: all test clean unittest test-integration test-regression test-selfhost unittest-frontend unittest-backend test-dqbe-abi benchmark
 
 DC=ldc2
 DFLAGS=-g -w -betterC -Isource
@@ -35,10 +35,13 @@ app.$(OBJ_EXT): source/d2qbe/app.d codegen.$(OBJ_EXT) parse.$(OBJ_EXT) tokenize.
 ext.$(OBJ_EXT): test/ext.d
 	$(DC) $(DFLAGS) -c $<
 
+ext.arm64.o: test/ext.d
+	$(DC) -mtriple=aarch64-linux-gnu $(DFLAGS) -c $< -of=$@
+
 ifeq ($(OS),Windows_NT)
-test: unittest test-integration-dqbe test-regression test-selfhost-dqbe
+test: unittest test-integration-dqbe test-dqbe-abi test-regression test-selfhost-dqbe
 else
-test: unittest test-integration test-integration-dqbe test-regression test-selfhost test-selfhost-dqbe
+test: unittest test-integration test-integration-dqbe test-dqbe-abi test-regression test-selfhost test-selfhost-dqbe
 endif
 
 test-integration: d2qbe qbe/qbe ext.$(OBJ_EXT)
@@ -50,11 +53,20 @@ test-integration-dqbe: d2qbe dqbe ext.$(OBJ_EXT)
 test-regression: dqbe
 	./test/regression.sh
 
+test-dqbe-abi: dqbe
+	./test/dqbe_abi_test.sh
+
 test-selfhost: d2qbe qbe/qbe ext.$(OBJ_EXT)
 	./test/self_host.sh
 
 test-selfhost-dqbe: d2qbe dqbe ext.$(OBJ_EXT)
 	./test/self_host_dqbe.sh
+
+test-qemu-arm64: d2qbe dqbe ext.arm64.o
+	TARGET_ARCH=arm64 QBE=./dqbe ./test/run.sh
+
+test-qemu-arm64-qbe: d2qbe qbe/qbe ext.arm64.o
+	TARGET_ARCH=arm64 QBE=./qbe/qbe ./test/run.sh
 
 benchmark: d2qbe dqbe qbe/qbe
 	./test/bench_all.sh

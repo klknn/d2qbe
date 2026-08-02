@@ -65,17 +65,7 @@ void clear_cache() {
 
 void invalidate_cache(const char* phys) {
   for (int i = 0; i < reg_cache_count; i++) {
-    bool match = false;
-    if (strcmp(reg_cache[i].phys_reg.ptr, phys) == 0) {
-      match = true;
-    } else {
-      int len1 = cast(int) strlen(reg_cache[i].phys_reg.ptr);
-      int len2 = cast(int) strlen(phys);
-      if (len1 >= 3 && len2 >= 3 && strcmp(reg_cache[i].phys_reg.ptr + len1 - 2, phys + len2 - 2) == 0) {
-        match = true;
-      }
-    }
-    if (match) {
+    if (is_same_phys_reg(reg_cache[i].phys_reg.ptr, phys)) {
       for (int j = i; j < reg_cache_count - 1; j++) {
         reg_cache[j] = reg_cache[j+1];
       }
@@ -117,7 +107,7 @@ void reset_offsets() {
   temp_offsets_count = 0;
   var_offsets_count = 0;
   if (target_arch == TargetArch.ARM64) {
-    stack_offset_counter = 96;
+    stack_offset_counter = 0;
   } else {
     stack_offset_counter = 40;
   }
@@ -156,6 +146,9 @@ int get_temp_offset(const char* name) {
   
   // Allocate new slot
   stack_offset_counter = stack_offset_counter + 8; // 8 bytes for every temporary
+  if (prepass_done) {
+    fprintf(get_stderr(), "WARNING_LATE_ALLOC: fn=%s, name=%s -> %d\n", current_fn_name ? current_fn_name : "null", name, stack_offset_counter);
+  }
   
   if (current_fn_name && strcmp(current_fn_name, "parse_function") == 0) {
     fprintf(get_stderr(), "MAP: %s -> %d (count=%d)\n", name, stack_offset_counter, temp_offsets_count);
@@ -193,8 +186,8 @@ bool is_same_phys_reg(const char* reg1, const char* reg2) {
   if (target_arch == TargetArch.ARM64) {
     const(char)* r1 = reg1;
     const(char)* r2 = reg2;
-    if ((r1[0] == 'w' || r1[0] == 'x' || r1[0] == 's' || r1[0] == 'd') &&
-        (r2[0] == 'w' || r2[0] == 'x' || r2[0] == 's' || r2[0] == 'd')) {
+    if ((r1[0] == 'w' || r1[0] == 'x' || r1[0] == 's' || r1[0] == 'd' || r1[0] == 'v') &&
+        (r2[0] == 'w' || r2[0] == 'x' || r2[0] == 's' || r2[0] == 'd' || r2[0] == 'v')) {
       if (strcmp(r1 + 1, r2 + 1) == 0) return true;
     }
     return false;
@@ -219,15 +212,70 @@ bool is_same_phys_reg(const char* reg1, const char* reg2) {
   return false;
 }
 
-void load_arg(const char* arg, const char* reg, int type, FILE* f) {
+const(char)* get_phys_reg(const char* arg, char type) {
   if (arg[0] == '%') {
+    const(char)* r = get_allocated_register(arg, type);
+    if (r) return r;
+    return lookup_cache(arg);
+  }
+  return null;
+}
+
+void load_binary_args(const char* arg1, const char* arg2, const char* reg1, const char* reg2, int type, FILE* f) {
+  const(char)* r1 = get_phys_reg(arg1, cast(char) type);
+  const(char)* r2 = get_phys_reg(arg2, cast(char) type);
+
+  if (r1 && r2 && is_same_phys_reg(r1, reg2) && is_same_phys_reg(r2, reg1)) {
+    // Swap situation
+    bool is_double = (type == 'd');
+    bool is_float = (type == 's');
+    bool is_long = (type == 'l');
+    
+    if (is_double) {
+      fprintf(f, "  fmov d18, %s\n", reg1);
+      load_arg(arg1, reg1, type, f);
+      fprintf(f, "  fmov %s, d18\n", reg2);
+    } else if (is_float) {
+      fprintf(f, "  fmov s18, %s\n", reg1);
+      load_arg(arg1, reg1, type, f);
+      fprintf(f, "  fmov %s, s18\n", reg2);
+    } else if (is_long) {
+      fprintf(f, "  mov x11, %s\n", reg1);
+      load_arg(arg1, reg1, type, f);
+      fprintf(f, "  mov %s, x11\n", reg2);
+    } else {
+      fprintf(f, "  mov w11, %s\n", reg1);
+      load_arg(arg1, reg1, type, f);
+      fprintf(f, "  mov %s, w11\n", reg2);
+    }
+  } else if (r2 && is_same_phys_reg(r2, reg1)) {
+    // Conflict on reg1: load reg2 first
+    load_arg(arg2, reg2, type, f);
+    load_arg(arg1, reg1, type, f);
+  } else {
+    // Normal order
+    load_arg(arg1, reg1, type, f);
+    load_arg(arg2, reg2, type, f);
+  }
+}
+
+void load_arg(const char* arg, const char* reg, int type, FILE* f) {
+  import core.stdc.stdio : fprintf, stderr;
+  fprintf(stderr, "DEBUG_LOAD_ARG_ENTRY: arg=%s, reg=%s\n", arg ? arg : "null", reg ? reg : "null");
+  if (arg[0] == '%') {
+    fprintf(stderr, "DEBUG_CALL_GET_REG: calling get_allocated_register for %s\n", arg);
     const(char)* alloc_reg = get_allocated_register(arg, cast(char) type);
     if (alloc_reg) {
       if (is_same_phys_reg(alloc_reg, reg)) {
         return;
       }
       if (target_arch == TargetArch.ARM64) {
-        fprintf(f, "  mov %s, %s\n", reg, alloc_reg);
+        bool is_float = (type == 's' || type == 'd');
+        if (is_float) {
+          fprintf(f, "  fmov %s, %s\n", reg, alloc_reg);
+        } else {
+          fprintf(f, "  mov %s, %s\n", reg, alloc_reg);
+        }
       } else {
         if (type == 'w') {
           fprintf(f, "  movl %s, %s\n", alloc_reg, reg);
@@ -248,7 +296,12 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
         return;
       }
       if (target_arch == TargetArch.ARM64) {
-        fprintf(f, "  mov %s, %s\n", reg, cached_reg);
+        bool is_float = (type == 's' || type == 'd');
+        if (is_float) {
+          fprintf(f, "  fmov %s, %s\n", reg, cached_reg);
+        } else {
+          fprintf(f, "  mov %s, %s\n", reg, cached_reg);
+        }
         update_cache(arg, reg);
         return;
       }
@@ -278,7 +331,13 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
     }
     int offset = get_temp_offset(arg);
     if (target_arch == TargetArch.ARM64) {
-      fprintf(f, "  ldr %s, [x29, #-%d]\n", reg, offset);
+      if (offset > 256) {
+        fprintf(f, "  mov x16, #-%d\n", offset);
+        fprintf(f, "  add x16, x29, x16\n");
+        fprintf(f, "  ldr %s, [x16]\n", reg);
+      } else {
+        fprintf(f, "  ldur %s, [x29, #-%d]\n", reg, offset);
+      }
     } else {
       if (type == 'w') {
         fprintf(f, "  movl -%d(%%rbp), %s\n", offset, reg);
@@ -303,7 +362,11 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
         fprintf(f, "  add %s, %s, #:lo12:%s\n", reg, reg, arg + 1);
       }
     } else {
-      fprintf(f, "  leaq %s(%%rip), %s\n", arg + 1, reg);
+      if (target_apple) {
+        fprintf(f, "  leaq _%s(%%rip), %s\n", arg + 1, reg);
+      } else {
+        fprintf(f, "  leaq %s(%%rip), %s\n", arg + 1, reg);
+      }
     }
   } else {
     invalidate_cache(reg);
@@ -313,9 +376,9 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
       float val_f = cast(float) val;
       int* bits = cast(int*) &val_f;
       if (target_arch == TargetArch.ARM64) {
-        // Temp float constant load: load bits to w9 and move to float reg
-        fprintf(f, "  mov w9, #%u\n", *bits);
-        fprintf(f, "  fmov %s, w9\n", reg);
+        // Temp float constant load
+        fprintf(f, "  ldr w17, =%u\n", *bits);
+        fprintf(f, "  fmov %s, w17\n", reg);
       } else {
         invalidate_cache("%eax");
         fprintf(f, "  movl $%u, %%eax\n", *bits);
@@ -326,7 +389,8 @@ void load_arg(const char* arg, const char* reg, int type, FILE* f) {
       long* bits = cast(long*) &val;
       if (target_arch == TargetArch.ARM64) {
         // Temp double constant load
-        fprintf(f, "  ldr %s, =%lld\n", reg, *bits); // ldr xd, =literal is a common pseudo-instruction supported by gas/clang
+        fprintf(f, "  ldr x17, =%lld\n", *bits);
+        fprintf(f, "  fmov %s, x17\n", reg);
       } else {
         invalidate_cache("%rax");
         fprintf(f, "  movabsq $%lld, %%rax\n", *bits);
@@ -362,7 +426,12 @@ void store_reg(const char* dest, const char* reg, int type, FILE* f) {
       return;
     }
     if (target_arch == TargetArch.ARM64) {
-      fprintf(f, "  mov %s, %s\n", alloc_reg, reg);
+      bool is_float = (type == 's' || type == 'd');
+      if (is_float) {
+        fprintf(f, "  fmov %s, %s\n", alloc_reg, reg);
+      } else {
+        fprintf(f, "  mov %s, %s\n", alloc_reg, reg);
+      }
     } else {
       if (type == 'w') {
         fprintf(f, "  movl %s, %s\n", reg, alloc_reg);
@@ -379,7 +448,13 @@ void store_reg(const char* dest, const char* reg, int type, FILE* f) {
   }
   int offset = get_temp_offset(dest);
   if (target_arch == TargetArch.ARM64) {
-    fprintf(f, "  str %s, [x29, #-%d]\n", reg, offset);
+    if (offset > 256) {
+      fprintf(f, "  mov x16, #-%d\n", offset);
+      fprintf(f, "  add x16, x29, x16\n");
+      fprintf(f, "  str %s, [x16]\n", reg);
+    } else {
+      fprintf(f, "  stur %s, [x29, #-%d]\n", reg, offset);
+    }
   } else {
     if (type == 'w') {
       fprintf(f, "  movl %s, -%d(%%rbp)\n", reg, offset);
@@ -438,6 +513,150 @@ const(char)* get_param_reg(int arg_idx, char type, int int_arg_idx, int float_ar
   }
 }
 
+int align_to_16(int size) {
+  return ((size + 15) / 16) * 16;
+}
+
+int stack_argument_count(Instruction* inst) {
+  int int_arg_idx = 0;
+  int float_arg_idx = 0;
+  int count = 0;
+  for (int i = 0; i < inst.call_args_count; i++) {
+    char type = inst.call_args[i].type;
+    const(char)* reg = get_param_reg(i, type, int_arg_idx, float_arg_idx);
+    if (type == 'w' || type == 'l') int_arg_idx++;
+    else if (type == 's' || type == 'd') float_arg_idx++;
+    if (!reg) count++;
+  }
+  return count;
+}
+
+int outgoing_stack_size(Instruction* inst) {
+  int size = stack_argument_count(inst) * 8;
+  if (target_arch == TargetArch.X86_64 && target_os == TARGET_OS_WINDOWS) {
+    size += 32; // Required Win64 shadow space.
+  }
+  return align_to_16(size);
+}
+
+void reserve_outgoing_stack(int size, FILE* f) {
+  if (size == 0) return;
+  if (target_arch == TargetArch.ARM64) {
+    fprintf(f, "  sub sp, sp, #%d\n", size);
+  } else {
+    fprintf(f, "  subq $%d, %%rsp\n", size);
+  }
+}
+
+void release_outgoing_stack(int size, FILE* f) {
+  if (size == 0) return;
+  if (target_arch == TargetArch.ARM64) {
+    fprintf(f, "  add sp, sp, #%d\n", size);
+  } else {
+    fprintf(f, "  addq $%d, %%rsp\n", size);
+  }
+}
+
+void store_outgoing_stack_arg(const char* arg, char type, int stack_arg_idx, FILE* f) {
+  int offset = stack_arg_idx * 8;
+  if (target_arch == TargetArch.X86_64 && target_os == TARGET_OS_WINDOWS) {
+    offset += 32; // Stack arguments follow the Win64 shadow space.
+  }
+
+  if (target_arch == TargetArch.ARM64) {
+    if (type == 'w') {
+      load_arg(arg, "w9", type, f);
+      fprintf(f, "  str w9, [sp, #%d]\n", offset);
+    } else if (type == 'l') {
+      load_arg(arg, "x9", type, f);
+      fprintf(f, "  str x9, [sp, #%d]\n", offset);
+    } else if (type == 's') {
+      load_arg(arg, "s16", type, f);
+      fprintf(f, "  str s16, [sp, #%d]\n", offset);
+    } else if (type == 'd') {
+      load_arg(arg, "d16", type, f);
+      fprintf(f, "  str d16, [sp, #%d]\n", offset);
+    }
+  } else {
+    if (type == 'w') {
+      load_arg(arg, "%eax", type, f);
+      fprintf(f, "  movl %%eax, %d(%%rsp)\n", offset);
+    } else if (type == 'l') {
+      load_arg(arg, "%rax", type, f);
+      fprintf(f, "  movq %%rax, %d(%%rsp)\n", offset);
+    } else if (type == 's') {
+      load_arg(arg, "%xmm0", type, f);
+      fprintf(f, "  movss %%xmm0, %d(%%rsp)\n", offset);
+    } else if (type == 'd') {
+      load_arg(arg, "%xmm0", type, f);
+      fprintf(f, "  movsd %%xmm0, %d(%%rsp)\n", offset);
+    }
+  }
+}
+
+void setup_call_args(Instruction* inst, FILE* f) {
+  int int_arg_idx = 0;
+  int float_arg_idx = 0;
+  int stack_arg_idx = 0;
+  for (int i = 0; i < inst.call_args_count; i++) {
+    char type = inst.call_args[i].type;
+    const(char)* reg = get_param_reg(i, type, int_arg_idx, float_arg_idx);
+    if (type == 'w' || type == 'l') int_arg_idx++;
+    else if (type == 's' || type == 'd') float_arg_idx++;
+
+    if (reg) {
+      load_arg(inst.call_args[i].name, reg, type, f);
+    } else {
+      store_outgoing_stack_arg(inst.call_args[i].name, type, stack_arg_idx, f);
+      stack_arg_idx++;
+    }
+  }
+}
+
+int incoming_stack_arg_offset(int stack_arg_idx) {
+  if (target_arch == TargetArch.ARM64) {
+    return 96 + stack_arg_idx * 8;
+  }
+  if (target_os == TARGET_OS_WINDOWS) {
+    return 48 + stack_arg_idx * 8;
+  }
+  return 16 + stack_arg_idx * 8;
+}
+
+void load_incoming_stack_arg(const char* dest, char type, int stack_arg_idx, FILE* f) {
+  int offset = incoming_stack_arg_offset(stack_arg_idx);
+  if (target_arch == TargetArch.ARM64) {
+    if (type == 'w') {
+      fprintf(f, "  ldr w9, [x29, #%d]\n", offset);
+      store_reg(dest, "w9", type, f);
+    } else if (type == 'l') {
+      fprintf(f, "  ldr x9, [x29, #%d]\n", offset);
+      store_reg(dest, "x9", type, f);
+    } else if (type == 's') {
+      fprintf(f, "  ldr s16, [x29, #%d]\n", offset);
+      store_reg(dest, "s16", type, f);
+    } else if (type == 'd') {
+      fprintf(f, "  ldr d16, [x29, #%d]\n", offset);
+      store_reg(dest, "d16", type, f);
+    }
+  } else {
+    if (type == 'w') {
+      fprintf(f, "  movl %d(%%rbp), %%eax\n", offset);
+      store_reg(dest, "%eax", type, f);
+    } else if (type == 'l') {
+      fprintf(f, "  movq %d(%%rbp), %%rax\n", offset);
+      store_reg(dest, "%rax", type, f);
+    } else if (type == 's') {
+      fprintf(f, "  movss %d(%%rbp), %%xmm0\n", offset);
+      store_reg(dest, "%xmm0", type, f);
+    } else if (type == 'd') {
+      fprintf(f, "  movsd %d(%%rbp), %%xmm0\n", offset);
+      store_reg(dest, "%xmm0", type, f);
+    }
+  }
+}
+
+__gshared bool prepass_done = false;
 const(char)* current_fn_name;
 
 void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
@@ -448,16 +667,26 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
   }
   
   if (inst.kind == InstKind.IK_jmp) {
-    fprintf(f, "  jmp .L%s_%s\n", current_fn_name, inst.label + 1);
+    if (target_arch == TargetArch.ARM64) {
+      fprintf(f, "  b .L%s_%s\n", current_fn_name, inst.label + 1);
+    } else {
+      fprintf(f, "  jmp .L%s_%s\n", current_fn_name, inst.label + 1);
+    }
     clear_cache();
     return;
   }
   
   if (inst.kind == InstKind.IK_jnz) {
-    load_arg(inst.arg1, "%eax", 'w', f);
-    fprintf(f, "  cmpl $0, %%eax\n");
-    fprintf(f, "  jne .L%s_%s\n", current_fn_name, inst.label + 1);
-    fprintf(f, "  jmp .L%s_%s\n", current_fn_name, inst.label_else + 1);
+    if (target_arch == TargetArch.ARM64) {
+      load_arg(inst.arg1, "w9", 'w', f);
+      fprintf(f, "  cbnz w9, .L%s_%s\n", current_fn_name, inst.label + 1);
+      fprintf(f, "  b .L%s_%s\n", current_fn_name, inst.label_else + 1);
+    } else {
+      load_arg(inst.arg1, "%eax", 'w', f);
+      fprintf(f, "  cmpl $0, %%eax\n");
+      fprintf(f, "  jne .L%s_%s\n", current_fn_name, inst.label + 1);
+      fprintf(f, "  jmp .L%s_%s\n", current_fn_name, inst.label_else + 1);
+    }
     clear_cache();
     return;
   }
@@ -481,49 +710,80 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
   if (inst.kind == InstKind.IK_store) {
     // storew %val, %ptr
     char type = inst.op[5]; // 'b', 'h', 'w', 'l', 's', 'd'
-    if (type == 'b') {
-      load_arg(inst.arg1, "%edx", 'w', f);
-      load_arg(inst.arg2, "%rax", 'l', f);
-      fprintf(f, "  movb %%dl, (%%rax)\n");
-    } else if (type == 'w') {
-      load_arg(inst.arg1, "%edx", 'w', f);
-      load_arg(inst.arg2, "%rax", 'l', f);
-      fprintf(f, "  movl %%edx, (%%rax)\n");
-    } else if (type == 'l') {
-      load_arg(inst.arg1, "%rdx", 'l', f);
-      load_arg(inst.arg2, "%rax", 'l', f);
-      fprintf(f, "  movq %%rdx, (%%rax)\n");
-    } else if (type == 's') {
-      load_arg(inst.arg1, "%xmm0", 's', f);
-      load_arg(inst.arg2, "%rax", 'l', f);
-      fprintf(f, "  movss %%xmm0, (%%rax)\n");
-    } else if (type == 'd') {
-      load_arg(inst.arg1, "%xmm0", 'd', f);
-      load_arg(inst.arg2, "%rax", 'l', f);
-      fprintf(f, "  movsd %%xmm0, (%%rax)\n");
+    if (target_arch == TargetArch.ARM64) {
+      if (type == 'b') {
+        load_arg(inst.arg1, "w9", 'w', f);
+        load_arg(inst.arg2, "x10", 'l', f);
+        fprintf(f, "  strb w9, [x10]\n");
+      } else if (type == 'w') {
+        load_arg(inst.arg1, "w9", 'w', f);
+        load_arg(inst.arg2, "x10", 'l', f);
+        fprintf(f, "  str w9, [x10]\n");
+      } else if (type == 'l') {
+        load_arg(inst.arg1, "x9", 'l', f);
+        load_arg(inst.arg2, "x10", 'l', f);
+        fprintf(f, "  str x9, [x10]\n");
+      } else if (type == 's') {
+        load_arg(inst.arg1, "s16", 's', f);
+        load_arg(inst.arg2, "x10", 'l', f);
+        fprintf(f, "  str s16, [x10]\n");
+      } else if (type == 'd') {
+        load_arg(inst.arg1, "d16", 'd', f);
+        load_arg(inst.arg2, "x10", 'l', f);
+        fprintf(f, "  str d16, [x10]\n");
+      }
+    } else {
+      if (type == 'b') {
+        load_arg(inst.arg1, "%edx", 'w', f);
+        load_arg(inst.arg2, "%rax", 'l', f);
+        fprintf(f, "  movb %%dl, (%%rax)\n");
+      } else if (type == 'w') {
+        load_arg(inst.arg1, "%edx", 'w', f);
+        load_arg(inst.arg2, "%rax", 'l', f);
+        fprintf(f, "  movl %%edx, (%%rax)\n");
+      } else if (type == 'l') {
+        load_arg(inst.arg1, "%rdx", 'l', f);
+        load_arg(inst.arg2, "%rax", 'l', f);
+        fprintf(f, "  movq %%rdx, (%%rax)\n");
+      } else if (type == 's') {
+        load_arg(inst.arg1, "%xmm0", 's', f);
+        load_arg(inst.arg2, "%rax", 'l', f);
+        fprintf(f, "  movss %%xmm0, (%%rax)\n");
+      } else if (type == 'd') {
+        load_arg(inst.arg1, "%xmm0", 'd', f);
+        load_arg(inst.arg2, "%rax", 'l', f);
+        fprintf(f, "  movsd %%xmm0, (%%rax)\n");
+      }
     }
     return;
   }
   
   if (inst.kind == InstKind.IK_call) {
     // Void call
-    // Set up parameters
-    int int_arg_idx = 0;
-    int float_arg_idx = 0;
-    for (int i = 0; i < inst.call_args_count && i < 20; i++) {
-      char type = inst.call_args[i].type;
-      const(char)* reg = get_param_reg(i, type, int_arg_idx, float_arg_idx);
-      if (type == 'w' || type == 'l') int_arg_idx++;
-      else if (type == 's' || type == 'd') float_arg_idx++;
-
-      if (reg) {
-        load_arg(inst.call_args[i].name, reg, type, f);
+    int call_stack_size = outgoing_stack_size(inst);
+    reserve_outgoing_stack(call_stack_size, f);
+    setup_call_args(inst, f);
+    if (target_arch == TargetArch.ARM64) {
+      if (target_apple) {
+        fprintf(f, "  bl _%s\n", inst.arg1 + 1);
+      } else {
+        fprintf(f, "  bl %s\n", inst.arg1 + 1);
+      }
+    } else {
+      if (target_os == TARGET_OS_SYSV) {
+        int float_arg_count = 0;
+        for (int i = 0; i < inst.call_args_count; i++) {
+          if (inst.call_args[i].type == 's' || inst.call_args[i].type == 'd') float_arg_count++;
+        }
+        fprintf(f, "  movb $%d, %%al\n", float_arg_count);
+      }
+      if (target_apple) {
+        fprintf(f, "  call _%s\n", inst.arg1 + 1);
+      } else {
+        fprintf(f, "  call %s\n", inst.arg1 + 1);
       }
     }
-    if (target_os == TARGET_OS_SYSV) {
-      fprintf(f, "  movb $%d, %%al\n", float_arg_idx);
-    }
-    fprintf(f, "  call %s\n", inst.arg1 + 1);
+    release_outgoing_stack(call_stack_size, f);
     clear_cache();
     return;
   }
@@ -536,8 +796,18 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
       else if (strcmp(inst.op, "alloc16") == 0) align_ = 16;
       
       int var_offset = get_var_offset(inst.dest, size, align_);
-      fprintf(f, "  leaq -%d(%%rbp), %%rax\n", var_offset);
-      store_reg(inst.dest, "%rax", 'l', f);
+      if (target_arch == TargetArch.ARM64) {
+        if (var_offset > 4095) {
+          fprintf(f, "  mov x16, #%d\n", var_offset);
+          fprintf(f, "  sub x9, x29, x16\n");
+        } else {
+          fprintf(f, "  sub x9, x29, #%d\n", var_offset);
+        }
+        store_reg(inst.dest, "x9", 'l', f);
+      } else {
+        fprintf(f, "  leaq -%d(%%rbp), %%rax\n", var_offset);
+        store_reg(inst.dest, "%rax", 'l', f);
+      }
       return;
     }
     
@@ -559,134 +829,246 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
     }
     
     if (strcmp(inst.op, "extsw") == 0) {
-      load_arg(inst.arg1, "%eax", 'w', f);
-      fprintf(f, "  movslq %%eax, %%rax\n");
-      store_reg(inst.dest, "%rax", 'l', f);
+      if (target_arch == TargetArch.ARM64) {
+        load_arg(inst.arg1, "w9", 'w', f);
+        fprintf(f, "  sxtw x9, w9\n");
+        store_reg(inst.dest, "x9", 'l', f);
+      } else {
+        load_arg(inst.arg1, "%eax", 'w', f);
+        fprintf(f, "  movslq %%eax, %%rax\n");
+        store_reg(inst.dest, "%rax", 'l', f);
+      }
       return;
     }
     
     if (strncmp(inst.op, "load", 4) == 0) {
       // loadw, loadub, loadl, loads, loadd
-      load_arg(inst.arg1, "%rax", 'l', f);
-      if (strcmp(inst.op, "loadub") == 0) {
-        fprintf(f, "  movzbl (%%rax), %%eax\n");
-        store_reg(inst.dest, "%eax", 'w', f);
-      } else if (strcmp(inst.op, "loadw") == 0) {
-        fprintf(f, "  movl (%%rax), %%eax\n");
-        store_reg(inst.dest, "%eax", 'w', f);
-      } else if (strcmp(inst.op, "loadl") == 0) {
-        fprintf(f, "  movq (%%rax), %%rax\n");
-        store_reg(inst.dest, "%rax", 'l', f);
-      } else if (strcmp(inst.op, "loads") == 0) {
-        fprintf(f, "  movss (%%rax), %%xmm0\n");
-        store_reg(inst.dest, "%xmm0", 's', f);
-      } else if (strcmp(inst.op, "loadd") == 0) {
-        fprintf(f, "  movsd (%%rax), %%xmm0\n");
-        store_reg(inst.dest, "%xmm0", 'd', f);
+      if (target_arch == TargetArch.ARM64) {
+        load_arg(inst.arg1, "x9", 'l', f);
+        if (strcmp(inst.op, "loadub") == 0) {
+          fprintf(f, "  ldrb w10, [x9]\n");
+          store_reg(inst.dest, "w10", 'w', f);
+        } else if (strcmp(inst.op, "loadw") == 0) {
+          fprintf(f, "  ldr w10, [x9]\n");
+          store_reg(inst.dest, "w10", 'w', f);
+        } else if (strcmp(inst.op, "loadl") == 0) {
+          fprintf(f, "  ldr x10, [x9]\n");
+          store_reg(inst.dest, "x10", 'l', f);
+        } else if (strcmp(inst.op, "loads") == 0) {
+          fprintf(f, "  ldr s16, [x9]\n");
+          store_reg(inst.dest, "s16", 's', f);
+        } else if (strcmp(inst.op, "loadd") == 0) {
+          fprintf(f, "  ldr d16, [x9]\n");
+          store_reg(inst.dest, "d16", 'd', f);
+        }
+      } else {
+        load_arg(inst.arg1, "%rax", 'l', f);
+        if (strcmp(inst.op, "loadub") == 0) {
+          fprintf(f, "  movzbl (%%rax), %%eax\n");
+          store_reg(inst.dest, "%eax", 'w', f);
+        } else if (strcmp(inst.op, "loadw") == 0) {
+          fprintf(f, "  movl (%%rax), %%eax\n");
+          store_reg(inst.dest, "%eax", 'w', f);
+        } else if (strcmp(inst.op, "loadl") == 0) {
+          fprintf(f, "  movq (%%rax), %%rax\n");
+          store_reg(inst.dest, "%rax", 'l', f);
+        } else if (strcmp(inst.op, "loads") == 0) {
+          fprintf(f, "  movss (%%rax), %%xmm0\n");
+          store_reg(inst.dest, "%xmm0", 's', f);
+        } else if (strcmp(inst.op, "loadd") == 0) {
+          fprintf(f, "  movsd (%%rax), %%xmm0\n");
+          store_reg(inst.dest, "%xmm0", 'd', f);
+        }
       }
       return;
     }
     
     if (strcmp(inst.op, "exts") == 0) {
-      load_arg(inst.arg1, "%xmm0", 's', f);
-      fprintf(f, "  cvtss2sd %%xmm0, %%xmm0\n");
-      store_reg(inst.dest, "%xmm0", 'd', f);
+      if (target_arch == TargetArch.ARM64) {
+        load_arg(inst.arg1, "s16", 's', f);
+        fprintf(f, "  fcvt d16, s16\n");
+        store_reg(inst.dest, "d16", 'd', f);
+      } else {
+        load_arg(inst.arg1, "%xmm0", 's', f);
+        fprintf(f, "  cvtss2sd %%xmm0, %%xmm0\n");
+        store_reg(inst.dest, "%xmm0", 'd', f);
+      }
       return;
     }
     
     if (strcmp(inst.op, "truncd") == 0) {
-      load_arg(inst.arg1, "%xmm0", 'd', f);
-      fprintf(f, "  cvtsd2ss %%xmm0, %%xmm0\n");
-      store_reg(inst.dest, "%xmm0", 's', f);
+      if (target_arch == TargetArch.ARM64) {
+        load_arg(inst.arg1, "d16", 'd', f);
+        fprintf(f, "  fcvt s16, d16\n");
+        store_reg(inst.dest, "s16", 's', f);
+      } else {
+        load_arg(inst.arg1, "%xmm0", 'd', f);
+        fprintf(f, "  cvtsd2ss %%xmm0, %%xmm0\n");
+        store_reg(inst.dest, "%xmm0", 's', f);
+      }
       return;
     }
     
     if (strcmp(inst.op, "stosi") == 0) {
-      load_arg(inst.arg1, "%xmm0", 's', f);
-      fprintf(f, "  cvttss2si %%xmm0, %%eax\n");
-      store_reg(inst.dest, "%eax", 'w', f);
+      if (target_arch == TargetArch.ARM64) {
+        load_arg(inst.arg1, "s16", 's', f);
+        fprintf(f, "  fcvtzs w10, s16\n");
+        store_reg(inst.dest, "w10", 'w', f);
+      } else {
+        load_arg(inst.arg1, "%xmm0", 's', f);
+        fprintf(f, "  cvttss2si %%xmm0, %%eax\n");
+        store_reg(inst.dest, "%eax", 'w', f);
+      }
       return;
     }
     
     if (strcmp(inst.op, "dtosi") == 0) {
-      load_arg(inst.arg1, "%xmm0", 'd', f);
-      fprintf(f, "  cvttsd2si %%xmm0, %%eax\n");
-      store_reg(inst.dest, "%eax", 'w', f);
+      if (target_arch == TargetArch.ARM64) {
+        load_arg(inst.arg1, "d16", 'd', f);
+        fprintf(f, "  fcvtzs w10, d16\n");
+        store_reg(inst.dest, "w10", 'w', f);
+      } else {
+        load_arg(inst.arg1, "%xmm0", 'd', f);
+        fprintf(f, "  cvttsd2si %%xmm0, %%eax\n");
+        store_reg(inst.dest, "%eax", 'w', f);
+      }
       return;
     }
     
     if (strcmp(inst.op, "swtof") == 0) {
-      load_arg(inst.arg1, "%eax", 'w', f);
-      if (inst.dest_type == 's') {
-        fprintf(f, "  cvtsi2ss %%eax, %%xmm0\n");
-        store_reg(inst.dest, "%xmm0", 's', f);
+      if (target_arch == TargetArch.ARM64) {
+        load_arg(inst.arg1, "w9", 'w', f);
+        if (inst.dest_type == 's') {
+          fprintf(f, "  scvtf s16, w9\n");
+          store_reg(inst.dest, "s16", 's', f);
+        } else {
+          fprintf(f, "  scvtf d16, w9\n");
+          store_reg(inst.dest, "d16", 'd', f);
+        }
       } else {
-        fprintf(f, "  cvtsi2sd %%eax, %%xmm0\n");
-        store_reg(inst.dest, "%xmm0", 'd', f);
+        load_arg(inst.arg1, "%eax", 'w', f);
+        if (inst.dest_type == 's') {
+          fprintf(f, "  cvtsi2ss %%eax, %%xmm0\n");
+          store_reg(inst.dest, "%xmm0", 's', f);
+        } else {
+          fprintf(f, "  cvtsi2sd %%eax, %%xmm0\n");
+          store_reg(inst.dest, "%xmm0", 'd', f);
+        }
       }
       return;
     }
     
     if (strcmp(inst.op, "sltof") == 0) {
-      load_arg(inst.arg1, "%rax", 'l', f);
-      if (inst.dest_type == 's') {
-        fprintf(f, "  cvtsi2ss %%rax, %%xmm0\n");
-        store_reg(inst.dest, "%xmm0", 's', f);
+      if (target_arch == TargetArch.ARM64) {
+        load_arg(inst.arg1, "x9", 'l', f);
+        if (inst.dest_type == 's') {
+          fprintf(f, "  scvtf s16, x9\n");
+          store_reg(inst.dest, "s16", 's', f);
+        } else {
+          fprintf(f, "  scvtf d16, x9\n");
+          store_reg(inst.dest, "d16", 'd', f);
+        }
       } else {
-        fprintf(f, "  cvtsi2sd %%rax, %%xmm0\n");
-        store_reg(inst.dest, "%xmm0", 'd', f);
+        load_arg(inst.arg1, "%rax", 'l', f);
+        if (inst.dest_type == 's') {
+          fprintf(f, "  cvtsi2ss %%rax, %%xmm0\n");
+          store_reg(inst.dest, "%xmm0", 's', f);
+        } else {
+          fprintf(f, "  cvtsi2sd %%rax, %%xmm0\n");
+          store_reg(inst.dest, "%xmm0", 'd', f);
+        }
       }
       return;
     }
     
     if (strcmp(inst.op, "cast") == 0) {
-      if (inst.dest_type == 'w') {
-        load_arg(inst.arg1, "%xmm0", 's', f);
-        fprintf(f, "  movd %%xmm0, %%eax\n");
-        store_reg(inst.dest, "%eax", 'w', f);
-      } else if (inst.dest_type == 's') {
-        load_arg(inst.arg1, "%eax", 'w', f);
-        fprintf(f, "  movd %%eax, %%xmm0\n");
-        store_reg(inst.dest, "%xmm0", 's', f);
-      } else if (inst.dest_type == 'l') {
-        load_arg(inst.arg1, "%xmm0", 'd', f);
-        fprintf(f, "  movq %%xmm0, %%rax\n");
-        store_reg(inst.dest, "%rax", 'l', f);
-      } else if (inst.dest_type == 'd') {
-        load_arg(inst.arg1, "%rax", 'l', f);
-        fprintf(f, "  movq %%rax, %%xmm0\n");
-        store_reg(inst.dest, "%xmm0", 'd', f);
+      if (target_arch == TargetArch.ARM64) {
+        if (inst.dest_type == 'w') {
+          load_arg(inst.arg1, "s16", 's', f);
+          fprintf(f, "  fmov w10, s16\n");
+          store_reg(inst.dest, "w10", 'w', f);
+        } else if (inst.dest_type == 's') {
+          load_arg(inst.arg1, "w9", 'w', f);
+          fprintf(f, "  fmov s16, w9\n");
+          store_reg(inst.dest, "s16", 's', f);
+        } else if (inst.dest_type == 'l') {
+          load_arg(inst.arg1, "d16", 'd', f);
+          fprintf(f, "  fmov x10, d16\n");
+          store_reg(inst.dest, "x10", 'l', f);
+        } else if (inst.dest_type == 'd') {
+          load_arg(inst.arg1, "x9", 'l', f);
+          fprintf(f, "  fmov d16, x9\n");
+          store_reg(inst.dest, "d16", 'd', f);
+        }
+      } else {
+        if (inst.dest_type == 'w') {
+          load_arg(inst.arg1, "%xmm0", 's', f);
+          fprintf(f, "  movd %%xmm0, %%eax\n");
+          store_reg(inst.dest, "%eax", 'w', f);
+        } else if (inst.dest_type == 's') {
+          load_arg(inst.arg1, "%eax", 'w', f);
+          fprintf(f, "  movd %%eax, %%xmm0\n");
+          store_reg(inst.dest, "%xmm0", 's', f);
+        } else if (inst.dest_type == 'l') {
+          load_arg(inst.arg1, "%xmm0", 'd', f);
+          fprintf(f, "  movq %%xmm0, %%rax\n");
+          store_reg(inst.dest, "%rax", 'l', f);
+        } else if (inst.dest_type == 'd') {
+          load_arg(inst.arg1, "%rax", 'l', f);
+          fprintf(f, "  movq %%rax, %%xmm0\n");
+          store_reg(inst.dest, "%xmm0", 'd', f);
+        }
       }
       return;
     }
     
     if (strcmp(inst.op, "call") == 0) {
       // Function call with assignment
-      int int_arg_idx = 0;
-      int float_arg_idx = 0;
-      for (int i = 0; i < inst.call_args_count && i < 20; i++) {
-        char type = inst.call_args[i].type;
-        const(char)* reg = get_param_reg(i, type, int_arg_idx, float_arg_idx);
-        if (type == 'w' || type == 'l') int_arg_idx++;
-        else if (type == 's' || type == 'd') float_arg_idx++;
-
-        if (reg) {
-          load_arg(inst.call_args[i].name, reg, type, f);
+      int call_stack_size = outgoing_stack_size(inst);
+      reserve_outgoing_stack(call_stack_size, f);
+      setup_call_args(inst, f);
+      if (target_arch == TargetArch.ARM64) {
+        if (target_apple) {
+          fprintf(f, "  bl _%s\n", inst.arg1 + 1);
+        } else {
+          fprintf(f, "  bl %s\n", inst.arg1 + 1);
+        }
+      } else {
+        if (target_os == TARGET_OS_SYSV) {
+          int float_arg_count = 0;
+          for (int i = 0; i < inst.call_args_count; i++) {
+            if (inst.call_args[i].type == 's' || inst.call_args[i].type == 'd') float_arg_count++;
+          }
+          fprintf(f, "  movb $%d, %%al\n", float_arg_count);
+        }
+        if (target_apple) {
+          fprintf(f, "  call _%s\n", inst.arg1 + 1);
+        } else {
+          fprintf(f, "  call %s\n", inst.arg1 + 1);
         }
       }
-      if (target_os == TARGET_OS_SYSV) {
-        fprintf(f, "  movb $%d, %%al\n", float_arg_idx);
-      }
-      fprintf(f, "  call %s\n", inst.arg1 + 1);
+      release_outgoing_stack(call_stack_size, f);
       clear_cache();
-      if (inst.dest_type == 'w') {
-        store_reg(inst.dest, "%eax", 'w', f);
-      } else if (inst.dest_type == 'l') {
-        store_reg(inst.dest, "%rax", 'l', f);
-      } else if (inst.dest_type == 's') {
-        store_reg(inst.dest, "%xmm0", 's', f);
-      } else if (inst.dest_type == 'd') {
-        store_reg(inst.dest, "%xmm0", 'd', f);
+      if (target_arch == TargetArch.ARM64) {
+        if (inst.dest_type == 'w') {
+          store_reg(inst.dest, "w0", 'w', f);
+        } else if (inst.dest_type == 'l') {
+          store_reg(inst.dest, "x0", 'l', f);
+        } else if (inst.dest_type == 's') {
+          store_reg(inst.dest, "s0", 's', f);
+        } else if (inst.dest_type == 'd') {
+          store_reg(inst.dest, "d0", 'd', f);
+        }
+      } else {
+        if (inst.dest_type == 'w') {
+          store_reg(inst.dest, "%eax", 'w', f);
+        } else if (inst.dest_type == 'l') {
+          store_reg(inst.dest, "%rax", 'l', f);
+        } else if (inst.dest_type == 's') {
+          store_reg(inst.dest, "%xmm0", 's', f);
+        } else if (inst.dest_type == 'd') {
+          store_reg(inst.dest, "%xmm0", 'd', f);
+        }
       }
       return;
     }
@@ -700,8 +1082,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
         strcmp(inst.op, "shr") == 0) {
       if (inst.dest_type == 'w') {
         if (target_arch == TargetArch.ARM64) {
-          load_arg(inst.arg1, "w9", 'w', f);
-          load_arg(inst.arg2, "w10", 'w', f);
+          load_binary_args(inst.arg1, inst.arg2, "w9", "w10", 'w', f);
           if (strcmp(inst.op, "add") == 0) {
             fprintf(f, "  add w9, w9, w10\n");
           } else if (strcmp(inst.op, "sub") == 0) {
@@ -762,8 +1143,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
         }
       } else if (inst.dest_type == 'l') {
         if (target_arch == TargetArch.ARM64) {
-          load_arg(inst.arg1, "x9", 'l', f);
-          load_arg(inst.arg2, "x10", 'l', f);
+          load_binary_args(inst.arg1, inst.arg2, "x9", "x10", 'l', f);
           if (strcmp(inst.op, "add") == 0) {
             fprintf(f, "  add x9, x9, x10\n");
           } else if (strcmp(inst.op, "sub") == 0) {
@@ -824,8 +1204,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
         }
       } else if (inst.dest_type == 's') {
         if (target_arch == TargetArch.ARM64) {
-          load_arg(inst.arg1, "s16", 's', f);
-          load_arg(inst.arg2, "s17", 's', f);
+          load_binary_args(inst.arg1, inst.arg2, "s16", "s17", 's', f);
           if (strcmp(inst.op, "add") == 0) {
             fprintf(f, "  fadd s16, s16, s17\n");
           } else if (strcmp(inst.op, "sub") == 0) {
@@ -852,8 +1231,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
         }
       } else if (inst.dest_type == 'd') {
         if (target_arch == TargetArch.ARM64) {
-          load_arg(inst.arg1, "d16", 'd', f);
-          load_arg(inst.arg2, "d17", 'd', f);
+          load_binary_args(inst.arg1, inst.arg2, "d16", "d17", 'd', f);
           if (strcmp(inst.op, "add") == 0) {
             fprintf(f, "  fadd d16, d16, d17\n");
           } else if (strcmp(inst.op, "sub") == 0) {
@@ -896,45 +1274,84 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
       else if (strncmp(inst.op, "csge", 4) == 0) set_op = "setge";
       
       if (set_op) {
-        if (type == 'l') {
-          load_arg(inst.arg1, "%rax", 'l', f);
-          load_arg(inst.arg2, "%rcx", 'l', f);
-          fprintf(f, "  cmpq %%rcx, %%rax\n");
+        if (target_arch == TargetArch.ARM64) {
+          const(char)* arm_cond = null;
+          if (strcmp(set_op, "sete") == 0) arm_cond = "eq";
+          else if (strcmp(set_op, "setne") == 0) arm_cond = "ne";
+          else if (strcmp(set_op, "setl") == 0) arm_cond = "lt";
+          else if (strcmp(set_op, "setle") == 0) arm_cond = "le";
+          else if (strcmp(set_op, "setg") == 0) arm_cond = "gt";
+          else if (strcmp(set_op, "setge") == 0) arm_cond = "ge";
+          
+          if (type == 'l') {
+            load_binary_args(inst.arg1, inst.arg2, "x9", "x10", 'l', f);
+            fprintf(f, "  cmp x9, x10\n");
+          } else {
+            load_binary_args(inst.arg1, inst.arg2, "w9", "w10", 'w', f);
+            fprintf(f, "  cmp w9, w10\n");
+          }
+          fprintf(f, "  cset w9, %s\n", arm_cond);
+          store_reg(inst.dest, "w9", 'w', f);
         } else {
-          load_arg(inst.arg1, "%eax", 'w', f);
-          load_arg(inst.arg2, "%ecx", 'w', f);
-          fprintf(f, "  cmpl %%ecx, %%eax\n");
+          if (type == 'l') {
+            load_arg(inst.arg1, "%rax", 'l', f);
+            load_arg(inst.arg2, "%rcx", 'l', f);
+            fprintf(f, "  cmpq %%rcx, %%rax\n");
+          } else {
+            load_arg(inst.arg1, "%eax", 'w', f);
+            load_arg(inst.arg2, "%ecx", 'w', f);
+            fprintf(f, "  cmpl %%ecx, %%eax\n");
+          }
+          fprintf(f, "  %s %%al\n", set_op);
+          fprintf(f, "  movzbl %%al, %%eax\n");
+          store_reg(inst.dest, "%eax", 'w', f);
         }
-        fprintf(f, "  %s %%al\n", set_op);
-        fprintf(f, "  movzbl %%al, %%eax\n");
-        store_reg(inst.dest, "%eax", 'w', f);
         return;
       }
     }
     
     // Floating point comparisons (ceqs, ceqd, cnes, cned, clts, cltd, cles, cled, cgts, cgtd, cges, cged)
     if (inst.op[0] == 'c' && (type == 's' || type == 'd') && op_len == 4) {
-      if (type == 's') {
-        load_arg(inst.arg1, "%xmm0", 's', f);
-        load_arg(inst.arg2, "%xmm1", 's', f);
-        fprintf(f, "  ucomiss %%xmm1, %%xmm0\n");
+      if (target_arch == TargetArch.ARM64) {
+        if (type == 's') {
+          load_binary_args(inst.arg1, inst.arg2, "s16", "s17", 's', f);
+          fprintf(f, "  fcmp s16, s17\n");
+        } else {
+          load_binary_args(inst.arg1, inst.arg2, "d16", "d17", 'd', f);
+          fprintf(f, "  fcmp d16, d17\n");
+        }
+        const(char)* arm_cond = "";
+        if (strncmp(inst.op, "ceq", 3) == 0) arm_cond = "eq";
+        else if (strncmp(inst.op, "cne", 3) == 0) arm_cond = "ne";
+        else if (strncmp(inst.op, "clt", 3) == 0) arm_cond = "mi";
+        else if (strncmp(inst.op, "cle", 3) == 0) arm_cond = "ls";
+        else if (strncmp(inst.op, "cgt", 3) == 0) arm_cond = "gt";
+        else if (strncmp(inst.op, "cge", 3) == 0) arm_cond = "ge";
+        
+        fprintf(f, "  cset w9, %s\n", arm_cond);
+        store_reg(inst.dest, "w9", 'w', f);
       } else {
-        load_arg(inst.arg1, "%xmm0", 'd', f);
-        load_arg(inst.arg2, "%xmm1", 'd', f);
-        fprintf(f, "  ucomisd %%xmm1, %%xmm0\n");
+        if (type == 's') {
+          load_arg(inst.arg1, "%xmm0", 's', f);
+          load_arg(inst.arg2, "%xmm1", 's', f);
+          fprintf(f, "  ucomiss %%xmm1, %%xmm0\n");
+        } else {
+          load_arg(inst.arg1, "%xmm0", 'd', f);
+          load_arg(inst.arg2, "%xmm1", 'd', f);
+          fprintf(f, "  ucomisd %%xmm1, %%xmm0\n");
+        }
+        const(char)* set_op = "";
+        if (strncmp(inst.op, "ceq", 3) == 0) set_op = "sete";
+        else if (strncmp(inst.op, "cne", 3) == 0) set_op = "setne";
+        else if (strncmp(inst.op, "clt", 3) == 0) set_op = "setb";
+        else if (strncmp(inst.op, "cle", 3) == 0) set_op = "setbe";
+        else if (strncmp(inst.op, "cgt", 3) == 0) set_op = "seta";
+        else if (strncmp(inst.op, "cge", 3) == 0) set_op = "setae";
+        
+        fprintf(f, "  %s %%al\n", set_op);
+        fprintf(f, "  movzbl %%al, %%eax\n");
+        store_reg(inst.dest, "%eax", 'w', f);
       }
-      
-      const(char)* set_op = "";
-      if (strncmp(inst.op, "ceq", 3) == 0) set_op = "sete";
-      else if (strncmp(inst.op, "cne", 3) == 0) set_op = "setne";
-      else if (strncmp(inst.op, "clt", 3) == 0) set_op = "setb";
-      else if (strncmp(inst.op, "cle", 3) == 0) set_op = "setbe";
-      else if (strncmp(inst.op, "cgt", 3) == 0) set_op = "seta";
-      else if (strncmp(inst.op, "cge", 3) == 0) set_op = "setae";
-      
-      fprintf(f, "  %s %%al\n", set_op);
-      fprintf(f, "  movzbl %%al, %%eax\n");
-      store_reg(inst.dest, "%eax", 'w', f);
       return;
     }
     
@@ -944,6 +1361,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
 }
 
 void gen_function(FunctionDef* fn, FILE* f) {
+  prepass_done = false;
   reset_offsets();
   current_fn_name = fn.name + 1;
   
@@ -972,12 +1390,16 @@ void gen_function(FunctionDef* fn, FILE* f) {
     }
   }
   
-  int saved_regs_size = (target_arch == TargetArch.ARM64) ? 96 : 40;
   int total_frame = ((stack_offset_counter + 15) / 16) * 16;
   if (target_arch == TargetArch.X86_64 && target_os == TARGET_OS_WINDOWS) {
     total_frame = total_frame + 32; // Reserve 32 bytes of shadow space
   }
-  int aligned_stack = total_frame - saved_regs_size;
+  int aligned_stack = total_frame;
+  if (target_arch != TargetArch.ARM64) {
+    int saved_regs_size = 40;
+    aligned_stack = total_frame - saved_regs_size;
+  }
+  prepass_done = true;
   
   // Emit prologue
   if (fn.is_export) {
@@ -1002,7 +1424,12 @@ void gen_function(FunctionDef* fn, FILE* f) {
     fprintf(f, "  stp x25, x26, [sp, #64]\n");
     fprintf(f, "  stp x27, x28, [sp, #80]\n");
     if (aligned_stack > 0) {
-      fprintf(f, "  sub sp, sp, #%d\n", aligned_stack);
+      if (aligned_stack > 4095) {
+        fprintf(f, "  mov x16, #%d\n", aligned_stack);
+        fprintf(f, "  sub sp, sp, x16\n");
+      } else {
+        fprintf(f, "  sub sp, sp, #%d\n", aligned_stack);
+      }
     }
   } else {
     fprintf(f, "  pushq %%rbp\n");
@@ -1034,40 +1461,18 @@ void gen_function(FunctionDef* fn, FILE* f) {
   // Store parameter registers into their stack slots or allocated registers
   int int_arg_idx = 0;
   int float_arg_idx = 0;
+  int stack_arg_idx = 0;
   for (int i = 0; i < fn.params_count; i++) {
-    const(char)* alloc_reg = get_allocated_register(fn.params[i].name, fn.params[i].type);
-    int offset = get_temp_offset(fn.params[i].name);
     char type = fn.params[i].type;
     const(char)* src_reg = get_param_reg(i, type, int_arg_idx, float_arg_idx);
     if (type == 'w' || type == 'l') int_arg_idx++;
     else if (type == 's' || type == 'd') float_arg_idx++;
 
     if (src_reg) {
-      if (type == 'w') {
-        if (alloc_reg) {
-          fprintf(f, "  movl %s, %s\n", src_reg, alloc_reg);
-        } else {
-          fprintf(f, "  movl %s, -%d(%%rbp)\n", src_reg, offset);
-        }
-      } else if (type == 'l') {
-        if (alloc_reg) {
-          fprintf(f, "  movq %s, %s\n", src_reg, alloc_reg);
-        } else {
-          fprintf(f, "  movq %s, -%d(%%rbp)\n", src_reg, offset);
-        }
-      } else if (type == 's') {
-        if (alloc_reg) {
-          fprintf(f, "  movss %s, %s\n", src_reg, alloc_reg);
-        } else {
-          fprintf(f, "  movss %s, -%d(%%rbp)\n", src_reg, offset);
-        }
-      } else if (type == 'd') {
-        if (alloc_reg) {
-          fprintf(f, "  movsd %s, %s\n", src_reg, alloc_reg);
-        } else {
-          fprintf(f, "  movsd %s, -%d(%%rbp)\n", src_reg, offset);
-        }
-      }
+      store_reg(fn.params[i].name, src_reg, type, f);
+    } else {
+      load_incoming_stack_arg(fn.params[i].name, type, stack_arg_idx, f);
+      stack_arg_idx++;
     }
   }
   
@@ -1196,7 +1601,9 @@ unittest {
 
 unittest {
   TargetArch original_arch = target_arch;
+  bool original_apple = target_apple;
   target_arch = TargetArch.X86_64;
+  target_apple = false;
   init_regalloc();
   char* input = cast(char*) "\n    data $g = { w 42 }\n    data $str = { b \"hello\\n\", b 0 }\n    \n    export function w $add(w %a, w %b) {\n    @start\n      %t1 =w add %a, %b\n      ret %t1\n    }\n  ";
   
@@ -1230,6 +1637,7 @@ unittest {
   assert(found_add_label);
   assert(found_addl);
   target_arch = original_arch;
+  target_apple = original_apple;
 }
 
 unittest {
@@ -1253,4 +1661,3 @@ unittest {
 
   target_arch = original_arch;
 }
-

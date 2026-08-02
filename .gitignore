@@ -16,6 +16,9 @@ test/self_host_dqbe.d
 docs.json
 __dummy.html
 docs/
+!docs/
+docs/*
+!docs/codex.md
 /d2qbe
 d2qbe.so
 d2qbe.dylib

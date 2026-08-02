@@ -74,32 +74,26 @@ void init_regalloc() {
     gpr_callee_saved[8] = "x27";
     gpr_callee_saved[9] = "x28";
 
-    num_gpr_caller_saved = 7;
-    gpr_caller_saved[0] = "x9";
-    gpr_caller_saved[1] = "x10";
-    gpr_caller_saved[2] = "x11";
-    gpr_caller_saved[3] = "x12";
-    gpr_caller_saved[4] = "x13";
-    gpr_caller_saved[5] = "x14";
-    gpr_caller_saved[6] = "x15";
+    num_gpr_caller_saved = 4;
+    gpr_caller_saved[0] = "x12";
+    gpr_caller_saved[1] = "x13";
+    gpr_caller_saved[2] = "x14";
+    gpr_caller_saved[3] = "x15";
 
-    num_fpr_caller_saved = 16;
-    fpr_caller_saved[0] = "v16";
-    fpr_caller_saved[1] = "v17";
-    fpr_caller_saved[2] = "v18";
-    fpr_caller_saved[3] = "v19";
-    fpr_caller_saved[4] = "v20";
-    fpr_caller_saved[5] = "v21";
-    fpr_caller_saved[6] = "v22";
-    fpr_caller_saved[7] = "v23";
-    fpr_caller_saved[8] = "v24";
-    fpr_caller_saved[9] = "v25";
-    fpr_caller_saved[10] = "v26";
-    fpr_caller_saved[11] = "v27";
-    fpr_caller_saved[12] = "v28";
-    fpr_caller_saved[13] = "v29";
-    fpr_caller_saved[14] = "v30";
-    fpr_caller_saved[15] = "v31";
+    num_fpr_caller_saved = 13;
+    fpr_caller_saved[0] = "v19";
+    fpr_caller_saved[1] = "v20";
+    fpr_caller_saved[2] = "v21";
+    fpr_caller_saved[3] = "v22";
+    fpr_caller_saved[4] = "v23";
+    fpr_caller_saved[5] = "v24";
+    fpr_caller_saved[6] = "v25";
+    fpr_caller_saved[7] = "v26";
+    fpr_caller_saved[8] = "v27";
+    fpr_caller_saved[9] = "v28";
+    fpr_caller_saved[10] = "v29";
+    fpr_caller_saved[11] = "v30";
+    fpr_caller_saved[12] = "v31";
   } else {
     num_gpr_callee_saved = 5;
     gpr_callee_saved[0] = "%rbx";
@@ -146,7 +140,7 @@ int get_temp_idx(const char* name, char type) {
   return temps_count++;
 }
 
-const(char)* get_allocated_register(const char* name, char type) {
+const(char)* get_allocated_register_impl(const char* name, char type) {
   if (!name || name[0] != '%') return null;
   for (int i = 0; i < temps_count; i++) {
     if (strcmp(temps[i].name, name) == 0) {
@@ -157,39 +151,33 @@ const(char)* get_allocated_register(const char* name, char type) {
       if (target_arch == TargetArch.ARM64) {
         if (is_float) {
           if (type == 's') {
-            if (reg_idx == 0) return "s16";
-            if (reg_idx == 1) return "s17";
-            if (reg_idx == 2) return "s18";
-            if (reg_idx == 3) return "s19";
-            if (reg_idx == 4) return "s20";
-            if (reg_idx == 5) return "s21";
-            if (reg_idx == 6) return "s22";
-            if (reg_idx == 7) return "s23";
-            if (reg_idx == 8) return "s24";
-            if (reg_idx == 9) return "s25";
-            if (reg_idx == 10) return "s26";
-            if (reg_idx == 11) return "s27";
-            if (reg_idx == 12) return "s28";
-            if (reg_idx == 13) return "s29";
-            if (reg_idx == 14) return "s30";
-            if (reg_idx == 15) return "s31";
+            if (reg_idx == 0) return "s19";
+            if (reg_idx == 1) return "s20";
+            if (reg_idx == 2) return "s21";
+            if (reg_idx == 3) return "s22";
+            if (reg_idx == 4) return "s23";
+            if (reg_idx == 5) return "s24";
+            if (reg_idx == 6) return "s25";
+            if (reg_idx == 7) return "s26";
+            if (reg_idx == 8) return "s27";
+            if (reg_idx == 9) return "s28";
+            if (reg_idx == 10) return "s29";
+            if (reg_idx == 11) return "s30";
+            if (reg_idx == 12) return "s31";
           } else {
-            if (reg_idx == 0) return "d16";
-            if (reg_idx == 1) return "d17";
-            if (reg_idx == 2) return "d18";
-            if (reg_idx == 3) return "d19";
-            if (reg_idx == 4) return "d20";
-            if (reg_idx == 5) return "d21";
-            if (reg_idx == 6) return "d22";
-            if (reg_idx == 7) return "d23";
-            if (reg_idx == 8) return "d24";
-            if (reg_idx == 9) return "d25";
-            if (reg_idx == 10) return "d26";
-            if (reg_idx == 11) return "d27";
-            if (reg_idx == 12) return "d28";
-            if (reg_idx == 13) return "d29";
-            if (reg_idx == 14) return "d30";
-            if (reg_idx == 15) return "d31";
+            if (reg_idx == 0) return "d19";
+            if (reg_idx == 1) return "d20";
+            if (reg_idx == 2) return "d21";
+            if (reg_idx == 3) return "d22";
+            if (reg_idx == 4) return "d23";
+            if (reg_idx == 5) return "d24";
+            if (reg_idx == 6) return "d25";
+            if (reg_idx == 7) return "d26";
+            if (reg_idx == 8) return "d27";
+            if (reg_idx == 9) return "d28";
+            if (reg_idx == 10) return "d29";
+            if (reg_idx == 11) return "d30";
+            if (reg_idx == 12) return "d31";
           }
         } else {
           if (reg_idx < num_gpr_callee_saved) {
@@ -218,19 +206,13 @@ const(char)* get_allocated_register(const char* name, char type) {
               if (num == 28) return "x28";
             }
           } else {
-            int num = 9 + (reg_idx - num_gpr_callee_saved);
+            int num = 12 + (reg_idx - num_gpr_callee_saved);
             if (type == 'w') {
-              if (num == 9) return "w9";
-              if (num == 10) return "w10";
-              if (num == 11) return "w11";
               if (num == 12) return "w12";
               if (num == 13) return "w13";
               if (num == 14) return "w14";
               if (num == 15) return "w15";
             } else {
-              if (num == 9) return "x9";
-              if (num == 10) return "x10";
-              if (num == 11) return "x11";
               if (num == 12) return "x12";
               if (num == 13) return "x13";
               if (num == 14) return "x14";
@@ -267,6 +249,13 @@ const(char)* get_allocated_register(const char* name, char type) {
     }
   }
   return null;
+}
+
+const(char)* get_allocated_register(const char* name, char type) {
+  const(char)* ret = get_allocated_register_impl(name, type);
+  import core.stdc.stdio : fprintf, stderr;
+  fprintf(stderr, "DEBUG_GET_REG_ENTRY: name=%s, ret=%s\n", name ? name : "null", ret ? ret : "null");
+  return ret;
 }
 
 void insert_instruction(FunctionDef* fn, int idx, Instruction* inst) {
@@ -624,7 +613,7 @@ void linear_scan_reg_alloc(FunctionDef* fn) {
   ActiveInterval[32] active;
   int active_count = 0;
   
-  int next_spill_offset = 48;
+  int next_spill_offset = (target_arch == TargetArch.ARM64) ? 0 : 48;
   
   for (int i = 0; i < sorted_count; i++) {
     int t_idx = sorted_temps[i];
@@ -730,12 +719,25 @@ void sync_spill_offsets() {
 
 void perform_register_allocation(FunctionDef* fn) {
   temps_count = 0;
+  // Parameters have no defining instruction, so seed their QBE types before
+  // liveness sees their uses. This is essential for float parameters, which
+  // must use the floating-point register class.
+  for (int i = 0; i < fn.params_count; i++) {
+    get_temp_idx(fn.params[i].name, fn.params[i].type);
+  }
   resolve_phi_nodes(fn);
   blocks = cast(BasicBlock*) calloc(1000, BasicBlock.sizeof);
   build_cfg(fn);
   run_liveness_analysis(fn);
   build_live_intervals(fn);
   linear_scan_reg_alloc(fn);
+  
+  import core.stdc.stdio : fprintf, stderr;
+  if (strstr(fn.name, "main") != null) {
+    for (int i = 0; i < temps_count; i++) {
+      fprintf(stderr, "DEBUG_REG: Temp %s: start=%d, end=%d, reg=%d\n", temps[i].name, temps[i].start_point, temps[i].end_point, temps[i].assigned_reg);
+    }
+  }
 
   sync_spill_offsets();
   free(blocks);
@@ -749,8 +751,8 @@ unittest {
   
   // Verify sizes
   assert(num_gpr_callee_saved == 10);
-  assert(num_gpr_caller_saved == 7);
-  assert(num_fpr_caller_saved == 16); // v16-v31 (16 registers)
+  assert(num_gpr_caller_saved == 4);
+  assert(num_fpr_caller_saved == 13); // v19-v31 (13 registers)
   
   // Create a dummy temp to test register allocation mapping
   int original_temps_count = temps_count;
@@ -762,17 +764,16 @@ unittest {
   assert(strcmp(get_allocated_register("%t1", 'l'), "x19") == 0);
   
   temps[0].assigned_reg = 10; // Caller-saved index 0 (after 10 callee-saved)
-  assert(strcmp(get_allocated_register("%t1", 'w'), "w9") == 0);
-  assert(strcmp(get_allocated_register("%t1", 'l'), "x9") == 0);
+  assert(strcmp(get_allocated_register("%t1", 'w'), "w12") == 0);
+  assert(strcmp(get_allocated_register("%t1", 'l'), "x12") == 0);
 
   // Test float allocation
   temps[0].type = 's'; // float
   temps[0].assigned_reg = 0; // Float index 0
-  assert(strcmp(get_allocated_register("%t1", 's'), "s16") == 0);
-  assert(strcmp(get_allocated_register("%t1", 'd'), "d16") == 0);
+  assert(strcmp(get_allocated_register("%t1", 's'), "s19") == 0);
+  assert(strcmp(get_allocated_register("%t1", 'd'), "d19") == 0);
 
   temps_count = original_temps_count;
   target_arch = original_arch;
   init_regalloc();
 }
-
