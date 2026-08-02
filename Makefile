@@ -1,4 +1,4 @@
-.PHONY: all test clean unittest test-integration test-regression test-selfhost unittest-frontend unittest-backend benchmark
+.PHONY: all test clean unittest test-integration test-regression test-selfhost unittest-frontend unittest-backend test-dqbe-abi benchmark
 
 DC=ldc2
 DFLAGS=-g -w -betterC -Isource
@@ -39,9 +39,9 @@ ext.arm64.o: test/ext.d
 	$(DC) -mtriple=aarch64-linux-gnu $(DFLAGS) -c $< -of=$@
 
 ifeq ($(OS),Windows_NT)
-test: unittest test-integration-dqbe test-regression test-selfhost-dqbe
+test: unittest test-integration-dqbe test-dqbe-abi test-regression test-selfhost-dqbe
 else
-test: unittest test-integration test-integration-dqbe test-regression test-selfhost test-selfhost-dqbe
+test: unittest test-integration test-integration-dqbe test-dqbe-abi test-regression test-selfhost test-selfhost-dqbe
 endif
 
 test-integration: d2qbe qbe/qbe ext.$(OBJ_EXT)
@@ -52,6 +52,9 @@ test-integration-dqbe: d2qbe dqbe ext.$(OBJ_EXT)
 
 test-regression: dqbe
 	./test/regression.sh
+
+test-dqbe-abi: dqbe
+	./test/dqbe_abi_test.sh
 
 test-selfhost: d2qbe qbe/qbe ext.$(OBJ_EXT)
 	./test/self_host.sh

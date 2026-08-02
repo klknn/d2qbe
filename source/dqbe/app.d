@@ -16,7 +16,6 @@ import dqbe.regalloc : init_regalloc;
 extern (C)
 int main(int argc, char** argv) {
   fprintf(get_stderr(), "DEBUG_APP_START: dqbe is starting!\n");
-  init_regalloc();
 
   // Parse command line arguments
   for (int i = 1; i < argc; i++) {
@@ -93,6 +92,7 @@ int main(int argc, char** argv) {
       return 1;
     }
   }
+  init_regalloc();
   // Read all inputs from stdin
   int capacity = 4 * 1024 * 1024; // 4MB starting capacity
   char* buf = cast(char*) malloc(capacity);

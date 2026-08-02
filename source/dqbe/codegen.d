@@ -513,6 +513,149 @@ const(char)* get_param_reg(int arg_idx, char type, int int_arg_idx, int float_ar
   }
 }
 
+int align_to_16(int size) {
+  return ((size + 15) / 16) * 16;
+}
+
+int stack_argument_count(Instruction* inst) {
+  int int_arg_idx = 0;
+  int float_arg_idx = 0;
+  int count = 0;
+  for (int i = 0; i < inst.call_args_count; i++) {
+    char type = inst.call_args[i].type;
+    const(char)* reg = get_param_reg(i, type, int_arg_idx, float_arg_idx);
+    if (type == 'w' || type == 'l') int_arg_idx++;
+    else if (type == 's' || type == 'd') float_arg_idx++;
+    if (!reg) count++;
+  }
+  return count;
+}
+
+int outgoing_stack_size(Instruction* inst) {
+  int size = stack_argument_count(inst) * 8;
+  if (target_arch == TargetArch.X86_64 && target_os == TARGET_OS_WINDOWS) {
+    size += 32; // Required Win64 shadow space.
+  }
+  return align_to_16(size);
+}
+
+void reserve_outgoing_stack(int size, FILE* f) {
+  if (size == 0) return;
+  if (target_arch == TargetArch.ARM64) {
+    fprintf(f, "  sub sp, sp, #%d\n", size);
+  } else {
+    fprintf(f, "  subq $%d, %%rsp\n", size);
+  }
+}
+
+void release_outgoing_stack(int size, FILE* f) {
+  if (size == 0) return;
+  if (target_arch == TargetArch.ARM64) {
+    fprintf(f, "  add sp, sp, #%d\n", size);
+  } else {
+    fprintf(f, "  addq $%d, %%rsp\n", size);
+  }
+}
+
+void store_outgoing_stack_arg(const char* arg, char type, int stack_arg_idx, FILE* f) {
+  int offset = stack_arg_idx * 8;
+  if (target_arch == TargetArch.X86_64 && target_os == TARGET_OS_WINDOWS) {
+    offset += 32; // Stack arguments follow the Win64 shadow space.
+  }
+
+  if (target_arch == TargetArch.ARM64) {
+    if (type == 'w') {
+      load_arg(arg, "w9", type, f);
+      fprintf(f, "  str w9, [sp, #%d]\n", offset);
+    } else if (type == 'l') {
+      load_arg(arg, "x9", type, f);
+      fprintf(f, "  str x9, [sp, #%d]\n", offset);
+    } else if (type == 's') {
+      load_arg(arg, "s16", type, f);
+      fprintf(f, "  str s16, [sp, #%d]\n", offset);
+    } else if (type == 'd') {
+      load_arg(arg, "d16", type, f);
+      fprintf(f, "  str d16, [sp, #%d]\n", offset);
+    }
+  } else {
+    if (type == 'w') {
+      load_arg(arg, "%eax", type, f);
+      fprintf(f, "  movl %%eax, %d(%%rsp)\n", offset);
+    } else if (type == 'l') {
+      load_arg(arg, "%rax", type, f);
+      fprintf(f, "  movq %%rax, %d(%%rsp)\n", offset);
+    } else if (type == 's') {
+      load_arg(arg, "%xmm0", type, f);
+      fprintf(f, "  movss %%xmm0, %d(%%rsp)\n", offset);
+    } else if (type == 'd') {
+      load_arg(arg, "%xmm0", type, f);
+      fprintf(f, "  movsd %%xmm0, %d(%%rsp)\n", offset);
+    }
+  }
+}
+
+void setup_call_args(Instruction* inst, FILE* f) {
+  int int_arg_idx = 0;
+  int float_arg_idx = 0;
+  int stack_arg_idx = 0;
+  for (int i = 0; i < inst.call_args_count; i++) {
+    char type = inst.call_args[i].type;
+    const(char)* reg = get_param_reg(i, type, int_arg_idx, float_arg_idx);
+    if (type == 'w' || type == 'l') int_arg_idx++;
+    else if (type == 's' || type == 'd') float_arg_idx++;
+
+    if (reg) {
+      load_arg(inst.call_args[i].name, reg, type, f);
+    } else {
+      store_outgoing_stack_arg(inst.call_args[i].name, type, stack_arg_idx, f);
+      stack_arg_idx++;
+    }
+  }
+}
+
+int incoming_stack_arg_offset(int stack_arg_idx) {
+  if (target_arch == TargetArch.ARM64) {
+    return 96 + stack_arg_idx * 8;
+  }
+  if (target_os == TARGET_OS_WINDOWS) {
+    return 48 + stack_arg_idx * 8;
+  }
+  return 16 + stack_arg_idx * 8;
+}
+
+void load_incoming_stack_arg(const char* dest, char type, int stack_arg_idx, FILE* f) {
+  int offset = incoming_stack_arg_offset(stack_arg_idx);
+  if (target_arch == TargetArch.ARM64) {
+    if (type == 'w') {
+      fprintf(f, "  ldr w9, [x29, #%d]\n", offset);
+      store_reg(dest, "w9", type, f);
+    } else if (type == 'l') {
+      fprintf(f, "  ldr x9, [x29, #%d]\n", offset);
+      store_reg(dest, "x9", type, f);
+    } else if (type == 's') {
+      fprintf(f, "  ldr s16, [x29, #%d]\n", offset);
+      store_reg(dest, "s16", type, f);
+    } else if (type == 'd') {
+      fprintf(f, "  ldr d16, [x29, #%d]\n", offset);
+      store_reg(dest, "d16", type, f);
+    }
+  } else {
+    if (type == 'w') {
+      fprintf(f, "  movl %d(%%rbp), %%eax\n", offset);
+      store_reg(dest, "%eax", type, f);
+    } else if (type == 'l') {
+      fprintf(f, "  movq %d(%%rbp), %%rax\n", offset);
+      store_reg(dest, "%rax", type, f);
+    } else if (type == 's') {
+      fprintf(f, "  movss %d(%%rbp), %%xmm0\n", offset);
+      store_reg(dest, "%xmm0", type, f);
+    } else if (type == 'd') {
+      fprintf(f, "  movsd %d(%%rbp), %%xmm0\n", offset);
+      store_reg(dest, "%xmm0", type, f);
+    }
+  }
+}
+
 __gshared bool prepass_done = false;
 const(char)* current_fn_name;
 
@@ -617,19 +760,9 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
   
   if (inst.kind == InstKind.IK_call) {
     // Void call
-    // Set up parameters
-    int int_arg_idx = 0;
-    int float_arg_idx = 0;
-    for (int i = 0; i < inst.call_args_count && i < 20; i++) {
-      char type = inst.call_args[i].type;
-      const(char)* reg = get_param_reg(i, type, int_arg_idx, float_arg_idx);
-      if (type == 'w' || type == 'l') int_arg_idx++;
-      else if (type == 's' || type == 'd') float_arg_idx++;
-
-      if (reg) {
-        load_arg(inst.call_args[i].name, reg, type, f);
-      }
-    }
+    int call_stack_size = outgoing_stack_size(inst);
+    reserve_outgoing_stack(call_stack_size, f);
+    setup_call_args(inst, f);
     if (target_arch == TargetArch.ARM64) {
       if (target_apple) {
         fprintf(f, "  bl _%s\n", inst.arg1 + 1);
@@ -638,7 +771,11 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
       }
     } else {
       if (target_os == TARGET_OS_SYSV) {
-        fprintf(f, "  movb $%d, %%al\n", float_arg_idx);
+        int float_arg_count = 0;
+        for (int i = 0; i < inst.call_args_count; i++) {
+          if (inst.call_args[i].type == 's' || inst.call_args[i].type == 'd') float_arg_count++;
+        }
+        fprintf(f, "  movb $%d, %%al\n", float_arg_count);
       }
       if (target_apple) {
         fprintf(f, "  call _%s\n", inst.arg1 + 1);
@@ -646,6 +783,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
         fprintf(f, "  call %s\n", inst.arg1 + 1);
       }
     }
+    release_outgoing_stack(call_stack_size, f);
     clear_cache();
     return;
   }
@@ -886,18 +1024,9 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
     
     if (strcmp(inst.op, "call") == 0) {
       // Function call with assignment
-      int int_arg_idx = 0;
-      int float_arg_idx = 0;
-      for (int i = 0; i < inst.call_args_count && i < 20; i++) {
-        char type = inst.call_args[i].type;
-        const(char)* reg = get_param_reg(i, type, int_arg_idx, float_arg_idx);
-        if (type == 'w' || type == 'l') int_arg_idx++;
-        else if (type == 's' || type == 'd') float_arg_idx++;
-
-        if (reg) {
-          load_arg(inst.call_args[i].name, reg, type, f);
-        }
-      }
+      int call_stack_size = outgoing_stack_size(inst);
+      reserve_outgoing_stack(call_stack_size, f);
+      setup_call_args(inst, f);
       if (target_arch == TargetArch.ARM64) {
         if (target_apple) {
           fprintf(f, "  bl _%s\n", inst.arg1 + 1);
@@ -906,7 +1035,11 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
         }
       } else {
         if (target_os == TARGET_OS_SYSV) {
-          fprintf(f, "  movb $%d, %%al\n", float_arg_idx);
+          int float_arg_count = 0;
+          for (int i = 0; i < inst.call_args_count; i++) {
+            if (inst.call_args[i].type == 's' || inst.call_args[i].type == 'd') float_arg_count++;
+          }
+          fprintf(f, "  movb $%d, %%al\n", float_arg_count);
         }
         if (target_apple) {
           fprintf(f, "  call _%s\n", inst.arg1 + 1);
@@ -914,6 +1047,7 @@ void gen_instruction(Instruction* inst, int fn_ret_type, FILE* f) {
           fprintf(f, "  call %s\n", inst.arg1 + 1);
         }
       }
+      release_outgoing_stack(call_stack_size, f);
       clear_cache();
       if (target_arch == TargetArch.ARM64) {
         if (inst.dest_type == 'w') {
@@ -1327,9 +1461,8 @@ void gen_function(FunctionDef* fn, FILE* f) {
   // Store parameter registers into their stack slots or allocated registers
   int int_arg_idx = 0;
   int float_arg_idx = 0;
+  int stack_arg_idx = 0;
   for (int i = 0; i < fn.params_count; i++) {
-    const(char)* alloc_reg = get_allocated_register(fn.params[i].name, fn.params[i].type);
-    int offset = get_temp_offset(fn.params[i].name);
     char type = fn.params[i].type;
     const(char)* src_reg = get_param_reg(i, type, int_arg_idx, float_arg_idx);
     if (type == 'w' || type == 'l') int_arg_idx++;
@@ -1337,6 +1470,9 @@ void gen_function(FunctionDef* fn, FILE* f) {
 
     if (src_reg) {
       store_reg(fn.params[i].name, src_reg, type, f);
+    } else {
+      load_incoming_stack_arg(fn.params[i].name, type, stack_arg_idx, f);
+      stack_arg_idx++;
     }
   }
   
@@ -1525,4 +1661,3 @@ unittest {
 
   target_arch = original_arch;
 }
-

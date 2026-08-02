@@ -719,6 +719,12 @@ void sync_spill_offsets() {
 
 void perform_register_allocation(FunctionDef* fn) {
   temps_count = 0;
+  // Parameters have no defining instruction, so seed their QBE types before
+  // liveness sees their uses. This is essential for float parameters, which
+  // must use the floating-point register class.
+  for (int i = 0; i < fn.params_count; i++) {
+    get_temp_idx(fn.params[i].name, fn.params[i].type);
+  }
   resolve_phi_nodes(fn);
   blocks = cast(BasicBlock*) calloc(1000, BasicBlock.sizeof);
   build_cfg(fn);
@@ -771,4 +777,3 @@ unittest {
   target_arch = original_arch;
   init_regalloc();
 }
-
