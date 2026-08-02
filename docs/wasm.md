@@ -175,6 +175,10 @@ runtime behavior remains an optional browser/Node/WABT validation concern.
   imported allocator-style function return a pointer that can be dereferenced
   by the Wasm pipeline. It does not yet convert all legacy `l` address paths
   used by structs and slices in the full compiler.
+- Lowered local struct-member addresses (including nonzero field offsets) to
+  wasm32 `w` arithmetic. The pipeline test writes and reads both fields of a
+  two-word local struct; slice layout and struct-copy paths still contain
+  legacy address lowering to convert.
 - Added byte stores: QBE `storeb` maps to Wasm `i32.store8`, complementing
   `loadub`. The D pipeline test covers a local `char` round trip.
 - Made the bump allocator grow linear memory when a new allocation exceeds
@@ -202,7 +206,7 @@ runtime behavior remains an optional browser/Node/WABT validation concern.
 
 LDC `--cov` measurement of the backend unit binary reports 74.0% line
 coverage for `source/dqbe/wasm.d` (463/626 executable lines) after adding
-browser-import tests. `test/dqbe_wasm_test.sh` has eighteen pipeline
+browser-import tests. `test/dqbe_wasm_test.sh` has nineteen pipeline
 scenarios. These are
 compile-and-binary checks; semantic execution coverage remains unavailable
 until an independent Wasm engine is installed in CI or locally.

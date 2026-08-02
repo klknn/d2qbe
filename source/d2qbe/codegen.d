@@ -1102,8 +1102,8 @@ int gen_addr(Node* node) {
       }
       if (node.ident.len == 3 && strncmp(node.ident.str, "ptr", 3) == 0) {
         int res = next_reg();
-        printf("  %%t%d =l add %%t%d, 8\n", res, struct_addr);
-        set_reg_type(res, 'l');
+        printf("  %%t%d =%c add %%t%d, 8\n", res, qbe_address_type(), struct_addr);
+        set_reg_type(res, qbe_address_type());
         return res;
       }
       error("unknown slice property address");
@@ -1135,8 +1135,8 @@ int gen_addr(Node* node) {
       return struct_addr;
     }
     int res = next_reg();
-    printf("  %%t%d =l add %%t%d, %d\n", res, struct_addr, m.offset);
-    set_reg_type(res, 'l');
+    printf("  %%t%d =%c add %%t%d, %d\n", res, qbe_address_type(), struct_addr, m.offset);
+    set_reg_type(res, qbe_address_type());
     return res;
   }
   error("lvalue expected");
