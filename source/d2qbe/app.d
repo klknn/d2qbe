@@ -1,6 +1,7 @@
 module d2qbe.app;
 
 import d2qbe.codegen;
+import d2qbe.config;
 import d2qbe.parse;
 import d2qbe.tokenize;
 import d2qbe.c_declarations;
@@ -9,13 +10,22 @@ extern (C) void* get_stderr();
 
 extern (C)
 int main(int argc, char** argv) {
-  if (argc != 2) {
+  int input_index = 1;
+  if (argc == 4 && (strcmp(argv[1], "-t") == 0 || strcmp(argv[1], "--target") == 0)) {
+    if (strcmp(argv[2], "wasm") == 0 || strcmp(argv[2], "wasm32") == 0) {
+      target_layout = TargetLayout.Wasm32;
+    } else {
+      fprintf(get_stderr(), "unknown target: %s\n", argv[2]);
+      return 1;
+    }
+    input_index = 3;
+  } else if (argc != 2) {
     fprintf(get_stderr(), "wrong number of args\n");
     return 1;
   }
 
-  char* input_str = argv[1];
-  void* f_in = fopen(argv[1], "r");
+  char* input_str = argv[input_index];
+  void* f_in = fopen(argv[input_index], "r");
   if (f_in) {
     fseek(f_in, 0, 2);
     int size = cast(int) ftell(f_in);

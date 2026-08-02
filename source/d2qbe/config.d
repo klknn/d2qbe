@@ -18,3 +18,10 @@ enum MAX_LOCALS = 200;
 enum MAX_REG_COUNT = 9999;
 enum MAX_REG_TYPES = 10000;
 enum MAX_ACTIVE_RAII = 500;
+
+enum TargetLayout {
+  Native64,
+  Wasm32,
+}
+
+TargetLayout target_layout = TargetLayout.Native64;

@@ -61,10 +61,12 @@ Therefore the milestones are deliberately staged:
    (a dispatcher-loop lowering is the reliable general strategy) and add one
    linear memory. Structured control is complete; memory still rejects
    ambiguous `l` values until the target-aware frontend work lands.
-3. **M3: target-aware `d2qbe -t wasm32`.** Make pointer width, alignment,
-   `sizeof`, struct layout, and pointer arithmetic target-specific; emit
-   pointer values in a distinguishable wasm-compatible representation. Only
-   then enable arrays, slices, globals, and D programs that use memory.
+3. **M3: target-aware `d2qbe -t wasm32`.** The initial layout selection is
+   implemented: pointers and `size_t` are 4 bytes, slices are 8 bytes, and
+   their alignment is 4 bytes. Struct layout therefore follows wasm32 sizes
+   when parsed with that target. Pointer values still emit as QBE `l` and need
+   a distinguishable wasm-compatible representation before arrays, slices,
+   globals, and memory-using D programs are enabled.
 4. **M4: host imports / optional WASI profile.** Specify imports and implement
    a browser host shim first. Evaluate WASI Preview 1 or a newer WASI profile
    separately; it must not silently become a required dependency.
@@ -92,6 +94,11 @@ a compiler bug wearing a tiny fake moustache.
   blocks; the program-counter local is internal to the emitted Wasm function.
   Unsupported data, `l`, floating point, stores/loads, and external calls
   still fail with a diagnostic.
+- Added `d2qbe -t wasm32` / `--target wasm32` layout selection. The frontend
+  now uses 4-byte pointers and `size_t`, 8-byte slices, and 4-byte pointer or
+  slice alignment for that target; native compilation retains its 64-bit
+  layout. The integration test compiles `int*.sizeof` through both stages and
+  checks the emitted Wasm `i32.const 4`.
 - Added test-first coverage in `source/dqbe/wasm.d` and
   `test/dqbe_wasm_test.sh`. The unit locks down the full 38-byte encoding of
   `export function w $main() { ret 42 }`; the integration test checks both
@@ -122,7 +129,7 @@ it is not yet suitable for compiling the compiler itself.
 | Control flow | arbitrary CFG | one basic block | conditionals, loops, and error paths cannot compile yet |
 | Memory and data | loads, stores, globals | not implemented | allocation, strings, arrays, and source text are blocked |
 | Calls | native ABI, including recent stack arguments | direct internal `w` calls | host/runtime calls are still absent |
-| Target data layout | host-native | currently host-biased frontend layout | wasm32 pointer size/alignment must be explicit |
+| Target data layout | host-native | wasm32 pointer size/alignment selected; pointer representation pending | memory code remains blocked on `l` handling |
 | Runtime validation | native compiler/linker/test paths | binary and pipeline checks | add an optional independent Wasm runner in CI |
 
 ### Self-hosting-first order
@@ -134,9 +141,10 @@ by the easiest isolated opcode to add:
    and recursion, while preserving `w` semantics. This is the next slice.
 2. **Linear memory and static data:** implement typed loads/stores, data
    segments, globals, and a carefully specified pointer representation.
-3. **A wasm32-aware frontend layout:** make pointer width, `sizeof`,
-   alignment, struct layout, and pointer arithmetic target-dependent. This
-   removes the current host-64-bit assumption before pointers are enabled.
+3. **A wasm32-aware frontend layout:** establish pointer width, `sizeof`,
+   alignment, struct layout, and pointer arithmetic as target-dependent. The
+   size/alignment portion is complete; represent pointer values separately
+   from genuine 64-bit integers before pointers are enabled.
 4. **Minimal browser host ABI:** provide only the imports needed by the
    self-hosted compiler (allocation and source/input/output shims), specified
    independently of WASI. A host-supplied source buffer is preferable to
@@ -158,7 +166,7 @@ Extend `dqbe` with `-t wasm32`. In this mode stdout is binary WebAssembly, so
 diagnostics must stay on stderr. The invocation is:
 
 ```sh
-./d2qbe 'extern(C) int main() { return 42; }' | ./dqbe -t wasm32 > main.wasm
+./d2qbe -t wasm32 'extern(C) int main() { return 42; }' | ./dqbe -t wasm32 > main.wasm
 ```
 
 The first implementation can live in `source/dqbe/wasm.d`, reusing the
@@ -246,6 +254,7 @@ against an independent Wasm runtime as a conformance gate.
 
 Add an optional independent runtime check when a browser, Node, Wasmtime, or
 WABT is available, without making it a compiler dependency. The next required
-self-hosting work is target-aware wasm32 layout, then linear memory/data and
-the minimal browser host ABI. Each capability begins with a failing test; do
-not add an external runtime dependency merely to make the unit tests pass.
+self-hosting work is a wasm-compatible pointer representation followed by
+linear memory/data and the minimal browser host ABI. Each capability begins
+with a failing test; do not add an external runtime dependency merely to make
+the unit tests pass.

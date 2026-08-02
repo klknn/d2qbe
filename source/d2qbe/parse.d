@@ -392,13 +392,17 @@ void init_types() {
 /**
  * Computes the size in bytes of a D type.
  */
+int target_pointer_size() {
+  return target_layout == TargetLayout.Wasm32 ? 4 : 8;
+}
+
 int get_type_size(Type* t) {
   if (t.is_slice) {
-    return 16;
+    return target_pointer_size() * 2;
   }
   int base_size;
   if (t.ptr_depth > 0) {
-    base_size = 8;
+    base_size = target_pointer_size();
   } else {
     base_size = 4;
     if (strcmp(t.name, "int") == 0) base_size = 4;
@@ -406,7 +410,7 @@ int get_type_size(Type* t) {
     else if (strcmp(t.name, "double") == 0) base_size = 8;
     else if (strcmp(t.name, "char") == 0 || strcmp(t.name, "bool") == 0) base_size = 1;
     else if (strcmp(t.name, "void") == 0) base_size = 1;
-    else if (strcmp(t.name, "size_t") == 0) base_size = 8;
+    else if (strcmp(t.name, "size_t") == 0) base_size = target_pointer_size();
     else {
       StructType* st = find_struct(t.name);
       if (st) {
@@ -428,8 +432,8 @@ int get_type_size(Type* t) {
  * Computes the alignment requirement in bytes of a D type.
  */
 int get_type_alignment(Type* t) {
-  if (t.is_slice) return 8;
-  if (t.ptr_depth > 0) return 8;
+  if (t.is_slice) return target_pointer_size();
+  if (t.ptr_depth > 0) return target_pointer_size();
   if (strcmp(t.name, "int") == 0) return 4;
   if (strcmp(t.name, "float") == 0) return 4;
   if (strcmp(t.name, "double") == 0) return 8;
@@ -2780,6 +2784,19 @@ unittest {
   registered_structs_count = 0;
   constants_count = 0;
 
+  Type pointer;
+  pointer.name = "int";
+  pointer.ptr_depth = 1;
+  Type slice;
+  slice.name = "int";
+  slice.is_slice = true;
+  target_layout = TargetLayout.Wasm32;
+  assert(get_type_size(&pointer) == 4);
+  assert(get_type_alignment(&pointer) == 4);
+  assert(get_type_size(&slice) == 8);
+  assert(get_type_alignment(&slice) == 4);
+  target_layout = TargetLayout.Native64;
+
   // Test Stage 4: Struct parsing and layout
   user_input = cast(char*) "struct S { char a; int b; char c; }";
   token = tokenize(user_input);
@@ -3126,5 +3143,3 @@ unittest {
   assert(strncmp(ca.rhs.lhs.ident.str, "x", 1) == 0);
   assert(ca.rhs.rhs.kind == NodeKind.NK_num && ca.rhs.rhs.val == 42);
 }
-
-

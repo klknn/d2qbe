@@ -21,7 +21,7 @@ fi
 
 echo "PASS: dqbe -t wasm32 emits a WebAssembly binary"
 
-"$D2QBE" 'extern(C) int main() { return 42; }' | "$DQBE" -t wasm32 > "$OUTPUT"
+"$D2QBE" -t wasm32 'extern(C) int main() { return 42; }' | "$DQBE" -t wasm32 > "$OUTPUT"
 HEADER=$(od -An -tx1 -N8 "$OUTPUT" | tr -d '[:space:]')
 if [ "$HEADER" != "0061736d01000000" ]; then
   echo "FAILED: d2qbe pipeline did not emit a WebAssembly binary"
@@ -29,6 +29,14 @@ if [ "$HEADER" != "0061736d01000000" ]; then
 fi
 
 echo "PASS: d2qbe -> dqbe -t wasm32 smoke test"
+
+"$D2QBE" -t wasm32 'extern(C) int main() { return int*.sizeof; }' | "$DQBE" -t wasm32 > "$OUTPUT"
+if ! od -An -tx1 "$OUTPUT" | tr -d '[:space:]' | grep -q '41042100'; then
+  echo "FAILED: wasm32 frontend layout did not emit a four-byte pointer size"
+  exit 1
+fi
+
+echo "PASS: d2qbe -t wasm32 uses wasm32 pointer layout"
 
 printf '%s\n' \
   'export function w $main(w %condition) {' \
