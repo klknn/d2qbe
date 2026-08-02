@@ -132,6 +132,8 @@ a compiler bug wearing a tiny fake moustache.
   backend emits their direct Wasm call without attempting to assign a value.
   This is covered by both a backend unit test and a D pointer-mutating helper
   pipeline test.
+- Added byte stores: QBE `storeb` maps to Wasm `i32.store8`, complementing
+  `loadub`. The D pipeline test covers a local `char` round trip.
 - Added test-first coverage in `source/dqbe/wasm.d` and
   `test/dqbe_wasm_test.sh`. The unit locks down the full 38-byte encoding of
   `export function w $main() { ret 42 }`; the integration test checks both
@@ -149,9 +151,9 @@ a compiler bug wearing a tiny fake moustache.
 
 ### Test coverage baseline
 
-LDC `--cov` measurement of the backend unit binary reports 64.4% line
-coverage for `source/dqbe/wasm.d` (336/522 executable lines) after the void
-call test. `test/dqbe_wasm_test.sh` has eleven pipeline scenarios. These are
+LDC `--cov` measurement of the backend unit binary reports 68.9% line
+coverage for `source/dqbe/wasm.d` (370/537 executable lines) after the byte
+store test. `test/dqbe_wasm_test.sh` has twelve pipeline scenarios. These are
 compile-and-binary checks; semantic execution coverage remains unavailable
 until an independent Wasm engine is installed in CI or locally.
 
@@ -168,7 +170,7 @@ local storage, but it is not yet suitable for compiling the compiler itself.
 | --- | --- | --- | --- |
 | QBE scalar values | `w`, `l`, `s`, `d` | `w`; local addresses and pointer parameters use `w` | globals, slices, and broad pointer expressions remain pending |
 | Control flow | arbitrary CFG | arbitrary CFG via dispatcher loop | ready for compiler conditionals and loops |
-| Memory and data | loads, stores, globals | word/byte loads, word stores, bump allocation, static strings/data, mutable word globals | wider globals and data relocations remain pending |
+| Memory and data | loads, stores, globals | word/byte loads and stores, bump allocation, static strings/data, mutable word globals | wider globals and data relocations remain pending |
 | Calls | native ABI, including recent stack arguments | direct internal `w` calls | host/runtime calls are still absent |
 | Target data layout | host-native | wasm32 size/alignment plus local-address representation | expand that representation beyond locals |
 | Runtime validation | native compiler/linker/test paths | binary and pipeline checks | add an optional independent Wasm runner in CI |

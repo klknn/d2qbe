@@ -20,6 +20,7 @@ enum ubyte WASM_GLOBAL_SET = 0x24;
 enum ubyte WASM_I32_LOAD = 0x28;
 enum ubyte WASM_I32_LOAD8_U = 0x2d;
 enum ubyte WASM_I32_STORE = 0x36;
+enum ubyte WASM_I32_STORE8 = 0x3a;
 enum ubyte WASM_UNREACHABLE = 0x00;
 enum ubyte WASM_LOOP = 0x03;
 enum ubyte WASM_IF = 0x04;
@@ -367,12 +368,20 @@ bool append_assign(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
 }
 
 bool append_store(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
-  if (strcmp(inst.op, "storew") != 0) {
-    wasm_error("only storew is supported by wasm memory M2");
+  ubyte opcode;
+  uint alignment;
+  if (strcmp(inst.op, "storew") == 0) {
+    opcode = WASM_I32_STORE;
+    alignment = 2;
+  } else if (strcmp(inst.op, "storeb") == 0) {
+    opcode = WASM_I32_STORE8;
+    alignment = 0;
+  } else {
+    wasm_error("wasm memory supports only storew and storeb");
     return false;
   }
   return append_value(body, fn, inst.arg2) && append_value(body, fn, inst.arg1) &&
-    append_byte(body, WASM_I32_STORE) && append_u32(body, 2) && append_u32(body, 0);
+    append_byte(body, opcode) && append_u32(body, alignment) && append_u32(body, 0);
 }
 
 bool program_uses_memory() {
@@ -801,4 +810,16 @@ unittest {
   assert(emit_wasm_program(output));
   fclose(output);
   remove("tmp_wasm_void_call_test.wasm");
+}
+
+unittest {
+  char* input = cast(char*) "export function w $main() {\n@start\n%address =w alloc4 1\nstoreb 65, %address\n%value =w loadub %address\nret %value\n}\n";
+  token = tokenize(input);
+  parse_program();
+
+  FILE* output = fopen("tmp_wasm_byte_memory_test.wasm", "wb");
+  assert(output != null);
+  assert(emit_wasm_program(output));
+  fclose(output);
+  remove("tmp_wasm_byte_memory_test.wasm");
 }

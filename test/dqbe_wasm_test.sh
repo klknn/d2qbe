@@ -87,6 +87,15 @@ fi
 
 echo "PASS: d2qbe -> wasm32 supports internal void calls"
 
+"$D2QBE" -t wasm32 'extern(C) int main() { char x = 65; return x; }' | "$DQBE" -t wasm32 > "$OUTPUT"
+BYTES=$(od -An -tx1 "$OUTPUT" | tr -d '[:space:]')
+if ! printf '%s' "$BYTES" | grep -q '3a0000.*2d0000'; then
+  echo "FAILED: wasm32 char storage is missing byte store/load instructions"
+  exit 1
+fi
+
+echo "PASS: d2qbe -> wasm32 supports byte storage"
+
 printf '%s\n' \
   'export function w $main(w %condition) {' \
   '@start' \
