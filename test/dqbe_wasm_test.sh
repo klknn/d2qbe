@@ -56,6 +56,19 @@ fi
 
 echo "PASS: d2qbe -> wasm32 supports pointer parameters"
 
+"$D2QBE" -t wasm32 'extern(C) int main() { return "x"[0]; }' | "$DQBE" -t wasm32 > "$OUTPUT"
+HEADER=$(od -An -tx1 -N8 "$OUTPUT" | tr -d '[:space:]')
+if [ "$HEADER" != "0061736d01000000" ]; then
+  echo "FAILED: wasm32 string-literal pipeline did not emit a WebAssembly binary"
+  exit 1
+fi
+if ! od -An -tx1 "$OUTPUT" | tr -d '[:space:]' | grep -q '2d0000'; then
+  echo "FAILED: wasm32 string indexing did not use an unsigned byte load"
+  exit 1
+fi
+
+echo "PASS: d2qbe -> wasm32 lowers string-literal addresses"
+
 printf '%s\n' \
   'export function w $main(w %condition) {' \
   '@start' \

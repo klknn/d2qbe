@@ -18,6 +18,7 @@ enum ubyte WASM_I32_CONST = 0x41;
 enum ubyte WASM_GLOBAL_GET = 0x23;
 enum ubyte WASM_GLOBAL_SET = 0x24;
 enum ubyte WASM_I32_LOAD = 0x28;
+enum ubyte WASM_I32_LOAD8_U = 0x2d;
 enum ubyte WASM_I32_STORE = 0x36;
 enum ubyte WASM_UNREACHABLE = 0x00;
 enum ubyte WASM_LOOP = 0x03;
@@ -330,6 +331,9 @@ bool append_assign(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
   } else if (strcmp(inst.op, "loadw") == 0) {
     if (!append_value(body, fn, inst.arg1) || !append_byte(body, WASM_I32_LOAD) ||
         !append_u32(body, 2) || !append_u32(body, 0)) return false;
+  } else if (strcmp(inst.op, "loadub") == 0) {
+    if (!append_value(body, fn, inst.arg1) || !append_byte(body, WASM_I32_LOAD8_U) ||
+        !append_u32(body, 0) || !append_u32(body, 0)) return false;
   } else if (strcmp(inst.op, "call") == 0) {
     int target = find_function(inst.arg1);
     if (target < 0) {
@@ -375,7 +379,8 @@ bool program_uses_memory() {
       Instruction* inst = &fn.instructions[j];
       if (inst.kind == InstKind.IK_store ||
           (inst.kind == InstKind.IK_assign &&
-           (strcmp(inst.op, "loadw") == 0 || strncmp(inst.op, "alloc", 5) == 0))) {
+           (strcmp(inst.op, "loadw") == 0 || strcmp(inst.op, "loadub") == 0 ||
+            strncmp(inst.op, "alloc", 5) == 0))) {
         return true;
       }
     }

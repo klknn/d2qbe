@@ -801,6 +801,12 @@ void get_expr_type(Node* node, Type* out_type) {
     *out_type = t;
     return;
   }
+  if (node.kind == NodeKind.NK_str_literal) {
+    t.name = "char";
+    t.ptr_depth = 1;
+    *out_type = t;
+    return;
+  }
   if (node.kind == NodeKind.NK_float_num) {
     t.name = "double";
     if (node.ident.len > 0) {
@@ -1066,11 +1072,16 @@ int gen_addr(Node* node) {
         printf("  %%t%d =w mul %%t%d, %d\n", mul_res, r, scale);
         offset_reg = mul_res;
       }
-      int ext_res = next_reg();
-      printf("  %%t%d =l extsw %%t%d\n", ext_res, offset_reg);
       int add_res = next_reg();
-      printf("  %%t%d =l add %%t%d, %%t%d\n", add_res, l, ext_res);
-      set_reg_type(add_res, 'l');
+      if (target_layout == TargetLayout.Wasm32) {
+        printf("  %%t%d =w add %%t%d, %%t%d\n", add_res, l, offset_reg);
+        set_reg_type(add_res, 'w');
+      } else {
+        int ext_res = next_reg();
+        printf("  %%t%d =l extsw %%t%d\n", ext_res, offset_reg);
+        printf("  %%t%d =l add %%t%d, %%t%d\n", add_res, l, ext_res);
+        set_reg_type(add_res, 'l');
+      }
       return add_res;
   }
   if (node.kind == NodeKind.NK_dot) {
@@ -1570,8 +1581,9 @@ int gen(Node* node) {
   if (node.kind == NodeKind.NK_str_literal) {
       int idx = add_string_literal(node.ident);
       int res = next_reg();
-      printf("  %%t%d =l copy $str%d\n", res, idx);
-      set_reg_type(res, 'l');
+      char address_type = qbe_address_type();
+      printf("  %%t%d =%c copy $str%d\n", res, address_type, idx);
+      set_reg_type(res, address_type);
       return res;
     }
   if (node.kind == NodeKind.NK_cast_) {
