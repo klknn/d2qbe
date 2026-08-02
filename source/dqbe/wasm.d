@@ -295,6 +295,21 @@ ubyte binary_opcode(const char* op) {
   return 0;
 }
 
+bool append_call(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
+  int target = find_function(inst.arg1);
+  if (target < 0) {
+    wasm_error("call target is undefined");
+    return false;
+  }
+  for (int i = 0; i < inst.call_args_count; i++) {
+    if (inst.call_args[i].type != 'w' || !append_value(body, fn, inst.call_args[i].name)) {
+      wasm_error("M1 supports only w call arguments");
+      return false;
+    }
+  }
+  return append_byte(body, WASM_CALL) && append_u32(body, cast(uint) target);
+}
+
 bool append_assign(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
   if (inst.dest_type != 'w') {
     wasm_error("M1 supports only w assignment results");
@@ -335,18 +350,7 @@ bool append_assign(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
     if (!append_value(body, fn, inst.arg1) || !append_byte(body, WASM_I32_LOAD8_U) ||
         !append_u32(body, 0) || !append_u32(body, 0)) return false;
   } else if (strcmp(inst.op, "call") == 0) {
-    int target = find_function(inst.arg1);
-    if (target < 0) {
-      wasm_error("call target is undefined");
-      return false;
-    }
-    for (int i = 0; i < inst.call_args_count; i++) {
-      if (inst.call_args[i].type != 'w' || !append_value(body, fn, inst.call_args[i].name)) {
-        wasm_error("M1 supports only w call arguments");
-        return false;
-      }
-    }
-    if (!append_byte(body, WASM_CALL) || !append_u32(body, cast(uint) target)) return false;
+    if (!append_call(body, fn, inst)) return false;
   } else {
     ubyte opcode = binary_opcode(inst.op);
     if (opcode == 0) {
@@ -465,6 +469,10 @@ bool append_dispatcher_body(ref ByteBuffer body, FunctionDef* fn, int program_co
         if (!append_store(body, fn, inst)) return false;
         continue;
       }
+      if (inst.kind == InstKind.IK_call) {
+        if (!append_call(body, fn, inst)) return false;
+        continue;
+      }
       if (inst.kind == InstKind.IK_ret) {
         if (!append_return(body, fn, inst)) return false;
         terminates = true;
@@ -578,6 +586,13 @@ bool append_function_body(ref ByteBuffer code, FunctionDef* fn) {
     }
     if (inst.kind == InstKind.IK_store) {
       if (!append_store(body, fn, inst)) {
+        dispose(body);
+        return false;
+      }
+      continue;
+    }
+    if (inst.kind == InstKind.IK_call) {
+      if (!append_call(body, fn, inst)) {
         dispose(body);
         return false;
       }
@@ -774,4 +789,16 @@ unittest {
   assert(emit_wasm_program(output));
   fclose(output);
   remove("tmp_wasm_data_test.wasm");
+}
+
+unittest {
+  char* input = cast(char*) "function $touch(w %value) {\n@start\nret\n}\nexport function w $main() {\n@start\ncall $touch(w 42)\nret 0\n}\n";
+  token = tokenize(input);
+  parse_program();
+
+  FILE* output = fopen("tmp_wasm_void_call_test.wasm", "wb");
+  assert(output != null);
+  assert(emit_wasm_program(output));
+  fclose(output);
+  remove("tmp_wasm_void_call_test.wasm");
 }

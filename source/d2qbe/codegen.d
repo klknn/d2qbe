@@ -1958,6 +1958,8 @@ int gen(Node* node) {
                mangled_func_name, ret_name, fs.return_type.ptr_depth);
       }
 
+      bool returns_void = fs && fs.return_type.ptr_depth == 0 &&
+        strcmp(fs.return_type.name, "void") == 0;
       char ret_type = 'w';
       if (fs) {
         if (fs.return_type.ptr_depth > 0) {
@@ -1968,8 +1970,12 @@ int gen(Node* node) {
           ret_type = 'd';
         }
       }
-      int res = next_reg();
-      printf("  %%t%d =%c call $%.*s(", res, ret_type, mangled_func_len, mangled_func_name);
+      int res = returns_void ? 0 : next_reg();
+      if (returns_void) {
+        printf("  call $%.*s(", mangled_func_len, mangled_func_name);
+      } else {
+        printf("  %%t%d =%c call $%.*s(", res, ret_type, mangled_func_len, mangled_func_name);
+      }
       for (int i = 0; i < n_arg; ++i) {
         if (fs && fs.is_variadic && i == fs.num_params) {
           printf("..., ");
@@ -1982,7 +1988,7 @@ int gen(Node* node) {
         }
       }
       printf(")\n");
-      set_reg_type(res, ret_type);
+      if (!returns_void) set_reg_type(res, ret_type);
       if (node.type.name != null) {
         return struct_addr;
       }
@@ -2004,6 +2010,8 @@ int gen(Node* node) {
       collect_locals(node.then);
       
       const(char)* ret_type_str = "w";
+      bool returns_void = node.return_type.ptr_depth == 0 &&
+        strcmp(node.return_type.name, "void") == 0;
       if (node.return_type.ptr_depth > 0) {
         ret_type_str = target_layout == TargetLayout.Wasm32 ? "w" : "l";
       } else if (strcmp(node.return_type.name, "float") == 0) {
@@ -2011,7 +2019,11 @@ int gen(Node* node) {
       } else if (strcmp(node.return_type.name, "double") == 0) {
         ret_type_str = "d";
       }
-      printf("export function %s $%s(", ret_type_str, node.mangled_name);
+      if (returns_void) {
+        printf("export function $%s(", node.mangled_name);
+      } else {
+        printf("export function %s $%s(", ret_type_str, node.mangled_name);
+      }
       for (int i = 0; node.params[i]; ++i) {
         const(Token)* p = node.params[i];
         Type t = node.params_types[i];

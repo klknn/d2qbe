@@ -127,6 +127,11 @@ a compiler bug wearing a tiny fake moustache.
   `data { z ... }` storage is emitted into linear memory, so word reads and
   writes compile through the Wasm pipeline; the integration test covers an
   assignment to and read from `int g`.
+- Added internal calls with no result. `d2qbe` now emits proper no-result QBE
+  functions and `call $name(...)` instructions for `void` D calls; the Wasm
+  backend emits their direct Wasm call without attempting to assign a value.
+  This is covered by both a backend unit test and a D pointer-mutating helper
+  pipeline test.
 - Added test-first coverage in `source/dqbe/wasm.d` and
   `test/dqbe_wasm_test.sh`. The unit locks down the full 38-byte encoding of
   `export function w $main() { ret 42 }`; the integration test checks both
@@ -141,6 +146,14 @@ a compiler bug wearing a tiny fake moustache.
 - No standalone Wasm engine or validator is installed locally, so this change
   has binary-layout and pipeline verification but not runtime execution in a
   browser, Node, Wasmtime, or WABT yet.
+
+### Test coverage baseline
+
+LDC `--cov` measurement of the backend unit binary reports 64.4% line
+coverage for `source/dqbe/wasm.d` (336/522 executable lines) after the void
+call test. `test/dqbe_wasm_test.sh` has eleven pipeline scenarios. These are
+compile-and-binary checks; semantic execution coverage remains unavailable
+until an independent Wasm engine is installed in CI or locally.
 
 ## Comparison with the native backends (2026-08-02)
 

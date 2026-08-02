@@ -78,6 +78,15 @@ fi
 
 echo "PASS: d2qbe -> wasm32 lowers mutable globals"
 
+"$D2QBE" -t wasm32 'extern(C) void touch(int* p) { *p = 42; } extern(C) int main() { int x; touch(&x); return x; }' | "$DQBE" -t wasm32 > "$OUTPUT"
+HEADER=$(od -An -tx1 -N8 "$OUTPUT" | tr -d '[:space:]')
+if [ "$HEADER" != "0061736d01000000" ]; then
+  echo "FAILED: wasm32 void-call pipeline did not emit a WebAssembly binary"
+  exit 1
+fi
+
+echo "PASS: d2qbe -> wasm32 supports internal void calls"
+
 printf '%s\n' \
   'export function w $main(w %condition) {' \
   '@start' \
