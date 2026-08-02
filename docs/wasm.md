@@ -81,6 +81,33 @@ would make addresses unusable by `i32` memory instructions; mapping them all
 to `i32` would silently truncate real 64-bit values. Either shortcut would be
 a compiler bug wearing a tiny fake moustache.
 
+## Browser host-import profile (M4 design, before implementation)
+
+The first host ABI is intentionally a raw Core Wasm import surface, not a
+WASI compatibility layer. Every unresolved direct QBE call whose arguments
+are all `w` will become a function import in module `env`, with the QBE name
+minus its leading `$` as the field name. An assignment call has signature
+`(i32, ...) -> i32`; a no-result QBE call has signature `(i32, ...) -> ()`.
+Defined QBE functions always take precedence over imports. Repeated calls to
+one unresolved name must agree on argument count and result shape, otherwise
+module emission fails instead of quietly inventing an ABI.
+
+This gives a browser host enough room for tiny compiler shims such as
+`calloc`, `fread`, `fwrite`, and diagnostics without adding a linker, WASI
+SDK, JavaScript runtime dependency, or a C library to the compiler build.
+The backend will only encode imports; the project will not silently provide
+implementations for libc names. A browser embedding must explicitly supply
+every imported field under `env`, and it owns pointer validity, memory access,
+and return/error conventions. That separation makes the missing runtime
+contract visible rather than treating a host function as a magic spell.
+
+The encoder must collect imports before writing sections, emit a function type
+for each import before defined-function types, emit section 2 (imports) before
+the defined function section, and offset all defined-function call/export
+indices by the number of imports. Initial tests will lock down one imported
+word-result call and one imported void call at the binary/pipeline level;
+runtime behavior remains an optional browser/Node/WABT validation concern.
+
 ## Implementation status (2026-08-02)
 
 ### Completed M1 slice
@@ -136,6 +163,13 @@ a compiler bug wearing a tiny fake moustache.
   backend emits their direct Wasm call without attempting to assign a value.
   This is covered by both a backend unit test and a D pointer-mutating helper
   pipeline test.
+- Added the initial browser host-import ABI from the M4 design: an unresolved
+  direct `w`-only QBE call is emitted as an explicit `env.name` function
+  import. Defined QBE functions still win over imports; repeated host calls
+  must use one consistent arity/result signature. Defined function indices
+  are shifted after the imported functions in types, calls, and exports. The
+  test suite covers both an imported word-result call and an imported void
+  call through the D pipeline.
 - Added byte stores: QBE `storeb` maps to Wasm `i32.store8`, complementing
   `loadub`. The D pipeline test covers a local `char` round trip.
 - Made the bump allocator grow linear memory when a new allocation exceeds
@@ -161,10 +195,10 @@ a compiler bug wearing a tiny fake moustache.
 
 ### Test coverage baseline
 
-LDC `--cov` measurement of the backend unit binary reports 73.0% line
-coverage for `source/dqbe/wasm.d` (412/564 executable lines) after adding
-call and unconditional-CFG tests. `test/dqbe_wasm_test.sh` has sixteen
-pipeline scenarios. These are
+LDC `--cov` measurement of the backend unit binary reports 74.0% line
+coverage for `source/dqbe/wasm.d` (463/626 executable lines) after adding
+browser-import tests. `test/dqbe_wasm_test.sh` has seventeen pipeline
+scenarios. These are
 compile-and-binary checks; semantic execution coverage remains unavailable
 until an independent Wasm engine is installed in CI or locally.
 
@@ -182,7 +216,7 @@ local storage, but it is not yet suitable for compiling the compiler itself.
 | QBE scalar values | `w`, `l`, `s`, `d` | `w`; local/global addresses, pointer parameters, and scaled pointer arithmetic use `w` | slices and broad pointer expressions remain pending |
 | Control flow | arbitrary CFG | arbitrary CFG via dispatcher loop | ready for compiler conditionals and loops |
 | Memory and data | loads, stores, globals | word/byte loads and stores, bump allocation, static strings/data, mutable word globals | wider globals and data relocations remain pending |
-| Calls | native ABI, including recent stack arguments | direct internal `w` calls | host/runtime calls are still absent |
+| Calls | native ABI, including recent stack arguments | direct internal `w` calls plus explicit `env` `w` imports | a browser host must implement the runtime contract |
 | Target data layout | host-native | wasm32 size/alignment plus local-address representation | expand that representation beyond locals |
 | Runtime validation | native compiler/linker/test paths | binary and pipeline checks | add an optional independent Wasm runner in CI |
 
@@ -203,10 +237,11 @@ by the easiest isolated opcode to add:
    size/alignment plus local/global-address, parameter, and scaled pointer
    arithmetic representation are complete; extend it to slices and remaining
    pointer expressions without conflating them with genuine 64-bit integers.
-4. **Minimal browser host ABI:** provide only the imports needed by the
-   self-hosted compiler (allocation and source/input/output shims), specified
-   independently of WASI. A host-supplied source buffer is preferable to
-   making a filesystem ABI an early requirement.
+4. **Minimal browser host ABI:** the encoder supports explicit `env` imports
+   for unresolved `w` calls. Specify and implement only the imports needed by
+   the self-hosted compiler (allocation and source/input/output shims); a
+   host-supplied source buffer is preferable to making a filesystem ABI an
+   early requirement.
 5. **Self-host compiler smoke path:** compile a constrained compiler entry
    point to Wasm, instantiate it in the browser host, and compare its output
    with the native backend on small D inputs.

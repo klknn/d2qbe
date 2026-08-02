@@ -105,6 +105,19 @@ fi
 
 echo "PASS: d2qbe -> wasm32 supports internal word-result calls"
 
+"$D2QBE" -t wasm32 'extern(C) int host_increment(int value); extern(C) void host_log(int value); extern(C) int main() { int value = host_increment(41); host_log(value); return value; }' | "$DQBE" -t wasm32 > "$OUTPUT"
+HEADER=$(od -An -tx1 -N8 "$OUTPUT" | tr -d '[:space:]')
+if [ "$HEADER" != "0061736d01000000" ]; then
+  echo "FAILED: wasm32 host-import pipeline did not emit a WebAssembly binary"
+  exit 1
+fi
+if ! od -An -tx1 "$OUTPUT" | tr -d '[:space:]' | grep -q '03656e760e686f73745f696e6372656d656e74'; then
+  echo "FAILED: wasm32 module is missing the env.host_increment import"
+  exit 1
+fi
+
+echo "PASS: d2qbe -> wasm32 emits browser host imports"
+
 "$D2QBE" -t wasm32 'extern(C) int main() { char x = 65; return x; }' | "$DQBE" -t wasm32 > "$OUTPUT"
 BYTES=$(od -An -tx1 "$OUTPUT" | tr -d '[:space:]')
 if ! printf '%s' "$BYTES" | grep -q '3a0000.*2d0000'; then

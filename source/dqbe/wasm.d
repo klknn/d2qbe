@@ -143,6 +143,64 @@ int find_function(const char* name) {
   return -1;
 }
 
+struct WasmImport {
+  const(char)* name;
+  int args_count;
+  bool returns_word;
+}
+
+WasmImport[10000] wasm_imports;
+int wasm_imports_count;
+
+int find_import(const char* name) {
+  for (int i = 0; i < wasm_imports_count; i++) {
+    if (strcmp(wasm_imports[i].name, name) == 0) return i;
+  }
+  return -1;
+}
+
+bool collect_wasm_imports() {
+  wasm_imports_count = 0;
+  for (int i = 0; i < program_functions_count; i++) {
+    FunctionDef* fn = &program_functions[i];
+    for (int j = 0; j < fn.inst_count; j++) {
+      Instruction* inst = &fn.instructions[j];
+      bool returns_word = inst.kind == InstKind.IK_assign && strcmp(inst.op, "call") == 0;
+      if (!returns_word && inst.kind != InstKind.IK_call) continue;
+      if (find_function(inst.arg1) >= 0) continue;
+      if (returns_word && inst.dest_type != 'w') {
+        wasm_error("M1 supports only w imported call results");
+        return false;
+      }
+      for (int k = 0; k < inst.call_args_count; k++) {
+        if (inst.call_args[k].type != 'w') {
+          wasm_error("M1 supports only w imported call arguments");
+          return false;
+        }
+      }
+      int existing = find_import(inst.arg1);
+      if (existing >= 0) {
+        WasmImport* imported = &wasm_imports[existing];
+        if (imported.args_count != inst.call_args_count ||
+            imported.returns_word != returns_word) {
+          wasm_error("inconsistent browser host import signature");
+          return false;
+        }
+        continue;
+      }
+      if (wasm_imports_count == wasm_imports.length) {
+        wasm_error("too many browser host imports");
+        return false;
+      }
+      wasm_imports[wasm_imports_count].name = inst.arg1;
+      wasm_imports[wasm_imports_count].args_count = inst.call_args_count;
+      wasm_imports[wasm_imports_count].returns_word = returns_word;
+      wasm_imports_count++;
+    }
+  }
+  return true;
+}
+
 int local_index(FunctionDef* fn, const char* name) {
   for (int i = 0; i < fn.params_count; i++) {
     if (strcmp(fn.params[i].name, name) == 0) return i;
@@ -302,8 +360,13 @@ ubyte binary_opcode(const char* op) {
 bool append_call(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
   int target = find_function(inst.arg1);
   if (target < 0) {
-    wasm_error("call target is undefined");
-    return false;
+    target = find_import(inst.arg1);
+    if (target < 0) {
+      wasm_error("call target is undefined");
+      return false;
+    }
+  } else {
+    target += wasm_imports_count;
   }
   for (int i = 0; i < inst.call_args_count; i++) {
     if (inst.call_args[i].type != 'w' || !append_value(body, fn, inst.call_args[i].name)) {
@@ -658,6 +721,7 @@ bool emit_wasm_program(FILE* output) {
   for (int i = 0; i < program_functions_count; i++) {
     if (!supported_function(&program_functions[i])) return false;
   }
+  if (!collect_wasm_imports()) return false;
 
   ByteBuffer binary;
   const(ubyte)[8] header = [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
@@ -667,7 +731,14 @@ bool emit_wasm_program(FILE* output) {
   }
 
   ByteBuffer types;
-  bool ok = append_u32(types, cast(uint) program_functions_count);
+  bool ok = append_u32(types, cast(uint) (wasm_imports_count + program_functions_count));
+  for (int i = 0; ok && i < wasm_imports_count; i++) {
+    WasmImport* imported = &wasm_imports[i];
+    ok = append_byte(types, WASM_FUNC) && append_u32(types, cast(uint) imported.args_count);
+    for (int j = 0; ok && j < imported.args_count; j++) ok = append_byte(types, WASM_I32);
+    ok = ok && append_u32(types, imported.returns_word ? 1 : 0);
+    if (imported.returns_word) ok = ok && append_byte(types, WASM_I32);
+  }
   for (int i = 0; ok && i < program_functions_count; i++) {
     FunctionDef* fn = &program_functions[i];
     ok = append_byte(types, WASM_FUNC) && append_u32(types, cast(uint) fn.params_count);
@@ -678,9 +749,23 @@ bool emit_wasm_program(FILE* output) {
   ok = ok && append_section(binary, 1, types);
   dispose(types);
 
+  if (wasm_imports_count != 0) {
+    ByteBuffer imports;
+    ok = ok && append_u32(imports, cast(uint) wasm_imports_count);
+    for (int i = 0; ok && i < wasm_imports_count; i++) {
+      WasmImport* imported = &wasm_imports[i];
+      ok = append_name(imports, "env") && append_name(imports, imported.name + 1) &&
+        append_byte(imports, 0) && append_u32(imports, cast(uint) i);
+    }
+    ok = ok && append_section(binary, 2, imports);
+    dispose(imports);
+  }
+
   ByteBuffer functions;
   ok = ok && append_u32(functions, cast(uint) program_functions_count);
-  for (int i = 0; ok && i < program_functions_count; i++) ok = append_u32(functions, cast(uint) i);
+  for (int i = 0; ok && i < program_functions_count; i++) {
+    ok = append_u32(functions, cast(uint) (wasm_imports_count + i));
+  }
   ok = ok && append_section(binary, 3, functions);
   dispose(functions);
 
@@ -709,7 +794,7 @@ bool emit_wasm_program(FILE* output) {
     FunctionDef* fn = &program_functions[i];
     if (!fn.is_export) continue;
     ok = append_name(export_section, fn.name + 1) && append_byte(export_section, 0) &&
-      append_u32(export_section, cast(uint) i);
+      append_u32(export_section, cast(uint) (wasm_imports_count + i));
   }
   if (has_memory) {
     ok = ok && append_name(export_section, "memory") && append_byte(export_section, 2) &&
@@ -836,6 +921,18 @@ unittest {
   assert(emit_wasm_program(output));
   fclose(output);
   remove("tmp_wasm_result_call_test.wasm");
+}
+
+unittest {
+  char* input = cast(char*) "export function w $main() {\n@start\n%result =w call $host_increment(w 41)\ncall $host_log(w %result)\nret %result\n}\n";
+  token = tokenize(input);
+  parse_program();
+
+  FILE* output = fopen("tmp_wasm_import_call_test.wasm", "wb");
+  assert(output != null);
+  assert(emit_wasm_program(output));
+  fclose(output);
+  remove("tmp_wasm_import_call_test.wasm");
 }
 
 unittest {
