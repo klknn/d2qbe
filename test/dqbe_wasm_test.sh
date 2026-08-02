@@ -92,3 +92,18 @@ if ! printf '%s' "$BYTES" | grep -q '360200.*280200'; then
 fi
 
 echo "PASS: dqbe -t wasm32 lowers w-addressed memory operations"
+
+printf '%s\n' \
+  'data $answer = { b 42 }' \
+  'export function w $main() {' \
+  '@start' \
+  '  %address =w copy $answer' \
+  '  ret %address' \
+  '}' | "$DQBE" -t wasm32 > "$OUTPUT"
+BYTES=$(od -An -tx1 "$OUTPUT" | tr -d '[:space:]')
+if ! printf '%s' "$BYTES" | grep -q '0b07010041000b012a'; then
+  echo "FAILED: static byte data was not emitted as an active Wasm segment"
+  exit 1
+fi
+
+echo "PASS: dqbe -t wasm32 emits static data segments"

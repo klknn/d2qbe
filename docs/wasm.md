@@ -60,8 +60,9 @@ Therefore the milestones are deliberately staged:
 2. **M2: structured control and memory.** Lower QBE CFG to structured Wasm
    (a dispatcher-loop lowering is the reliable general strategy) and add one
    linear memory. Structured control is complete. The first memory slice
-   supports `w`-addressed `loadw`/`storew`; it still rejects ambiguous `l`
-   values until the explicit pointer representation lands.
+   supports `w`-addressed `loadw`/`storew` and basic active data segments; it
+   still rejects ambiguous `l` values until the explicit pointer representation
+   lands.
 3. **M3: target-aware `d2qbe -t wasm32`.** The initial layout selection is
    implemented: pointers and `size_t` are 4 bytes, slices are 8 bytes, and
    their alignment is 4 bytes. Struct layout therefore follows wasm32 sizes
@@ -98,8 +99,10 @@ a compiler bug wearing a tiny fake moustache.
   blocks; the program-counter local is internal to the emitted Wasm function.
   Added a one-page linear memory when a module uses `loadw` or `storew`; it
   is exported as `memory`. Those operations currently accept explicit `w`
-  addresses only. Data segments, other widths, `l`, floating point, and
-  external calls still fail with a diagnostic.
+  addresses only. Active data segments support byte strings/values, 32-bit
+  words, and zero fill; `$data` resolves to a `w` address. Other widths,
+  data relocations, `l`, floating point, and external calls still fail with a
+  diagnostic.
 - Added `d2qbe -t wasm32` / `--target wasm32` layout selection. The frontend
   now uses 4-byte pointers and `size_t`, 8-byte slices, and 4-byte pointer or
   slice alignment for that target; native compilation retains its 64-bit
@@ -113,6 +116,10 @@ a compiler bug wearing a tiny fake moustache.
 - Extended target-generated `w` addresses to pointer parameters and ordinary
   dereferences. Pointer values are stored with `storew` and loaded with
   `loadw`; the integration test covers `int main(int* p) { return *p; }`.
+- Added static active data segments for `b`, `w`, and `z` QBE data items.
+  The allocator starts after the static data, and a `w copy $data` expression
+  produces that segment's linear-memory offset. The integration test locks
+  down a byte segment containing `42`.
 - Added test-first coverage in `source/dqbe/wasm.d` and
   `test/dqbe_wasm_test.sh`. The unit locks down the full 38-byte encoding of
   `export function w $main() { ret 42 }`; the integration test checks both
@@ -141,7 +148,7 @@ local storage, but it is not yet suitable for compiling the compiler itself.
 | --- | --- | --- | --- |
 | QBE scalar values | `w`, `l`, `s`, `d` | `w`; local addresses and pointer parameters use `w` | globals, slices, and broad pointer expressions remain pending |
 | Control flow | arbitrary CFG | arbitrary CFG via dispatcher loop | ready for compiler conditionals and loops |
-| Memory and data | loads, stores, globals | `w` word load/store plus bump allocation; no data/globals | strings, arrays, and source text remain blocked |
+| Memory and data | loads, stores, globals | word load/store, bump allocation, and basic static data | string frontend lowering and global variables remain blocked |
 | Calls | native ABI, including recent stack arguments | direct internal `w` calls | host/runtime calls are still absent |
 | Target data layout | host-native | wasm32 size/alignment plus local-address representation | expand that representation beyond locals |
 | Runtime validation | native compiler/linker/test paths | binary and pipeline checks | add an optional independent Wasm runner in CI |
@@ -153,10 +160,10 @@ by the easiest isolated opcode to add:
 
 1. **General control flow:** complete for labels, `jmp`, `jnz`, fall-through,
    loops, and recursion through the dispatcher lowering.
-2. **Linear memory and static data:** word load/store and aligned bump
-   allocation are complete. Add typed loads/stores, data segments, globals,
-   bounds/growth policy, and the explicit pointer representation needed for D
-   values.
+2. **Linear memory and static data:** word load/store, aligned bump
+   allocation, and basic active data segments are complete. Add typed
+   loads/stores, data relocations/globals, bounds/growth policy, and the
+   explicit pointer representation needed for D values.
 3. **A wasm32-aware frontend layout:** establish pointer width, `sizeof`,
    alignment, struct layout, and pointer arithmetic as target-dependent. The
    size/alignment plus local-address and parameter representation are

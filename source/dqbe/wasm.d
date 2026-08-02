@@ -162,6 +162,97 @@ int local_count(FunctionDef* fn) {
   return count;
 }
 
+bool append_data_item(ref ByteBuffer bytes, DataItem* item) {
+  if (item.type == 'b') {
+    if (item.val_str[0] != '"') {
+      return append_byte(bytes, cast(ubyte) strtol(item.val_str, null, 10));
+    }
+    int length = cast(int) strlen(item.val_str);
+    if (length < 2 || item.val_str[length - 1] != '"') {
+      wasm_error("unterminated data string");
+      return false;
+    }
+    for (int i = 1; i < length - 1; i++) {
+      char value = item.val_str[i];
+      if (value == '\\') {
+        i++;
+        if (i >= length - 1) {
+          wasm_error("invalid data string escape");
+          return false;
+        }
+        char escaped = item.val_str[i];
+        if (escaped == 'n') value = '\n';
+        else if (escaped == 'r') value = '\r';
+        else if (escaped == 't') value = '\t';
+        else if (escaped == '0') value = 0;
+        else if (escaped == '\\' || escaped == '"') value = escaped;
+        else {
+          wasm_error("unsupported data string escape");
+          return false;
+        }
+      }
+      if (!append_byte(bytes, cast(ubyte) value)) return false;
+    }
+    return true;
+  }
+  if (item.type == 'z') {
+    int count = cast(int) strtol(item.val_str, null, 10);
+    if (count < 0) {
+      wasm_error("data zero fill must be non-negative");
+      return false;
+    }
+    for (int i = 0; i < count; i++) if (!append_byte(bytes, 0)) return false;
+    return true;
+  }
+  if (item.type == 'w') {
+    uint value = cast(uint) strtol(item.val_str, null, 10);
+    for (int i = 0; i < 4; i++) {
+      if (!append_byte(bytes, cast(ubyte) (value >> (i * 8)))) return false;
+    }
+    return true;
+  }
+  wasm_error("wasm data supports only b, w, and z items");
+  return false;
+}
+
+bool append_data_definition(ref ByteBuffer bytes, DataDef* definition) {
+  for (int i = 0; i < definition.items_count; i++) {
+    if (!append_data_item(bytes, &definition.items[i])) return false;
+  }
+  return true;
+}
+
+int static_data_size() {
+  ByteBuffer bytes;
+  for (int i = 0; i < program_data_count; i++) {
+    if (!append_data_definition(bytes, &program_data[i])) {
+      dispose(bytes);
+      return -1;
+    }
+  }
+  int size = bytes.length;
+  dispose(bytes);
+  return size;
+}
+
+bool find_data_offset(const char* name, ref int offset) {
+  int current_offset = 0;
+  for (int i = 0; i < program_data_count; i++) {
+    if (strcmp(program_data[i].name, name) == 0) {
+      offset = current_offset;
+      return true;
+    }
+    ByteBuffer bytes;
+    if (!append_data_definition(bytes, &program_data[i])) {
+      dispose(bytes);
+      return false;
+    }
+    current_offset += bytes.length;
+    dispose(bytes);
+  }
+  return false;
+}
+
 bool append_value(ref ByteBuffer body, FunctionDef* fn, const char* value) {
   if (value[0] == '%') {
     int index = local_index(fn, value);
@@ -172,8 +263,12 @@ bool append_value(ref ByteBuffer body, FunctionDef* fn, const char* value) {
     return append_byte(body, WASM_LOCAL_GET) && append_u32(body, cast(uint) index);
   }
   if (value[0] == '$') {
-    wasm_error("globals are not supported in wasm M1");
-    return false;
+    int offset;
+    if (!find_data_offset(value, offset)) {
+      wasm_error("global is undefined or has unsupported data");
+      return false;
+    }
+    return append_byte(body, WASM_I32_CONST) && append_i32(body, offset);
   }
   return append_byte(body, WASM_I32_CONST) && append_i32(body, cast(int) strtol(value, null, 10));
 }
@@ -273,6 +368,7 @@ bool append_store(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
 }
 
 bool program_uses_memory() {
+  if (program_data_count != 0) return true;
   for (int i = 0; i < program_functions_count; i++) {
     FunctionDef* fn = &program_functions[i];
     for (int j = 0; j < fn.inst_count; j++) {
@@ -514,10 +610,8 @@ bool emit_wasm_program(FILE* output) {
     wasm_error("program contains no functions");
     return false;
   }
-  if (program_data_count != 0) {
-    wasm_error("data definitions are not supported in wasm M1");
-    return false;
-  }
+  int data_size = static_data_size();
+  if (data_size < 0) return false;
   for (int i = 0; i < program_functions_count; i++) {
     if (!supported_function(&program_functions[i])) return false;
   }
@@ -550,14 +644,16 @@ bool emit_wasm_program(FILE* output) {
   bool has_memory = program_uses_memory();
   if (has_memory) {
     ByteBuffer memory;
-    ok = ok && append_u32(memory, 1) && append_byte(memory, 0) && append_u32(memory, 1);
+    uint pages = cast(uint) ((data_size + 65535) / 65536);
+    if (pages == 0) pages = 1;
+    ok = ok && append_u32(memory, 1) && append_byte(memory, 0) && append_u32(memory, pages);
     ok = ok && append_section(binary, 5, memory);
     dispose(memory);
 
     ByteBuffer globals;
     ok = ok && append_u32(globals, 1) && append_byte(globals, WASM_I32) &&
       append_byte(globals, 1) && append_byte(globals, WASM_I32_CONST) &&
-      append_i32(globals, 0) && append_byte(globals, WASM_END);
+      append_i32(globals, data_size) && append_byte(globals, WASM_END);
     ok = ok && append_section(binary, 6, globals);
     dispose(globals);
   }
@@ -586,6 +682,23 @@ bool emit_wasm_program(FILE* output) {
   }
   ok = ok && append_section(binary, 10, code);
   dispose(code);
+
+  if (program_data_count != 0) {
+    ByteBuffer data;
+    ok = ok && append_u32(data, cast(uint) program_data_count);
+    int offset = 0;
+    for (int i = 0; ok && i < program_data_count; i++) {
+      ByteBuffer bytes;
+      ok = append_data_definition(bytes, &program_data[i]);
+      ok = ok && append_byte(data, 0) && append_byte(data, WASM_I32_CONST) &&
+        append_i32(data, offset) && append_byte(data, WASM_END) &&
+        append_u32(data, cast(uint) bytes.length) && append_bytes(data, bytes.data, bytes.length);
+      offset += bytes.length;
+      dispose(bytes);
+    }
+    ok = ok && append_section(binary, 11, data);
+    dispose(data);
+  }
 
   if (ok && fwrite(binary.data, 1, binary.length, output) != binary.length) {
     wasm_error("failed to write module");
@@ -644,4 +757,16 @@ unittest {
   assert(emit_wasm_program(output));
   fclose(output);
   remove("tmp_wasm_memory_test.wasm");
+}
+
+unittest {
+  char* input = cast(char*) "data $answer = { b 42 }\nexport function w $main() {\n@start\n%address =w copy $answer\nret %address\n}\n";
+  token = tokenize(input);
+  parse_program();
+
+  FILE* output = fopen("tmp_wasm_data_test.wasm", "wb");
+  assert(output != null);
+  assert(emit_wasm_program(output));
+  fclose(output);
+  remove("tmp_wasm_data_test.wasm");
 }
