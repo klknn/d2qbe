@@ -69,6 +69,15 @@ fi
 
 echo "PASS: d2qbe -> wasm32 lowers string-literal addresses"
 
+"$D2QBE" -t wasm32 'int g; extern(C) int main() { g = 7; return g; }' | "$DQBE" -t wasm32 > "$OUTPUT"
+HEADER=$(od -An -tx1 -N8 "$OUTPUT" | tr -d '[:space:]')
+if [ "$HEADER" != "0061736d01000000" ]; then
+  echo "FAILED: wasm32 mutable-global pipeline did not emit a WebAssembly binary"
+  exit 1
+fi
+
+echo "PASS: d2qbe -> wasm32 lowers mutable globals"
+
 printf '%s\n' \
   'export function w $main(w %condition) {' \
   '@start' \

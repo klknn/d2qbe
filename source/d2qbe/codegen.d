@@ -1005,7 +1005,7 @@ int gen_addr(Node* node) {
     
     int res = next_reg();
     if (!is_local(node.ident) && is_global(node.ident)) {
-      printf("  %%t%d =l copy $%.*s\n", res, node.ident.len, node.ident.str);
+      printf("  %%t%d =%c copy $%.*s\n", res, address_type, node.ident.len, node.ident.str);
     } else {
       Type t;
       get_local_type(node.ident, &t);
