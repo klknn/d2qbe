@@ -67,9 +67,10 @@ Therefore the milestones are deliberately staged:
    their alignment is 4 bytes. Struct layout therefore follows wasm32 sizes
    when parsed with that target. The first explicit representation is now in
    place for target-generated local addresses: `d2qbe -t wasm32` emits them as
-   QBE `w`, which maps directly to Wasm `i32`. Native `l` remains rejected;
-   pointer parameters, globals, slices, and general pointer expressions still
-   need the same conversion before memory-using D programs are enabled.
+   QBE `w`, which maps directly to Wasm `i32`. Pointer parameters,
+   dereferences, and pointer storage use the same representation. Native `l`
+   remains rejected; globals, slices, and general pointer expressions still
+   need conversion before memory-using D programs are enabled.
 4. **M4: host imports / optional WASI profile.** Specify imports and implement
    a browser host shim first. Evaluate WASI Preview 1 or a newer WASI profile
    separately; it must not silently become a required dependency.
@@ -109,6 +110,9 @@ a compiler bug wearing a tiny fake moustache.
   `d2qbe -t wasm32 | dqbe -t wasm32`; the allocator currently has one page of
   memory and no growth or deallocation, so it is a foundation rather than a
   self-hosting-ready runtime.
+- Extended target-generated `w` addresses to pointer parameters and ordinary
+  dereferences. Pointer values are stored with `storew` and loaded with
+  `loadw`; the integration test covers `int main(int* p) { return *p; }`.
 - Added test-first coverage in `source/dqbe/wasm.d` and
   `test/dqbe_wasm_test.sh`. The unit locks down the full 38-byte encoding of
   `export function w $main() { ret 42 }`; the integration test checks both
@@ -135,7 +139,7 @@ local storage, but it is not yet suitable for compiling the compiler itself.
 
 | Capability | x86-64 / ARM64 | Wasm now | Self-hosting implication |
 | --- | --- | --- | --- |
-| QBE scalar values | `w`, `l`, `s`, `d` | `w`; target-generated local addresses also use `w` | pointer parameters and general pointer values remain pending |
+| QBE scalar values | `w`, `l`, `s`, `d` | `w`; local addresses and pointer parameters use `w` | globals, slices, and broad pointer expressions remain pending |
 | Control flow | arbitrary CFG | arbitrary CFG via dispatcher loop | ready for compiler conditionals and loops |
 | Memory and data | loads, stores, globals | `w` word load/store plus bump allocation; no data/globals | strings, arrays, and source text remain blocked |
 | Calls | native ABI, including recent stack arguments | direct internal `w` calls | host/runtime calls are still absent |
@@ -155,9 +159,9 @@ by the easiest isolated opcode to add:
    values.
 3. **A wasm32-aware frontend layout:** establish pointer width, `sizeof`,
    alignment, struct layout, and pointer arithmetic as target-dependent. The
-   size/alignment plus local-address representation are complete; extend that
-   representation to parameters, globals, slices, and pointer expressions
-   without conflating them with genuine 64-bit integers.
+   size/alignment plus local-address and parameter representation are
+   complete; extend that representation to globals, slices, and pointer
+   expressions without conflating them with genuine 64-bit integers.
 4. **Minimal browser host ABI:** provide only the imports needed by the
    self-hosted compiler (allocation and source/input/output shims), specified
    independently of WASI. A host-supplied source buffer is preferable to

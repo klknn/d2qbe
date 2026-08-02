@@ -1140,8 +1140,13 @@ int emit_load(int addr_reg, Type* t) {
   int size = get_type_size(t);
   int ret = next_reg();
   if (t.ptr_depth > 0) {
-    printf("  %%t%d =l loadl %%t%d\n", ret, addr_reg);
-    set_reg_type(ret, 'l');
+    if (target_layout == TargetLayout.Wasm32) {
+      printf("  %%t%d =w loadw %%t%d\n", ret, addr_reg);
+      set_reg_type(ret, 'w');
+    } else {
+      printf("  %%t%d =l loadl %%t%d\n", ret, addr_reg);
+      set_reg_type(ret, 'l');
+    }
   } else if (strcmp(t.name, "float") == 0) {
     printf("  %%t%d =s loads %%t%d\n", ret, addr_reg);
     set_reg_type(ret, 's');
@@ -1170,6 +1175,10 @@ int emit_load(int addr_reg, Type* t) {
 void emit_store(int val_reg, int addr_reg, Type* t) {
   int size = get_type_size(t);
   if (t.ptr_depth > 0) {
+    if (target_layout == TargetLayout.Wasm32) {
+      printf("  storew %%t%d, %%t%d\n", val_reg, addr_reg);
+      return;
+    }
     char val_type = get_reg_type(val_reg);
     if (val_type == 'w') {
       int ext_res = next_reg();
@@ -1984,7 +1993,7 @@ int gen(Node* node) {
       
       const(char)* ret_type_str = "w";
       if (node.return_type.ptr_depth > 0) {
-        ret_type_str = "l";
+        ret_type_str = target_layout == TargetLayout.Wasm32 ? "w" : "l";
       } else if (strcmp(node.return_type.name, "float") == 0) {
         ret_type_str = "s";
       } else if (strcmp(node.return_type.name, "double") == 0) {
@@ -1996,7 +2005,7 @@ int gen(Node* node) {
         Type t = node.params_types[i];
         const(char)* t_str = "w";
         if (t.is_ref || t.ptr_depth > 0) {
-          t_str = "l";
+          t_str = target_layout == TargetLayout.Wasm32 ? "w" : "l";
         } else if (strcmp(t.name, "float") == 0) {
           t_str = "s";
         } else if (strcmp(t.name, "double") == 0) {
@@ -2015,8 +2024,8 @@ int gen(Node* node) {
       // Emit stack allocations for all variables and parameters
       for (int i = 0; i < locals_count; ++i) {
         Type t = locals[i].type;
-        int size = t.is_ref ? 8 : get_type_size(&t);
-        int align_ = t.is_ref ? 8 : get_type_alignment(&t);
+        int size = t.is_ref ? target_pointer_size() : get_type_size(&t);
+        int align_ = t.is_ref ? target_pointer_size() : get_type_alignment(&t);
         int qbe_align = 4;
         if (align_ > 8) qbe_align = 16;
         else if (align_ > 4) qbe_align = 8;
@@ -2028,7 +2037,9 @@ int gen(Node* node) {
         const(Token)* p = node.params[i];
         Type t = node.params_types[i];
         if (t.is_ref || t.is_slice || t.ptr_depth > 0) {
-          printf("  storel %%%.*s, %%%.*s_addr\n", p.len, p.str, p.len, p.str);
+          printf(target_layout == TargetLayout.Wasm32 ?
+              "  storew %%%.*s, %%%.*s_addr\n" :
+              "  storel %%%.*s, %%%.*s_addr\n", p.len, p.str, p.len, p.str);
         } else if (strcmp(t.name, "double") == 0) {
           printf("  stored %%%.*s, %%%.*s_addr\n", p.len, p.str, p.len, p.str);
         } else if (strcmp(t.name, "float") == 0) {
@@ -2478,4 +2489,3 @@ unittest {
   assert(strcmp(auto_type.name, "int") == 0);
   assert(auto_type.ptr_depth == 0);
 }
-
