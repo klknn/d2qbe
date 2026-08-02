@@ -134,6 +134,11 @@ a compiler bug wearing a tiny fake moustache.
   pipeline test.
 - Added byte stores: QBE `storeb` maps to Wasm `i32.store8`, complementing
   `loadub`. The D pipeline test covers a local `char` round trip.
+- Made the bump allocator grow linear memory when a new allocation exceeds
+  the current page count. It uses only Core Wasm `memory.size`/`memory.grow`,
+  so no host import is required; a host memory-limit failure policy remains
+  future work. The integration suite emits an allocation larger than 64 KiB
+  and asserts the growth instructions.
 - Added test-first coverage in `source/dqbe/wasm.d` and
   `test/dqbe_wasm_test.sh`. The unit locks down the full 38-byte encoding of
   `export function w $main() { ret 42 }`; the integration test checks both
@@ -151,9 +156,9 @@ a compiler bug wearing a tiny fake moustache.
 
 ### Test coverage baseline
 
-LDC `--cov` measurement of the backend unit binary reports 68.9% line
-coverage for `source/dqbe/wasm.d` (370/537 executable lines) after the byte
-store test. `test/dqbe_wasm_test.sh` has twelve pipeline scenarios. These are
+LDC `--cov` measurement of the backend unit binary reports 69.5% line
+coverage for `source/dqbe/wasm.d` (381/548 executable lines) after allocator
+growth support. `test/dqbe_wasm_test.sh` has thirteen pipeline scenarios. These are
 compile-and-binary checks; semantic execution coverage remains unavailable
 until an independent Wasm engine is installed in CI or locally.
 

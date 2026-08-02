@@ -21,6 +21,9 @@ enum ubyte WASM_I32_LOAD = 0x28;
 enum ubyte WASM_I32_LOAD8_U = 0x2d;
 enum ubyte WASM_I32_STORE = 0x36;
 enum ubyte WASM_I32_STORE8 = 0x3a;
+enum ubyte WASM_MEMORY_SIZE = 0x3f;
+enum ubyte WASM_MEMORY_GROW = 0x40;
+enum ubyte WASM_DROP = 0x1a;
 enum ubyte WASM_UNREACHABLE = 0x00;
 enum ubyte WASM_LOOP = 0x03;
 enum ubyte WASM_IF = 0x04;
@@ -343,7 +346,18 @@ bool append_assign(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
         !append_u32(body, cast(uint) destination) || !append_byte(body, WASM_I32_CONST) ||
         !append_i32(body, size) || !append_byte(body, 0x6a) ||
         !append_byte(body, WASM_GLOBAL_SET) || !append_u32(body, 0)) return false;
-    return true;
+    return append_byte(body, WASM_GLOBAL_GET) && append_u32(body, 0) &&
+      append_byte(body, WASM_MEMORY_SIZE) && append_u32(body, 0) &&
+      append_byte(body, WASM_I32_CONST) && append_i32(body, 65536) &&
+      append_byte(body, 0x6c) && append_byte(body, 0x4b) &&
+      append_byte(body, WASM_IF) && append_byte(body, WASM_EMPTY_BLOCK) &&
+      append_byte(body, WASM_GLOBAL_GET) && append_u32(body, 0) &&
+      append_byte(body, WASM_I32_CONST) && append_i32(body, 65535) &&
+      append_byte(body, 0x6a) && append_byte(body, WASM_I32_CONST) &&
+      append_i32(body, 16) && append_byte(body, 0x76) &&
+      append_byte(body, WASM_MEMORY_SIZE) && append_u32(body, 0) &&
+      append_byte(body, 0x6b) && append_byte(body, WASM_MEMORY_GROW) &&
+      append_u32(body, 0) && append_byte(body, WASM_DROP) && append_byte(body, WASM_END);
   } else if (strcmp(inst.op, "loadw") == 0) {
     if (!append_value(body, fn, inst.arg1) || !append_byte(body, WASM_I32_LOAD) ||
         !append_u32(body, 2) || !append_u32(body, 0)) return false;

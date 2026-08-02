@@ -147,3 +147,17 @@ if ! printf '%s' "$BYTES" | grep -q '0b07010041000b012a'; then
 fi
 
 echo "PASS: dqbe -t wasm32 emits static data segments"
+
+printf '%s\n' \
+  'export function w $main() {' \
+  '@start' \
+  '  %address =w alloc4 70000' \
+  '  ret %address' \
+  '}' | "$DQBE" -t wasm32 > "$OUTPUT"
+BYTES=$(od -An -tx1 "$OUTPUT" | tr -d '[:space:]')
+if ! printf '%s' "$BYTES" | grep -q '3f00.*40001a0b'; then
+  echo "FAILED: wasm allocator does not grow linear memory"
+  exit 1
+fi
+
+echo "PASS: dqbe -t wasm32 grows linear memory for large allocations"
