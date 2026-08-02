@@ -118,6 +118,15 @@ fi
 
 echo "PASS: d2qbe -> wasm32 emits browser host imports"
 
+"$D2QBE" -t wasm32 'extern(C) int* host_alloc(int count); extern(C) int main() { int* value = host_alloc(1); return *value; }' | "$DQBE" -t wasm32 > "$OUTPUT"
+HEADER=$(od -An -tx1 -N8 "$OUTPUT" | tr -d '[:space:]')
+if [ "$HEADER" != "0061736d01000000" ]; then
+  echo "FAILED: wasm32 pointer-result import pipeline did not emit a WebAssembly binary"
+  exit 1
+fi
+
+echo "PASS: d2qbe -> wasm32 supports pointer-result host imports"
+
 "$D2QBE" -t wasm32 'extern(C) int main() { char x = 65; return x; }' | "$DQBE" -t wasm32 > "$OUTPUT"
 BYTES=$(od -An -tx1 "$OUTPUT" | tr -d '[:space:]')
 if ! printf '%s' "$BYTES" | grep -q '3a0000.*2d0000'; then

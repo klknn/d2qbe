@@ -1852,8 +1852,8 @@ int gen(Node* node) {
         int alignment = get_type_alignment(&node.type);
         if (alignment < 4) alignment = 4;
         struct_addr = next_reg();
-        printf("  %%t%d =l alloc%d %d\n", struct_addr, alignment, size);
-        set_reg_type(struct_addr, 'l');
+        printf("  %%t%d =%c alloc%d %d\n", struct_addr, qbe_address_type(), alignment, size);
+        set_reg_type(struct_addr, qbe_address_type());
         
         args_vars[0] = struct_addr;
         start_arg_idx = 1;
@@ -1963,7 +1963,7 @@ int gen(Node* node) {
       char ret_type = 'w';
       if (fs) {
         if (fs.return_type.ptr_depth > 0) {
-          ret_type = 'l';
+          ret_type = qbe_address_type();
         } else if (strcmp(fs.return_type.name, "float") == 0) {
           ret_type = 's';
         } else if (strcmp(fs.return_type.name, "double") == 0) {
