@@ -102,6 +102,10 @@ LocalVar[MAX_LOCALS] locals;
 int locals_count = 0;
 Node* current_fn;
 
+char qbe_address_type() {
+  return target_layout == TargetLayout.Wasm32 ? 'w' : 'l';
+}
+
 struct LoopLabels {
   char type; // 'w' or 'f'
   int id;
@@ -969,6 +973,7 @@ void get_expr_type(Node* node, Type* out_type) {
  * Returns: the register index holding the calculated address.
  */
 int gen_addr(Node* node) {
+  char address_type = qbe_address_type();
   if (node.kind == NodeKind.NK_lvar) {
     if (!has_local(node.ident) && !is_global(node.ident)) {
       Type this_type;
@@ -1001,10 +1006,10 @@ int gen_addr(Node* node) {
       if (t.is_ref) {
         printf("  %%t%d =l loadl %%%.*s_addr\n", res, node.ident.len, node.ident.str);
       } else {
-        printf("  %%t%d =l copy %%%.*s_addr\n", res, node.ident.len, node.ident.str);
+        printf("  %%t%d =%c copy %%%.*s_addr\n", res, address_type, node.ident.len, node.ident.str);
       }
     }
-    set_reg_type(res, 'l');
+    set_reg_type(res, address_type);
     return res;
   }
   if (node.kind == NodeKind.NK_deref) {
@@ -2015,7 +2020,7 @@ int gen(Node* node) {
         int qbe_align = 4;
         if (align_ > 8) qbe_align = 16;
         else if (align_ > 4) qbe_align = 8;
-        printf("  %%%.*s_addr =l alloc%d %d\n", cast(int)strlen(locals[i].name), locals[i].name, qbe_align, size);
+        printf("  %%%.*s_addr =%c alloc%d %d\n", cast(int)strlen(locals[i].name), locals[i].name, qbe_address_type(), qbe_align, size);
       }
       
       // Store incoming parameters into stack slots
@@ -2473,5 +2478,4 @@ unittest {
   assert(strcmp(auto_type.name, "int") == 0);
   assert(auto_type.ptr_depth == 0);
 }
-
 

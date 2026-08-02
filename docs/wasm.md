@@ -65,9 +65,11 @@ Therefore the milestones are deliberately staged:
 3. **M3: target-aware `d2qbe -t wasm32`.** The initial layout selection is
    implemented: pointers and `size_t` are 4 bytes, slices are 8 bytes, and
    their alignment is 4 bytes. Struct layout therefore follows wasm32 sizes
-   when parsed with that target. Pointer values still emit as QBE `l` and need
-   a distinguishable wasm-compatible representation before arrays, slices,
-   globals, and memory-using D programs are enabled.
+   when parsed with that target. The first explicit representation is now in
+   place for target-generated local addresses: `d2qbe -t wasm32` emits them as
+   QBE `w`, which maps directly to Wasm `i32`. Native `l` remains rejected;
+   pointer parameters, globals, slices, and general pointer expressions still
+   need the same conversion before memory-using D programs are enabled.
 4. **M4: host imports / optional WASI profile.** Specify imports and implement
    a browser host shim first. Evaluate WASI Preview 1 or a newer WASI profile
    separately; it must not silently become a required dependency.
@@ -102,6 +104,11 @@ a compiler bug wearing a tiny fake moustache.
   slice alignment for that target; native compilation retains its 64-bit
   layout. The integration test compiles `int*.sizeof` through both stages and
   checks the emitted Wasm `i32.const 4`.
+- Added aligned lowering of target-generated `alloc4`/`alloc8` to a mutable
+  Wasm bump pointer. This makes ordinary local word variables compile through
+  `d2qbe -t wasm32 | dqbe -t wasm32`; the allocator currently has one page of
+  memory and no growth or deallocation, so it is a foundation rather than a
+  self-hosting-ready runtime.
 - Added test-first coverage in `source/dqbe/wasm.d` and
   `test/dqbe_wasm_test.sh`. The unit locks down the full 38-byte encoding of
   `export function w $main() { ret 42 }`; the integration test checks both
@@ -123,16 +130,16 @@ The x86-64 and ARM64 backends are mature native code generators: they support
 the QBE types used by this compiler, arbitrary basic-block control flow,
 loads/stores, global data, platform calling conventions, and the existing
 native test and self-hosting paths. The Wasm backend deliberately starts much
-smaller: it writes a valid module and covers straight-line `w` functions, but
-it is not yet suitable for compiling the compiler itself.
+smaller: it now covers `w` control flow, word memory, and target-generated
+local storage, but it is not yet suitable for compiling the compiler itself.
 
 | Capability | x86-64 / ARM64 | Wasm now | Self-hosting implication |
 | --- | --- | --- | --- |
-| QBE scalar values | `w`, `l`, `s`, `d` | `w` only | compiler code needs pointers and therefore memory |
-| Control flow | arbitrary CFG | one basic block | conditionals, loops, and error paths cannot compile yet |
-| Memory and data | loads, stores, globals | `w`-addressed word load/store; no data/globals | allocation, strings, arrays, and source text remain blocked |
+| QBE scalar values | `w`, `l`, `s`, `d` | `w`; target-generated local addresses also use `w` | pointer parameters and general pointer values remain pending |
+| Control flow | arbitrary CFG | arbitrary CFG via dispatcher loop | ready for compiler conditionals and loops |
+| Memory and data | loads, stores, globals | `w` word load/store plus bump allocation; no data/globals | strings, arrays, and source text remain blocked |
 | Calls | native ABI, including recent stack arguments | direct internal `w` calls | host/runtime calls are still absent |
-| Target data layout | host-native | wasm32 pointer size/alignment selected; pointer representation pending | memory code remains blocked on `l` handling |
+| Target data layout | host-native | wasm32 size/alignment plus local-address representation | expand that representation beyond locals |
 | Runtime validation | native compiler/linker/test paths | binary and pipeline checks | add an optional independent Wasm runner in CI |
 
 ### Self-hosting-first order
@@ -140,15 +147,17 @@ it is not yet suitable for compiling the compiler itself.
 Wasm work is now ordered by what `d2qbe` needs to compile and run itself, not
 by the easiest isolated opcode to add:
 
-1. **General control flow:** lower labels, `jmp`, and `jnz`, including loops
-   and recursion, while preserving `w` semantics. This is the next slice.
-2. **Linear memory and static data:** the `w` word-load/store foundation is
-   complete. Add typed loads/stores, data segments, globals, and the explicit
-   pointer representation needed for D values.
+1. **General control flow:** complete for labels, `jmp`, `jnz`, fall-through,
+   loops, and recursion through the dispatcher lowering.
+2. **Linear memory and static data:** word load/store and aligned bump
+   allocation are complete. Add typed loads/stores, data segments, globals,
+   bounds/growth policy, and the explicit pointer representation needed for D
+   values.
 3. **A wasm32-aware frontend layout:** establish pointer width, `sizeof`,
    alignment, struct layout, and pointer arithmetic as target-dependent. The
-   size/alignment portion is complete; represent pointer values separately
-   from genuine 64-bit integers before pointers are enabled.
+   size/alignment plus local-address representation are complete; extend that
+   representation to parameters, globals, slices, and pointer expressions
+   without conflating them with genuine 64-bit integers.
 4. **Minimal browser host ABI:** provide only the imports needed by the
    self-hosted compiler (allocation and source/input/output shims), specified
    independently of WASI. A host-supplied source buffer is preferable to

@@ -15,6 +15,8 @@ enum ubyte WASM_CALL = 0x10;
 enum ubyte WASM_LOCAL_GET = 0x20;
 enum ubyte WASM_LOCAL_SET = 0x21;
 enum ubyte WASM_I32_CONST = 0x41;
+enum ubyte WASM_GLOBAL_GET = 0x23;
+enum ubyte WASM_GLOBAL_SET = 0x24;
 enum ubyte WASM_I32_LOAD = 0x28;
 enum ubyte WASM_I32_STORE = 0x36;
 enum ubyte WASM_UNREACHABLE = 0x00;
@@ -205,6 +207,31 @@ bool append_assign(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
 
   if (strcmp(inst.op, "copy") == 0) {
     if (!append_value(body, fn, inst.arg1)) return false;
+  } else if (strncmp(inst.op, "alloc", 5) == 0) {
+    int alignment = 0;
+    if (strcmp(inst.op, "alloc4") == 0) alignment = 4;
+    else if (strcmp(inst.op, "alloc8") == 0) alignment = 8;
+    else {
+      wasm_error("unsupported allocation alignment");
+      return false;
+    }
+    int size = cast(int) strtol(inst.arg1, null, 10);
+    if (size < 0) {
+      wasm_error("allocation size must be non-negative");
+      return false;
+    }
+    if (!append_byte(body, WASM_GLOBAL_GET) || !append_u32(body, 0) ||
+        !append_byte(body, WASM_I32_CONST) || !append_i32(body, alignment - 1) ||
+        !append_byte(body, 0x6a) || !append_byte(body, WASM_I32_CONST) ||
+        !append_i32(body, -alignment) || !append_byte(body, 0x71)) return false;
+
+    int destination = local_index(fn, inst.dest);
+    if (destination < 0 || !append_byte(body, WASM_LOCAL_SET) ||
+        !append_u32(body, cast(uint) destination) || !append_byte(body, WASM_LOCAL_GET) ||
+        !append_u32(body, cast(uint) destination) || !append_byte(body, WASM_I32_CONST) ||
+        !append_i32(body, size) || !append_byte(body, 0x6a) ||
+        !append_byte(body, WASM_GLOBAL_SET) || !append_u32(body, 0)) return false;
+    return true;
   } else if (strcmp(inst.op, "loadw") == 0) {
     if (!append_value(body, fn, inst.arg1) || !append_byte(body, WASM_I32_LOAD) ||
         !append_u32(body, 2) || !append_u32(body, 0)) return false;
@@ -251,7 +278,8 @@ bool program_uses_memory() {
     for (int j = 0; j < fn.inst_count; j++) {
       Instruction* inst = &fn.instructions[j];
       if (inst.kind == InstKind.IK_store ||
-          (inst.kind == InstKind.IK_assign && strcmp(inst.op, "loadw") == 0)) {
+          (inst.kind == InstKind.IK_assign &&
+           (strcmp(inst.op, "loadw") == 0 || strncmp(inst.op, "alloc", 5) == 0))) {
         return true;
       }
     }
@@ -525,6 +553,13 @@ bool emit_wasm_program(FILE* output) {
     ok = ok && append_u32(memory, 1) && append_byte(memory, 0) && append_u32(memory, 1);
     ok = ok && append_section(binary, 5, memory);
     dispose(memory);
+
+    ByteBuffer globals;
+    ok = ok && append_u32(globals, 1) && append_byte(globals, WASM_I32) &&
+      append_byte(globals, 1) && append_byte(globals, WASM_I32_CONST) &&
+      append_i32(globals, 0) && append_byte(globals, WASM_END);
+    ok = ok && append_section(binary, 6, globals);
+    dispose(globals);
   }
 
   int exports = has_memory ? 1 : 0;
