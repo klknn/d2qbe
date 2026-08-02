@@ -1590,7 +1590,7 @@ int gen(Node* node) {
       int lhs = gen(node.lhs);
       char tgt_char = 'w';
       if (node.type.ptr_depth > 0) {
-        tgt_char = 'l';
+        tgt_char = qbe_address_type();
       } else if (strcmp(node.type.name, "float") == 0) {
         tgt_char = 's';
       } else if (strcmp(node.type.name, "double") == 0) {
@@ -1648,7 +1648,7 @@ int gen(Node* node) {
         char lhs_type = get_reg_type(lhs);
         char fn_ret_type = 'w';
         if (current_fn.return_type.ptr_depth > 0) {
-          fn_ret_type = 'l';
+          fn_ret_type = qbe_address_type();
         } else if (strcmp(current_fn.return_type.name, "float") == 0) {
           fn_ret_type = 's';
         } else if (strcmp(current_fn.return_type.name, "double") == 0) {

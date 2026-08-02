@@ -127,6 +127,15 @@ fi
 
 echo "PASS: d2qbe -> wasm32 supports pointer-result host imports"
 
+"$D2QBE" -t wasm32 'extern(C) void host_ptr(int* value); extern(C) int main() { host_ptr(cast(int*) 0); return 0; }' | "$DQBE" -t wasm32 > "$OUTPUT"
+HEADER=$(od -An -tx1 -N8 "$OUTPUT" | tr -d '[:space:]')
+if [ "$HEADER" != "0061736d01000000" ]; then
+  echo "FAILED: wasm32 pointer-cast argument pipeline did not emit a WebAssembly binary"
+  exit 1
+fi
+
+echo "PASS: d2qbe -> wasm32 supports pointer casts"
+
 "$D2QBE" -t wasm32 'struct Pair { int left; int right; } extern(C) int main() { Pair pair; pair.left = 40; pair.right = 2; return pair.left + pair.right; }' | "$DQBE" -t wasm32 > "$OUTPUT"
 HEADER=$(od -An -tx1 -N8 "$OUTPUT" | tr -d '[:space:]')
 if [ "$HEADER" != "0061736d01000000" ]; then

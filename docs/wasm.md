@@ -108,6 +108,13 @@ indices by the number of imports. Initial tests will lock down one imported
 word-result call and one imported void call at the binary/pipeline level;
 runtime behavior remains an optional browser/Node/WABT validation concern.
 
+This profile intentionally rejects conflicting signatures for one import name.
+That currently stops a whole-compiler probe at variadic `fprintf`: Core Wasm
+has no variadic function type, and the compiler uses several `fprintf`
+arities. The next host-ABI design must choose explicit fixed-arity diagnostic
+imports or frontend lowering to a small formatting shim; simply accepting
+conflicting signatures would emit an invalid module.
+
 ## Implementation status (2026-08-02)
 
 ### Completed M1 slice
@@ -179,6 +186,10 @@ runtime behavior remains an optional browser/Node/WABT validation concern.
   wasm32 `w` arithmetic. The pipeline test writes and reads both fields of a
   two-word local struct; slice layout and struct-copy paths still contain
   legacy address lowering to convert.
+- Lowered pointer casts and pointer returns to the wasm32 `w` address
+  representation. The pipeline test passes a cast pointer to a browser host
+  import. A whole-compiler probe now reaches the intentionally rejected
+  variadic `fprintf` host ABI boundary.
 - Added byte stores: QBE `storeb` maps to Wasm `i32.store8`, complementing
   `loadub`. The D pipeline test covers a local `char` round trip.
 - Made the bump allocator grow linear memory when a new allocation exceeds
@@ -206,7 +217,7 @@ runtime behavior remains an optional browser/Node/WABT validation concern.
 
 LDC `--cov` measurement of the backend unit binary reports 74.0% line
 coverage for `source/dqbe/wasm.d` (463/626 executable lines) after adding
-browser-import tests. `test/dqbe_wasm_test.sh` has nineteen pipeline
+browser-import tests. `test/dqbe_wasm_test.sh` has twenty pipeline
 scenarios. These are
 compile-and-binary checks; semantic execution coverage remains unavailable
 until an independent Wasm engine is installed in CI or locally.
