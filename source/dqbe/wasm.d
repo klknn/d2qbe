@@ -827,6 +827,30 @@ unittest {
 }
 
 unittest {
+  char* input = cast(char*) "function w $increment(w %value) {\n@start\n%result =w add %value, 1\nret %result\n}\nexport function w $main() {\n@start\n%result =w call $increment(w 41)\nret %result\n}\n";
+  token = tokenize(input);
+  parse_program();
+
+  FILE* output = fopen("tmp_wasm_result_call_test.wasm", "wb");
+  assert(output != null);
+  assert(emit_wasm_program(output));
+  fclose(output);
+  remove("tmp_wasm_result_call_test.wasm");
+}
+
+unittest {
+  char* input = cast(char*) "export function w $main() {\n@start\njmp @result\n@unreachable\nret 0\n@result\nret 42\n}\n";
+  token = tokenize(input);
+  parse_program();
+
+  FILE* output = fopen("tmp_wasm_jump_test.wasm", "wb");
+  assert(output != null);
+  assert(emit_wasm_program(output));
+  fclose(output);
+  remove("tmp_wasm_jump_test.wasm");
+}
+
+unittest {
   char* input = cast(char*) "export function w $main() {\n@start\n%address =w alloc4 1\nstoreb 65, %address\n%value =w loadub %address\nret %value\n}\n";
   token = tokenize(input);
   parse_program();

@@ -123,6 +123,10 @@ a compiler bug wearing a tiny fake moustache.
 - Lowered target-generated string literal addresses and indexed string bytes
   as `w` addresses. The backend maps QBE `loadub` to Wasm `i32.load8_u`; the
   integration test compiles `"x"[0]` and asserts the byte-load opcode.
+- Lowered scaled pointer addition, subtraction, and pointer differences as
+  `w` arithmetic for wasm32. This keeps QBE `l` out of Wasm memory addresses
+  while retaining the native `l` lowering unchanged; the pipeline test covers
+  `*(p + 1)` and `*(p - 1)` for an `int*` parameter.
 - Lowered mutable D global addresses as `w` values as well. Their existing
   `data { z ... }` storage is emitted into linear memory, so word reads and
   writes compile through the Wasm pipeline; the integration test covers an
@@ -141,8 +145,9 @@ a compiler bug wearing a tiny fake moustache.
   and asserts the growth instructions.
 - Added test-first coverage in `source/dqbe/wasm.d` and
   `test/dqbe_wasm_test.sh`. The unit locks down the full 38-byte encoding of
-  `export function w $main() { ret 42 }`; the integration test checks both
-  handwritten-QBE and `d2qbe -> dqbe -t wasm32` pipelines.
+  `export function w $main() { ret 42 }`, direct result and void calls, and
+  both conditional and unconditional CFG edges; the integration test checks
+  both handwritten-QBE and `d2qbe -> dqbe -t wasm32` pipelines.
 
 ### Verification completed
 
@@ -156,9 +161,10 @@ a compiler bug wearing a tiny fake moustache.
 
 ### Test coverage baseline
 
-LDC `--cov` measurement of the backend unit binary reports 69.5% line
-coverage for `source/dqbe/wasm.d` (381/548 executable lines) after allocator
-growth support. `test/dqbe_wasm_test.sh` has thirteen pipeline scenarios. These are
+LDC `--cov` measurement of the backend unit binary reports 73.0% line
+coverage for `source/dqbe/wasm.d` (412/564 executable lines) after adding
+call and unconditional-CFG tests. `test/dqbe_wasm_test.sh` has sixteen
+pipeline scenarios. These are
 compile-and-binary checks; semantic execution coverage remains unavailable
 until an independent Wasm engine is installed in CI or locally.
 
@@ -173,7 +179,7 @@ local storage, but it is not yet suitable for compiling the compiler itself.
 
 | Capability | x86-64 / ARM64 | Wasm now | Self-hosting implication |
 | --- | --- | --- | --- |
-| QBE scalar values | `w`, `l`, `s`, `d` | `w`; local addresses and pointer parameters use `w` | globals, slices, and broad pointer expressions remain pending |
+| QBE scalar values | `w`, `l`, `s`, `d` | `w`; local/global addresses, pointer parameters, and scaled pointer arithmetic use `w` | slices and broad pointer expressions remain pending |
 | Control flow | arbitrary CFG | arbitrary CFG via dispatcher loop | ready for compiler conditionals and loops |
 | Memory and data | loads, stores, globals | word/byte loads and stores, bump allocation, static strings/data, mutable word globals | wider globals and data relocations remain pending |
 | Calls | native ABI, including recent stack arguments | direct internal `w` calls | host/runtime calls are still absent |
@@ -194,9 +200,9 @@ by the easiest isolated opcode to add:
    D values.
 3. **A wasm32-aware frontend layout:** establish pointer width, `sizeof`,
    alignment, struct layout, and pointer arithmetic as target-dependent. The
-   size/alignment plus local-address and parameter representation are
-   complete; extend that representation to globals, slices, and pointer
-   expressions without conflating them with genuine 64-bit integers.
+   size/alignment plus local/global-address, parameter, and scaled pointer
+   arithmetic representation are complete; extend it to slices and remaining
+   pointer expressions without conflating them with genuine 64-bit integers.
 4. **Minimal browser host ABI:** provide only the imports needed by the
    self-hosted compiler (allocation and source/input/output shims), specified
    independently of WASI. A host-supplied source buffer is preferable to

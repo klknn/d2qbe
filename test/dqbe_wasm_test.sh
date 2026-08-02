@@ -56,6 +56,15 @@ fi
 
 echo "PASS: d2qbe -> wasm32 supports pointer parameters"
 
+"$D2QBE" -t wasm32 'extern(C) int main(int* p) { return *(p + 1) + *(p - 1) + (p - p); }' | "$DQBE" -t wasm32 > "$OUTPUT"
+HEADER=$(od -An -tx1 -N8 "$OUTPUT" | tr -d '[:space:]')
+if [ "$HEADER" != "0061736d01000000" ]; then
+  echo "FAILED: wasm32 pointer-arithmetic pipeline did not emit a WebAssembly binary"
+  exit 1
+fi
+
+echo "PASS: d2qbe -> wasm32 supports scaled pointer arithmetic"
+
 "$D2QBE" -t wasm32 'extern(C) int main() { return "x"[0]; }' | "$DQBE" -t wasm32 > "$OUTPUT"
 HEADER=$(od -An -tx1 -N8 "$OUTPUT" | tr -d '[:space:]')
 if [ "$HEADER" != "0061736d01000000" ]; then
@@ -87,6 +96,15 @@ fi
 
 echo "PASS: d2qbe -> wasm32 supports internal void calls"
 
+"$D2QBE" -t wasm32 'extern(C) int increment(int value) { return value + 1; } extern(C) int main() { return increment(41); }' | "$DQBE" -t wasm32 > "$OUTPUT"
+HEADER=$(od -An -tx1 -N8 "$OUTPUT" | tr -d '[:space:]')
+if [ "$HEADER" != "0061736d01000000" ]; then
+  echo "FAILED: wasm32 result-call pipeline did not emit a WebAssembly binary"
+  exit 1
+fi
+
+echo "PASS: d2qbe -> wasm32 supports internal word-result calls"
+
 "$D2QBE" -t wasm32 'extern(C) int main() { char x = 65; return x; }' | "$DQBE" -t wasm32 > "$OUTPUT"
 BYTES=$(od -An -tx1 "$OUTPUT" | tr -d '[:space:]')
 if ! printf '%s' "$BYTES" | grep -q '3a0000.*2d0000'; then
@@ -112,6 +130,23 @@ if [ "$HEADER" != "0061736d01000000" ]; then
 fi
 
 echo "PASS: dqbe -t wasm32 lowers conditional control flow"
+
+printf '%s\n' \
+  'export function w $main() {' \
+  '@start' \
+  '  jmp @result' \
+  '@unreachable' \
+  '  ret 0' \
+  '@result' \
+  '  ret 42' \
+  '}' | "$DQBE" -t wasm32 > "$OUTPUT"
+HEADER=$(od -An -tx1 -N8 "$OUTPUT" | tr -d '[:space:]')
+if [ "$HEADER" != "0061736d01000000" ]; then
+  echo "FAILED: unconditional-jump module did not emit a WebAssembly binary"
+  exit 1
+fi
+
+echo "PASS: dqbe -t wasm32 lowers unconditional control flow"
 
 printf '%s\n' \
   'export function w $main() {' \

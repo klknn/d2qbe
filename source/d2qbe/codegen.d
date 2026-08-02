@@ -2100,11 +2100,16 @@ int gen(Node* node) {
           printf("  %%t%d =w mul %%t%d, %d\n", mul_res, r, scale);
           offset_reg = mul_res;
         }
-        int ext_res = next_reg();
-        printf("  %%t%d =l extsw %%t%d\n", ext_res, offset_reg);
         int add_res = next_reg();
-        printf("  %%t%d =l add %%t%d, %%t%d\n", add_res, l, ext_res);
-        set_reg_type(add_res, 'l');
+        if (target_layout == TargetLayout.Wasm32) {
+          printf("  %%t%d =w add %%t%d, %%t%d\n", add_res, l, offset_reg);
+          set_reg_type(add_res, 'w');
+        } else {
+          int ext_res = next_reg();
+          printf("  %%t%d =l extsw %%t%d\n", ext_res, offset_reg);
+          printf("  %%t%d =l add %%t%d, %%t%d\n", add_res, l, ext_res);
+          set_reg_type(add_res, 'l');
+        }
         return add_res;
       }
       if (rt.ptr_depth > 0) {
@@ -2122,11 +2127,16 @@ int gen(Node* node) {
           printf("  %%t%d =w mul %%t%d, %d\n", mul_res, l, scale);
           offset_reg = mul_res;
         }
-        int ext_res = next_reg();
-        printf("  %%t%d =l extsw %%t%d\n", ext_res, offset_reg);
         int add_res = next_reg();
-        printf("  %%t%d =l add %%t%d, %%t%d\n", add_res, r, ext_res);
-        set_reg_type(add_res, 'l');
+        if (target_layout == TargetLayout.Wasm32) {
+          printf("  %%t%d =w add %%t%d, %%t%d\n", add_res, r, offset_reg);
+          set_reg_type(add_res, 'w');
+        } else {
+          int ext_res = next_reg();
+          printf("  %%t%d =l extsw %%t%d\n", ext_res, offset_reg);
+          printf("  %%t%d =l add %%t%d, %%t%d\n", add_res, r, ext_res);
+          set_reg_type(add_res, 'l');
+        }
         return add_res;
       }
       return gen_binop(node, "add");
@@ -2138,7 +2148,9 @@ int gen(Node* node) {
         int l = gen(node.lhs);
         int r = gen(node.rhs);
         int sub_res = next_reg();
-        printf("  %%t%d =l sub %%t%d, %%t%d\n", sub_res, l, r);
+        printf(target_layout == TargetLayout.Wasm32 ?
+            "  %%t%d =w sub %%t%d, %%t%d\n" :
+            "  %%t%d =l sub %%t%d, %%t%d\n", sub_res, l, r);
         Type tmp_type;
         tmp_type.name = lt.name;
         tmp_type.ptr_depth = lt.ptr_depth - 1;
@@ -2148,7 +2160,13 @@ int gen(Node* node) {
         int div_res = sub_res;
         if (scale > 1) {
           div_res = next_reg();
-          printf("  %%t%d =l div %%t%d, %d\n", div_res, sub_res, scale);
+          printf(target_layout == TargetLayout.Wasm32 ?
+              "  %%t%d =w div %%t%d, %d\n" :
+              "  %%t%d =l div %%t%d, %d\n", div_res, sub_res, scale);
+        }
+        if (target_layout == TargetLayout.Wasm32) {
+          set_reg_type(div_res, 'w');
+          return div_res;
         }
         int copy_res = next_reg();
         printf("  %%t%d =w copy %%t%d\n", copy_res, div_res);
@@ -2170,11 +2188,16 @@ int gen(Node* node) {
           printf("  %%t%d =w mul %%t%d, %d\n", mul_res, r, scale);
           offset_reg = mul_res;
         }
-        int ext_res = next_reg();
-        printf("  %%t%d =l extsw %%t%d\n", ext_res, offset_reg);
         int sub_res = next_reg();
-        printf("  %%t%d =l sub %%t%d, %%t%d\n", sub_res, l, ext_res);
-        set_reg_type(sub_res, 'l');
+        if (target_layout == TargetLayout.Wasm32) {
+          printf("  %%t%d =w sub %%t%d, %%t%d\n", sub_res, l, offset_reg);
+          set_reg_type(sub_res, 'w');
+        } else {
+          int ext_res = next_reg();
+          printf("  %%t%d =l extsw %%t%d\n", ext_res, offset_reg);
+          printf("  %%t%d =l sub %%t%d, %%t%d\n", sub_res, l, ext_res);
+          set_reg_type(sub_res, 'l');
+        }
         return sub_res;
       }
       return gen_binop(node, "sub");
