@@ -7,6 +7,7 @@ import core.stdc.string;
 import dqbe.tokenize;
 import dqbe.parse;
 import dqbe.codegen;
+import dqbe.wasm : emit_wasm_program;
 extern (C) FILE* get_stdin();
 extern (C) FILE* get_stdout();
 extern (C) FILE* get_stderr();
@@ -16,6 +17,7 @@ import dqbe.regalloc : init_regalloc;
 extern (C)
 int main(int argc, char** argv) {
   fprintf(get_stderr(), "DEBUG_APP_START: dqbe is starting!\n");
+  bool target_wasm32 = false;
 
   // Parse command line arguments
   for (int i = 1; i < argc; i++) {
@@ -26,7 +28,9 @@ int main(int argc, char** argv) {
         i++;
         
         // Parse arch
-        if (strstr(triple, "x86_64") || strstr(triple, "amd64")) {
+        if (strstr(triple, "wasm32")) {
+          target_wasm32 = true;
+        } else if (strstr(triple, "x86_64") || strstr(triple, "amd64")) {
           target_arch = TargetArch.X86_64;
         } else if (strstr(triple, "aarch64") || strstr(triple, "arm64")) {
           target_arch = TargetArch.ARM64;
@@ -55,7 +59,9 @@ int main(int argc, char** argv) {
         char* qbe_target = argv[i + 1];
         i++;
         
-        if (strcmp(qbe_target, "amd64_sysv") == 0) {
+        if (strcmp(qbe_target, "wasm") == 0 || strcmp(qbe_target, "wasm32") == 0) {
+          target_wasm32 = true;
+        } else if (strcmp(qbe_target, "amd64_sysv") == 0) {
           target_arch = TargetArch.X86_64;
           target_os = TARGET_OS_SYSV;
           target_apple = false;
@@ -92,7 +98,7 @@ int main(int argc, char** argv) {
       return 1;
     }
   }
-  init_regalloc();
+  if (!target_wasm32) init_regalloc();
   // Read all inputs from stdin
   int capacity = 4 * 1024 * 1024; // 4MB starting capacity
   char* buf = cast(char*) malloc(capacity);
@@ -121,8 +127,13 @@ int main(int argc, char** argv) {
   
   token = tokenize(buf);
   parse_program();
-  gen_program(get_stdout());
+  int result = 0;
+  if (target_wasm32) {
+    if (!emit_wasm_program(get_stdout())) result = 1;
+  } else {
+    gen_program(get_stdout());
+  }
   
   free(buf);
-  return 0;
+  return result;
 }

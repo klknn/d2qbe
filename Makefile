@@ -1,4 +1,4 @@
-.PHONY: all test clean unittest test-integration test-regression test-selfhost unittest-frontend unittest-backend test-dqbe-abi benchmark
+.PHONY: all test clean unittest test-integration test-regression test-selfhost unittest-frontend unittest-backend test-dqbe-abi test-dqbe-wasm benchmark
 
 DC=ldc2
 DFLAGS=-g -w -betterC -Isource
@@ -16,7 +16,7 @@ all: d2qbe dqbe qbe/qbe
 d2qbe: $(OBJS) ext.$(OBJ_EXT)
 	$(DC) $(DFLAGS) $(OBJS) ext.$(OBJ_EXT) -of=$@
 
-dqbe: source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d source/dqbe/sysv.d source/dqbe/win64.d source/dqbe/arm64_abi.d source/dqbe/app.d test/tmp_ext_all.d
+dqbe: source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d source/dqbe/wasm.d source/dqbe/sysv.d source/dqbe/win64.d source/dqbe/arm64_abi.d source/dqbe/app.d test/tmp_ext_all.d
 	$(DC) $(DFLAGS) $^ -of=$@
 
 %.$(OBJ_EXT): source/d2qbe/%.d
@@ -39,9 +39,9 @@ ext.arm64.o: test/ext.d
 	$(DC) -mtriple=aarch64-linux-gnu $(DFLAGS) -c $< -of=$@
 
 ifeq ($(OS),Windows_NT)
-test: unittest test-integration-dqbe test-dqbe-abi test-regression test-selfhost-dqbe
+test: unittest test-integration-dqbe test-dqbe-abi test-dqbe-wasm test-regression test-selfhost-dqbe
 else
-test: unittest test-integration test-integration-dqbe test-dqbe-abi test-regression test-selfhost test-selfhost-dqbe
+test: unittest test-integration test-integration-dqbe test-dqbe-abi test-dqbe-wasm test-regression test-selfhost test-selfhost-dqbe
 endif
 
 test-integration: d2qbe qbe/qbe ext.$(OBJ_EXT)
@@ -55,6 +55,9 @@ test-regression: dqbe
 
 test-dqbe-abi: dqbe
 	./test/dqbe_abi_test.sh
+
+test-dqbe-wasm: d2qbe dqbe
+	./test/dqbe_wasm_test.sh
 
 test-selfhost: d2qbe qbe/qbe ext.$(OBJ_EXT)
 	./test/self_host.sh
@@ -81,7 +84,7 @@ unittest-frontend:
 	rm -f unittest_frontend
 
 unittest-backend:
-	$(DC) -g -w -Isource -unittest -main source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d source/dqbe/sysv.d source/dqbe/win64.d source/dqbe/arm64_abi.d test/tmp_ext_all.d -of=unittest_backend
+	$(DC) -g -w -Isource -unittest -main source/dqbe/tokenize.d source/dqbe/parse.d source/dqbe/regalloc.d source/dqbe/codegen.d source/dqbe/wasm.d source/dqbe/sysv.d source/dqbe/win64.d source/dqbe/arm64_abi.d test/tmp_ext_all.d -of=unittest_backend
 	./unittest_backend
 	rm -f unittest_backend
 

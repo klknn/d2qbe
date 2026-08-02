@@ -19,6 +19,7 @@ docs/
 !docs/
 docs/*
 !docs/codex.md
+!docs/wasm.md
 /d2qbe
 d2qbe.so
 d2qbe.dylib

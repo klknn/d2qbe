@@ -1,0 +1,245 @@
+# WebAssembly backend plan
+
+## Status and scope
+
+This document is the design record and worklog for the `wasm` branch. The
+design decisions below were recorded before implementation so that the target,
+runtime contract, compatibility boundary, and tests are explicit.
+
+The first deliverable is a small, direct WebAssembly binary backend for the
+QBE subset emitted by this project. It must add no required third-party build
+dependency: `ldc2` continues to build the backend, and the backend writes a
+`.wasm` binary itself. WABT, Wasmtime, and Node are useful optional validators
+or runners, but are not build requirements.
+
+## Target and runtime decision
+
+### Chosen initial target: browser-compatible core Wasm, `wasm32`
+
+The backend will produce a Core WebAssembly binary (magic `\0asm`, binary
+format version 1) using the broadly deployed MVP instruction set plus
+multi-value only if it becomes necessary. The initial value types are `i32`,
+`f32`, and `f64`; SIMD, threads, GC, exceptions, the component model, and
+memory64 are out of scope.
+
+The initial embedder is the JavaScript WebAssembly API, with browsers as the
+primary target. A tiny JavaScript runner may also run unchanged in Node when a
+developer has Node installed, but Node is not required by the repository or
+the compiler. Browser-first is the right minimal-dependency choice: the Core
+standard deliberately does not define a process, files, stdout, or an entry
+point, while the JavaScript embedding supplies a stable way to validate,
+instantiate, and invoke exports.
+
+The module contract for milestone 1 is:
+
+- export `main` as `() -> i32`;
+- export one linear memory as `memory` when memory operations are enabled;
+- do not require imports for the smoke-test subset;
+- the host calls `instance.exports.main()` and compares the returned `i32`.
+
+This is intentionally **not WASI** yet. WASI would be a separate ABI/runtime
+choice with imports, a C/D runtime, I/O, allocation, and exit semantics.
+Existing tests use `printf`, `malloc`, `calloc`, and variadic C calls; those
+programs must remain outside the first browser-core milestone. We will add a
+small host import surface only after the core code generator is proven.
+
+## Important representation boundary
+
+The current frontend represents host pointers as QBE `l` and assumes 8-byte
+pointers (for example, `int*.sizeof == 8`). In WebAssembly `wasm32`, memory
+addresses are `i32`. QBE `l` can also mean a genuine 64-bit integer, so a
+standalone QBE backend cannot safely infer whether every `l` is a pointer.
+
+Therefore the milestones are deliberately staged:
+
+1. **M1: QBE `w` subset only.** `dqbe -t wasm32` accepts functions using `w`
+   values, constants, integer arithmetic, comparisons, direct calls returning
+   `w`, and returns. It rejects `l`, data, load/store, imports, and unsupported control
+   flow with a clear diagnostic. This establishes valid binary encoding and a
+   runnable browser module without pretending that 64-bit host layout works.
+2. **M2: structured control and memory.** Lower QBE CFG to structured Wasm
+   (a dispatcher-loop lowering is the reliable general strategy) and add one
+   linear memory. Still reject ambiguous `l` values.
+3. **M3: target-aware `d2qbe -t wasm32`.** Make pointer width, alignment,
+   `sizeof`, struct layout, and pointer arithmetic target-specific; emit
+   pointer values in a distinguishable wasm-compatible representation. Only
+   then enable arrays, slices, globals, and D programs that use memory.
+4. **M4: host imports / optional WASI profile.** Specify imports and implement
+   a browser host shim first. Evaluate WASI Preview 1 or a newer WASI profile
+   separately; it must not silently become a required dependency.
+
+This boundary is strict on purpose. Mapping all QBE `l` values to Wasm `i64`
+would make addresses unusable by `i32` memory instructions; mapping them all
+to `i32` would silently truncate real 64-bit values. Either shortcut would be
+a compiler bug wearing a tiny fake moustache.
+
+## Implementation status (2026-08-02)
+
+### Completed M1 slice
+
+- Created the local `wasm` branch from `main`.
+- Added `source/dqbe/wasm.d`, a direct binary writer with no third-party
+  dependencies. It emits the Wasm magic/version and type, function, export,
+  and code sections.
+- Added `dqbe -t wasm32` (and `-t wasm` / wasm32 triples). Binary bytes go to
+  stdout; diagnostics remain on stderr.
+- Implemented the documented straight-line `w` subset: `copy`, integer
+  arithmetic, bitwise operations, shifts, signed comparisons, direct calls,
+  locals, and `ret`. Unsupported data, `l`, floating point, stores/loads,
+  multiple basic blocks, and unstructured control flow fail with a diagnostic.
+- Added test-first coverage in `source/dqbe/wasm.d` and
+  `test/dqbe_wasm_test.sh`. The unit locks down the full 38-byte encoding of
+  `export function w $main() { ret 42 }`; the integration test checks both
+  handwritten-QBE and `d2qbe -> dqbe -t wasm32` pipelines.
+
+### Verification completed
+
+- `make unittest-backend` — pass.
+- `make test-dqbe-wasm` — pass.
+- `make test` — pass. The existing backend self-host test remains skipped by
+  its x86-only platform guard on this ARM64 host.
+- No standalone Wasm engine or validator is installed locally, so this change
+  has binary-layout and pipeline verification but not runtime execution in a
+  browser, Node, Wasmtime, or WABT yet.
+
+## Comparison with the native backends (2026-08-02)
+
+The x86-64 and ARM64 backends are mature native code generators: they support
+the QBE types used by this compiler, arbitrary basic-block control flow,
+loads/stores, global data, platform calling conventions, and the existing
+native test and self-hosting paths. The Wasm backend deliberately starts much
+smaller: it writes a valid module and covers straight-line `w` functions, but
+it is not yet suitable for compiling the compiler itself.
+
+| Capability | x86-64 / ARM64 | Wasm now | Self-hosting implication |
+| --- | --- | --- | --- |
+| QBE scalar values | `w`, `l`, `s`, `d` | `w` only | compiler code needs pointers and therefore memory |
+| Control flow | arbitrary CFG | one basic block | conditionals, loops, and error paths cannot compile yet |
+| Memory and data | loads, stores, globals | not implemented | allocation, strings, arrays, and source text are blocked |
+| Calls | native ABI, including recent stack arguments | direct internal `w` calls | host/runtime calls are still absent |
+| Target data layout | host-native | currently host-biased frontend layout | wasm32 pointer size/alignment must be explicit |
+| Runtime validation | native compiler/linker/test paths | binary and pipeline checks | add an optional independent Wasm runner in CI |
+
+### Self-hosting-first order
+
+Wasm work is now ordered by what `d2qbe` needs to compile and run itself, not
+by the easiest isolated opcode to add:
+
+1. **General control flow:** lower labels, `jmp`, and `jnz`, including loops
+   and recursion, while preserving `w` semantics. This is the next slice.
+2. **Linear memory and static data:** implement typed loads/stores, data
+   segments, globals, and a carefully specified pointer representation.
+3. **A wasm32-aware frontend layout:** make pointer width, `sizeof`,
+   alignment, struct layout, and pointer arithmetic target-dependent. This
+   removes the current host-64-bit assumption before pointers are enabled.
+4. **Minimal browser host ABI:** provide only the imports needed by the
+   self-hosted compiler (allocation and source/input/output shims), specified
+   independently of WASI. A host-supplied source buffer is preferable to
+   making a filesystem ABI an early requirement.
+5. **Self-host compiler smoke path:** compile a constrained compiler entry
+   point to Wasm, instantiate it in the browser host, and compare its output
+   with the native backend on small D inputs.
+
+Floating point, broad external ABI compatibility, and optional WASI support
+remain useful but are behind those prerequisites. A self-hosted compiler uses
+control flow, allocation, strings, arrays, static data, and pointers far
+earlier than it needs a wide catalogue of numeric operations.
+
+## Backend design
+
+### CLI and artifact
+
+Extend `dqbe` with `-t wasm32`. In this mode stdout is binary WebAssembly, so
+diagnostics must stay on stderr. The invocation is:
+
+```sh
+./d2qbe 'extern(C) int main() { return 42; }' | ./dqbe -t wasm32 > main.wasm
+```
+
+The first implementation can live in `source/dqbe/wasm.d`, reusing the
+existing tokenizer and parsed `FunctionDef`/`Instruction` structures. It will
+own a small byte writer: unsigned/signed LEB128, section framing, vectors,
+function type interning, and the type/function/export/code sections. No WAT
+writer or external WAT assembler is required.
+
+### Value mapping in M1
+
+| QBE | Wasm | M1 policy |
+| --- | --- | --- |
+| `w` | `i32` | supported |
+| `s` | `f32` | deferred until integer M1 is stable |
+| `d` | `f64` | deferred until integer M1 is stable |
+| `l` | ambiguous | rejected |
+
+QBE temporaries become Wasm locals. `copy`, `add`, `sub`, `mul`, signed
+`div`/`rem`, bitwise operations, shifts, and integer comparisons map to their
+`i32.*` opcode equivalents. Direct calls use precomputed function indices.
+Only a single `i32` result is supported initially.
+
+### Control flow
+
+WebAssembly branches are structured; QBE labels and jumps are arbitrary CFG.
+M1 supports only a single entry block ending in `ret`. M2 will represent each
+QBE block with a program-counter local in a Wasm `loop`, use nested `block`
+and `br_table` dispatch, and translate `jmp`/`jnz` by setting the next block
+index. This is less pretty than hand-shaped `if`/`loop`, but it is general and
+correct before optimisation.
+
+## Test strategy
+
+### Project tests (mandatory)
+
+Follow TDD: add each test before its implementation.
+
+1. Native D unit tests for binary writer and LEB128 edge cases.
+2. A backend integration script that compiles hand-written QBE to `.wasm`,
+   validates/runs it through an optional runner, and asserts `main`'s result.
+3. A `d2qbe -> dqbe -t wasm32` smoke test for `return 0`, arithmetic, and
+   direct calls once M1 supports them.
+4. Expand to control flow and memory only after the prior layer passes.
+
+The current checkout has no `node`, `wasmtime`, `wasm-validate`, `wat2wasm`,
+or `wasm-interp` executable. Tests must report a clear skip when no optional
+runner is present; binary-layout unit tests remain mandatory everywhere.
+
+### Official WebAssembly suite
+
+The official suite is in [`WebAssembly/spec`](https://github.com/WebAssembly/spec),
+which contains the reference interpreter and official tests. Its
+[`test/core`](https://github.com/WebAssembly/spec/tree/main/test/core) directory
+contains semantic `.wast` scripts, including integer, call, control-flow,
+memory, and float tests; its README documents running them with the spec
+interpreter's `run.py --wasm` interface.
+
+It is not a drop-in M1 test suite because this backend consumes QBE rather than
+Wasm text and initially implements only a strict subset. Do not vendor or
+pretend to pass the suite. Instead, record a pinned upstream revision when it
+is first used, select tests matching completed Wasm features, and run them
+against an independent Wasm runtime as a conformance gate.
+
+### Optional tools
+
+- [Wasmtime CLI](https://docs.wasmtime.dev/cli-options.html): preferred
+  standalone execution/validation tool when installed by a developer or CI.
+- [WABT](https://github.com/WebAssembly/wabt): optional `wasm-validate`,
+  `wasm-interp`, and inspection tools; not a dependency of the compiler.
+- Browser JavaScript API: primary compatibility check; a simple HTML/JS runner
+  can validate and invoke the exported `main` without a package manager.
+
+## References
+
+- [WebAssembly Core Specification](https://webassembly.github.io/spec/core/):
+  module structure, validation, execution, binary format, and text format.
+- [Core specification overview](https://webassembly.github.io/spec/core/intro/overview.html):
+  value types, structured control flow, linear memory, exports, and embedder
+  responsibilities.
+- [WebAssembly JavaScript API](https://webassembly.github.io/spec/js-api/):
+  browser/JavaScript embedding contract.
+
+## Immediate next task
+
+Add failing tests for each newly supported integer operation and direct call,
+then run the emitted module in an independent browser or standalone runtime
+when one is available. After those semantics are verified, begin M2 with a
+test-first structured-control lowering; do not add an external runtime
+dependency merely to make the unit tests pass.
