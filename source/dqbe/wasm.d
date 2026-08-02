@@ -15,6 +15,8 @@ enum ubyte WASM_CALL = 0x10;
 enum ubyte WASM_LOCAL_GET = 0x20;
 enum ubyte WASM_LOCAL_SET = 0x21;
 enum ubyte WASM_I32_CONST = 0x41;
+enum ubyte WASM_I32_LOAD = 0x28;
+enum ubyte WASM_I32_STORE = 0x36;
 enum ubyte WASM_UNREACHABLE = 0x00;
 enum ubyte WASM_LOOP = 0x03;
 enum ubyte WASM_IF = 0x04;
@@ -203,6 +205,9 @@ bool append_assign(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
 
   if (strcmp(inst.op, "copy") == 0) {
     if (!append_value(body, fn, inst.arg1)) return false;
+  } else if (strcmp(inst.op, "loadw") == 0) {
+    if (!append_value(body, fn, inst.arg1) || !append_byte(body, WASM_I32_LOAD) ||
+        !append_u32(body, 2) || !append_u32(body, 0)) return false;
   } else if (strcmp(inst.op, "call") == 0) {
     int target = find_function(inst.arg1);
     if (target < 0) {
@@ -229,6 +234,29 @@ bool append_assign(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
   int destination = local_index(fn, inst.dest);
   return destination >= 0 && append_byte(body, WASM_LOCAL_SET) &&
     append_u32(body, cast(uint) destination);
+}
+
+bool append_store(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
+  if (strcmp(inst.op, "storew") != 0) {
+    wasm_error("only storew is supported by wasm memory M2");
+    return false;
+  }
+  return append_value(body, fn, inst.arg2) && append_value(body, fn, inst.arg1) &&
+    append_byte(body, WASM_I32_STORE) && append_u32(body, 2) && append_u32(body, 0);
+}
+
+bool program_uses_memory() {
+  for (int i = 0; i < program_functions_count; i++) {
+    FunctionDef* fn = &program_functions[i];
+    for (int j = 0; j < fn.inst_count; j++) {
+      Instruction* inst = &fn.instructions[j];
+      if (inst.kind == InstKind.IK_store ||
+          (inst.kind == InstKind.IK_assign && strcmp(inst.op, "loadw") == 0)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 struct WasmBlock {
@@ -302,6 +330,10 @@ bool append_dispatcher_body(ref ByteBuffer body, FunctionDef* fn, int program_co
       Instruction* inst = &fn.instructions[i];
       if (inst.kind == InstKind.IK_assign) {
         if (!append_assign(body, fn, inst)) return false;
+        continue;
+      }
+      if (inst.kind == InstKind.IK_store) {
+        if (!append_store(body, fn, inst)) return false;
         continue;
       }
       if (inst.kind == InstKind.IK_ret) {
@@ -415,6 +447,13 @@ bool append_function_body(ref ByteBuffer code, FunctionDef* fn) {
       }
       continue;
     }
+    if (inst.kind == InstKind.IK_store) {
+      if (!append_store(body, fn, inst)) {
+        dispose(body);
+        return false;
+      }
+      continue;
+    }
     if (inst.kind == InstKind.IK_ret) {
       if (!append_return(body, fn, inst)) {
         dispose(body);
@@ -480,7 +519,15 @@ bool emit_wasm_program(FILE* output) {
   ok = ok && append_section(binary, 3, functions);
   dispose(functions);
 
-  int exports = 0;
+  bool has_memory = program_uses_memory();
+  if (has_memory) {
+    ByteBuffer memory;
+    ok = ok && append_u32(memory, 1) && append_byte(memory, 0) && append_u32(memory, 1);
+    ok = ok && append_section(binary, 5, memory);
+    dispose(memory);
+  }
+
+  int exports = has_memory ? 1 : 0;
   for (int i = 0; i < program_functions_count; i++) if (program_functions[i].is_export) exports++;
   ByteBuffer export_section;
   ok = ok && append_u32(export_section, cast(uint) exports);
@@ -489,6 +536,10 @@ bool emit_wasm_program(FILE* output) {
     if (!fn.is_export) continue;
     ok = append_name(export_section, fn.name + 1) && append_byte(export_section, 0) &&
       append_u32(export_section, cast(uint) i);
+  }
+  if (has_memory) {
+    ok = ok && append_name(export_section, "memory") && append_byte(export_section, 2) &&
+      append_u32(export_section, 0);
   }
   ok = ok && append_section(binary, 7, export_section);
   dispose(export_section);
@@ -546,4 +597,16 @@ unittest {
   assert(emit_wasm_program(output));
   fclose(output);
   remove("tmp_wasm_control_test.wasm");
+}
+
+unittest {
+  char* input = cast(char*) "export function w $main() {\n@start\n%addr =w copy 0\nstorew 42, %addr\n%value =w loadw %addr\nret %value\n}\n";
+  token = tokenize(input);
+  parse_program();
+
+  FILE* output = fopen("tmp_wasm_memory_test.wasm", "wb");
+  assert(output != null);
+  assert(emit_wasm_program(output));
+  fclose(output);
+  remove("tmp_wasm_memory_test.wasm");
 }

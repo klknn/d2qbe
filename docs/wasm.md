@@ -59,8 +59,9 @@ Therefore the milestones are deliberately staged:
    runnable browser module without pretending that 64-bit host layout works.
 2. **M2: structured control and memory.** Lower QBE CFG to structured Wasm
    (a dispatcher-loop lowering is the reliable general strategy) and add one
-   linear memory. Structured control is complete; memory still rejects
-   ambiguous `l` values until the target-aware frontend work lands.
+   linear memory. Structured control is complete. The first memory slice
+   supports `w`-addressed `loadw`/`storew`; it still rejects ambiguous `l`
+   values until the explicit pointer representation lands.
 3. **M3: target-aware `d2qbe -t wasm32`.** The initial layout selection is
    implemented: pointers and `size_t` are 4 bytes, slices are 8 bytes, and
    their alignment is 4 bytes. Struct layout therefore follows wasm32 sizes
@@ -92,8 +93,10 @@ a compiler bug wearing a tiny fake moustache.
 - Extended M2 with a dispatcher-loop lowering for labelled QBE CFGs. `jmp`,
   `jnz`, fall-through edges, and returns now work across arbitrary basic
   blocks; the program-counter local is internal to the emitted Wasm function.
-  Unsupported data, `l`, floating point, stores/loads, and external calls
-  still fail with a diagnostic.
+  Added a one-page linear memory when a module uses `loadw` or `storew`; it
+  is exported as `memory`. Those operations currently accept explicit `w`
+  addresses only. Data segments, other widths, `l`, floating point, and
+  external calls still fail with a diagnostic.
 - Added `d2qbe -t wasm32` / `--target wasm32` layout selection. The frontend
   now uses 4-byte pointers and `size_t`, 8-byte slices, and 4-byte pointer or
   slice alignment for that target; native compilation retains its 64-bit
@@ -127,7 +130,7 @@ it is not yet suitable for compiling the compiler itself.
 | --- | --- | --- | --- |
 | QBE scalar values | `w`, `l`, `s`, `d` | `w` only | compiler code needs pointers and therefore memory |
 | Control flow | arbitrary CFG | one basic block | conditionals, loops, and error paths cannot compile yet |
-| Memory and data | loads, stores, globals | not implemented | allocation, strings, arrays, and source text are blocked |
+| Memory and data | loads, stores, globals | `w`-addressed word load/store; no data/globals | allocation, strings, arrays, and source text remain blocked |
 | Calls | native ABI, including recent stack arguments | direct internal `w` calls | host/runtime calls are still absent |
 | Target data layout | host-native | wasm32 pointer size/alignment selected; pointer representation pending | memory code remains blocked on `l` handling |
 | Runtime validation | native compiler/linker/test paths | binary and pipeline checks | add an optional independent Wasm runner in CI |
@@ -139,8 +142,9 @@ by the easiest isolated opcode to add:
 
 1. **General control flow:** lower labels, `jmp`, and `jnz`, including loops
    and recursion, while preserving `w` semantics. This is the next slice.
-2. **Linear memory and static data:** implement typed loads/stores, data
-   segments, globals, and a carefully specified pointer representation.
+2. **Linear memory and static data:** the `w` word-load/store foundation is
+   complete. Add typed loads/stores, data segments, globals, and the explicit
+   pointer representation needed for D values.
 3. **A wasm32-aware frontend layout:** establish pointer width, `sizeof`,
    alignment, struct layout, and pointer arithmetic as target-dependent. The
    size/alignment portion is complete; represent pointer values separately

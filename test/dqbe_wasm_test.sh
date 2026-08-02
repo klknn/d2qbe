@@ -54,3 +54,23 @@ if [ "$HEADER" != "0061736d01000000" ]; then
 fi
 
 echo "PASS: dqbe -t wasm32 lowers conditional control flow"
+
+printf '%s\n' \
+  'export function w $main() {' \
+  '@start' \
+  '  %addr =w copy 0' \
+  '  storew 42, %addr' \
+  '  %value =w loadw %addr' \
+  '  ret %value' \
+  '}' | "$DQBE" -t wasm32 > "$OUTPUT"
+BYTES=$(od -An -tx1 "$OUTPUT" | tr -d '[:space:]')
+if ! printf '%s' "$BYTES" | grep -q '0503010001'; then
+  echo "FAILED: memory module has no one-page Wasm memory section"
+  exit 1
+fi
+if ! printf '%s' "$BYTES" | grep -q '360200.*280200'; then
+  echo "FAILED: memory module is missing i32.store/i32.load instructions"
+  exit 1
+fi
+
+echo "PASS: dqbe -t wasm32 lowers w-addressed memory operations"
