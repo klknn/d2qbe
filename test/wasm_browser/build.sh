@@ -55,7 +55,7 @@ case "$MODE" in
     emit_d_case pointer_size 4 '[]' 0 'extern(C) int main() { return int*.sizeof; }'
     emit_d_case local_word 7 '[]' 1 'extern(C) int main() { int value = 7; return value; }'
     emit_d_case pointer_parameter 0 '[0]' 1 'extern(C) int main(int* value) { return *value; }'
-    emit_d_case pointer_arithmetic 0 '[4]' 1 'extern(C) int main(int* value) { return *(value + 1) + *(value - 1) + (value - value); }'
+    emit_d_case pointer_arithmetic 1 '[]' 1 'extern(C) int main() { int value = 42; int* pointer = &value; return (pointer + 1) - pointer; }'
     emit_d_case string_byte 120 '[]' 1 'extern(C) int main() { return "x"[0]; }'
     emit_d_case global_word 7 '[]' 1 'int value; extern(C) int main() { value = 7; return value; }'
     emit_d_case void_call 42 '[]' 1 'extern(C) void touch(int* value) { *value = 42; } extern(C) int main() { int value; touch(&value); return value; }'

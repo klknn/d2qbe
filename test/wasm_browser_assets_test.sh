@@ -15,5 +15,6 @@ grep -q 'host_increment' test/wasm_browser/test.html
 grep -q 'input type="range"' test/wasm_browser/demo.html
 grep -q 'WASM_BROWSER_OPEN' test/wasm_browser/serve.sh
 grep -q '"allocator_growth"' tmp_wasm_browser/manifest.json
+grep -q '"pointer_arithmetic","expected":1' tmp_wasm_browser/manifest.json
 
 echo "PASS: browser Wasm fixtures and pages are available"

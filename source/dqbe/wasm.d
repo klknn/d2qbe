@@ -611,7 +611,8 @@ bool append_dispatcher_body(ref ByteBuffer body, FunctionDef* fn, int program_co
     if (!append_byte(body, WASM_END)) return false;
   }
 
-  return append_byte(body, WASM_UNREACHABLE) && append_byte(body, WASM_END);
+  return append_byte(body, WASM_UNREACHABLE) && append_byte(body, WASM_END) &&
+    append_byte(body, WASM_UNREACHABLE);
 }
 
 bool needs_dispatcher(FunctionDef* fn) {

@@ -35,6 +35,9 @@ or the self-hosting boundary changes.
   and result shape.
 - Do not accept variadic imports. Core Wasm has no variadic function type;
   design a fixed-arity host shim or frontend lowering first.
+- When a `w`-returning function uses the dispatcher loop, emit an unreachable
+  instruction after closing the loop so the enclosing Wasm function cannot
+  fall through without an `i32` result.
 
 ## Debugging order
 
@@ -57,6 +60,11 @@ Use `make wasm-browser-test` for browser execution of generated fixtures and
 `make wasm-browser-demo` for the interactive demo. These targets must remain
 dependency-light and browser-visible; use an optional independent validator
 only as an extra check.
+
+Give browser fixtures deterministic memory state. Do not assert a result from
+an uninitialised linear-memory load merely because a native compile-only test
+accepted the source. Prefer locally initialised values or address arithmetic
+that does not dereference unknown memory.
 
 ## Self-hosting probe
 

@@ -168,6 +168,10 @@ if [ "$HEADER" != "0061736d01000000" ]; then
   echo "FAILED: control-flow module did not emit a WebAssembly binary"
   exit 1
 fi
+if ! od -An -tx1 "$OUTPUT" | tr -d '[:space:]' | grep -q '000b000b$'; then
+  echo "FAILED: control-flow function can fall through its wasm return type"
+  exit 1
+fi
 
 echo "PASS: dqbe -t wasm32 lowers conditional control flow"
 

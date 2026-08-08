@@ -166,7 +166,8 @@ twenty cases in `test/dqbe_wasm_test.sh`, opens the browser test page, and
 leaves the local server running until `Ctrl-C`. The page instantiates every
 module, calls its exported `main`, checks the return value and required memory
 page count, and supplies the fixed `env` imports used by the host-import
-tests.
+tests. Its pointer-arithmetic fixture verifies the deterministic expression
+`(pointer + 1) - pointer`; it does not read uninitialised linear memory.
 
 ```sh
 make wasm-browser-test
@@ -298,6 +299,10 @@ test first.
   words, and zero fill; `$data` resolves to a `w` address. Other widths,
   data relocations, `l`, floating point, and external calls still fail with a
   diagnostic.
+- Fixed dispatcher functions returning `w` to emit an unreachable instruction
+  after closing the dispatcher loop. This makes the enclosing Wasm function's
+  unreachable fall-through explicit, satisfying browser validation for both
+  conditional and unconditional control-flow modules.
 - Added `d2qbe -t wasm32` / `--target wasm32` layout selection. The frontend
   now uses 4-byte pointers and `size_t`, 8-byte slices, and 4-byte pointer or
   slice alignment for that target; native compilation retains its 64-bit
@@ -382,8 +387,9 @@ test first.
 ### Test coverage baseline
 
 LDC `--cov` measurement of the backend unit binary reports 74.0% line
-coverage for `source/dqbe/wasm.d` (463/626 executable lines) after adding
-browser-import tests. `test/dqbe_wasm_test.sh` has twenty pipeline
+coverage for `source/dqbe/wasm.d` (464/627 executable lines) after fixing
+dispatcher validation. This maintains the prior coverage percentage while
+adding an executed backend line. `test/dqbe_wasm_test.sh` has twenty pipeline
 scenarios. These are
 compile-and-binary checks; semantic execution coverage remains unavailable
 until an independent Wasm engine is installed in CI or locally.
