@@ -115,6 +115,137 @@ arities. The next host-ABI design must choose explicit fixed-arity diagnostic
 imports or frontend lowering to a small formatting shim; simply accepting
 conflicting signatures would emit an invalid module.
 
+## Hands-on contributor workflow
+
+This backend is developed as a small vertical slice at a time: write a
+failing test, implement the smallest valid binary lowering, inspect the
+emitted module, then run the complete regression suite before committing.
+The backend intentionally has no mandatory external Wasm toolchain.
+
+### Build and run the smallest module
+
+Build the two compiler stages from the repository root:
+
+```sh
+make d2qbe dqbe
+```
+
+Compile a no-import D program to a binary module. `dqbe` writes bytes to
+standard output, so redirect its output; compiler diagnostics remain on
+standard error.
+
+```sh
+./d2qbe -t wasm32 'extern(C) int main() { return 42; }' \
+  | ./dqbe -t wasm32 > main.wasm
+
+od -An -tx1 -N8 main.wasm | tr -d '[:space:]'
+# 0061736d01000000
+```
+
+For a browser smoke test, put `main.wasm` next to an `index.html`, serve the
+directory with any static-file server, and open it in a current browser.
+Opening the page with `file://` can prevent `fetch` from loading the module.
+
+```html
+<!doctype html>
+<script type="module">
+  const response = await fetch("./main.wasm");
+  const { instance } = await WebAssembly.instantiate(
+    await response.arrayBuffer(), {});
+  console.log(instance.exports.main()); // 42
+</script>
+```
+
+`python3 -m http.server` is a convenient server if Python is already
+available, but it is not a project dependency.
+
+### Develop a feature test-first
+
+1. Add the smallest failing case to `test/dqbe_wasm_test.sh`. Prefer a D
+   pipeline test when the frontend layout matters; add a hand-written QBE
+   case when testing a backend opcode or section directly.
+2. For binary writer branches, also add a native D `unittest` in
+   `source/dqbe/wasm.d`. Use exact bytes for a compact, stable encoding and
+   a success/failure assertion for larger modules.
+3. Run `make test-dqbe-wasm`; confirm the new test fails for the expected
+   reason before changing production code.
+4. Implement the narrowest lowering in `source/dqbe/wasm.d` or target-aware
+   frontend lowering in `source/d2qbe/codegen.d`.
+5. Run `make unittest-frontend`, `make unittest-backend`, and
+   `make test-dqbe-wasm`. Before a checkpoint commit, run `make test`.
+6. Update this document's implementation status, feature comparison, and
+   measured test coverage. Keep commits to one coherent capability.
+
+### Inspect the stage that is actually wrong
+
+Most failures belong to one of three layers. Inspect them separately before
+editing code:
+
+| Symptom | First inspection | Likely owner |
+| --- | --- | --- |
+| `d2qbe -t wasm32` emits `l` addresses or wrong `sizeof` | Print its QBE output and search for `=l`, `loadl`, or `storel` | frontend layout/codegen |
+| QBE is `w`-only but `dqbe` rejects it or emits malformed bytes | Feed a minimal hand-written QBE program directly to `dqbe -t wasm32` | Wasm backend |
+| Browser instantiation fails | Check imports, export names, and section bytes; then compare with browser error | module/host contract |
+
+Useful commands:
+
+```sh
+# Keep the generated QBE so its value/address types are visible.
+./d2qbe -t wasm32 'extern(C) int main(int* p) { return *(p + 1); }' > program.qbe
+rg -n '=l|loadl|storel|call' program.qbe
+
+# Isolate the backend from frontend lowering.
+printf '%s\n' \
+  'export function w $main() {' '@start' '  ret 42' '}' \
+  | ./dqbe -t wasm32 > direct.wasm
+
+# Inspect structural byte signatures already used by pipeline tests.
+od -An -tx1 direct.wasm | tr -d '[:space:]'
+```
+
+`w` means an `i32` in this target. A remaining `l` is not a harmless spelling
+variation: it can be a real 64-bit integer, so the backend rejects it rather
+than silently truncating an address.
+
+### Debug memory, calls, and browser imports
+
+- For memory failures, first check that the frontend emits `w` addresses and
+  `loadw`/`storew` or `loadub`/`storeb`. The backend exports `memory` only
+  when a module needs it.
+- For a host function, start with a fixed signature. For example,
+  `extern(C) int host_increment(int value);` becomes `env.host_increment`
+  with `(i32) -> i32`:
+
+  ```js
+  const { instance } = await WebAssembly.instantiate(bytes, {
+    env: { host_increment(value) { return value + 1; } },
+  });
+  ```
+
+  Every unresolved call needs a corresponding `env` property. Pointer values
+  are offsets into the exported linear memory, represented as JavaScript
+  numbers. The host owns bounds checks and allocation conventions.
+- If a generated module reports an inconsistent import signature, locate all
+  calls to that external name. Core Wasm has no variadic imports; calls at
+  different arities (currently `fprintf`) need a deliberately designed shim,
+  not a relaxed type check.
+- If an optional independent tool is installed, use `wasm-validate` or a
+  browser instantiation failure as an extra validation layer. Do not add it as
+  a required build dependency merely to get a green local test.
+
+### Current self-hosting probe
+
+The useful progress probe is:
+
+```sh
+./d2qbe -t wasm32 source/d2qbe/app.d | ./dqbe -t wasm32 > app.wasm
+```
+
+It is expected to fail today at the variadic `fprintf` import boundary. This
+is a feature-gap probe, not a passing test. Keep it that way until the
+fixed-arity diagnostic host ABI has been specified and covered by a failing
+test first.
+
 ## Implementation status (2026-08-02)
 
 ### Completed M1 slice
@@ -367,7 +498,7 @@ against an independent Wasm runtime as a conformance gate.
 
 Add an optional independent runtime check when a browser, Node, Wasmtime, or
 WABT is available, without making it a compiler dependency. The next required
-self-hosting work is a wasm-compatible pointer representation followed by
-linear memory/data and the minimal browser host ABI. Each capability begins
-with a failing test; do not add an external runtime dependency merely to make
-the unit tests pass.
+self-hosting work is a fixed-arity diagnostic host ABI for variadic output
+calls, followed by the remaining slice and struct-copy address lowering. Each
+capability begins with a failing test; do not add an external runtime
+dependency merely to make the unit tests pass.
