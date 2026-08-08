@@ -192,6 +192,45 @@ interactive program without requiring a runtime or game framework.
 make wasm-browser-game
 ```
 
+### Run D-only WASM-4 cartridges
+
+The browser demos above are useful backend probes, but WASM-4 is the preferred
+route when the game itself — state, input handling, and drawing calls — should
+be written entirely in D. `demo/wasm4/wasm4.d` is a deliberately small binding
+for the project's betterC subset. It declares WASM-4's official `env.rect`
+import and accesses `DRAW_COLORS` and `GAMEPAD1` through the console's
+memory-mapped addresses. It writes the two `DRAW_COLORS` bytes separately, so
+the current byte-store backend is sufficient and does not overwrite adjacent
+input registers.
+
+Three compact D-only cartridges dogfood the compiler:
+
+- `demo/wasm4/tetromino.d` — a falling-block toy with movement and gravity.
+- `demo/wasm4/minicraft.d` — a block-world scene with a movable placement
+  cursor.
+- `demo/wasm4/flight.d` — a pseudo-3D horizon and controllable wireframe
+  aircraft.
+
+Each exports WASM-4's `start()` and per-frame `update()` callbacks. The
+runtime calls `update` about 60 times per second; no JavaScript game logic is
+used. Build them all with the existing compiler stages:
+
+```sh
+make wasm4-carts
+```
+
+To run one cart, install the optional official `w4` command and use one of:
+
+```sh
+make wasm4-tetromino
+make wasm4-minicraft
+make wasm4-flight
+```
+
+`make test` runs `test-wasm4-carts`; it has no `w4` dependency and verifies
+all three generated binaries export `start`/`update`, import `rect`, and use
+linear memory. `w4 run` is a separate interactive runtime check.
+
 Both targets use only an already-installed `python3` as a local static server.
 Set `WASM_BROWSER_PORT=9000` to choose another port. Set
 `WASM_BROWSER_OPEN=0` to serve without opening a GUI, which is useful for

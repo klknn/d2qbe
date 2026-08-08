@@ -1,4 +1,4 @@
-.PHONY: all test clean unittest test-integration test-regression test-selfhost unittest-frontend unittest-backend test-dqbe-abi test-dqbe-wasm test-wasm-browser-assets wasm-browser-test wasm-browser-demo wasm-browser-game benchmark
+.PHONY: all test clean unittest test-integration test-regression test-selfhost unittest-frontend unittest-backend test-dqbe-abi test-dqbe-wasm test-wasm-browser-assets test-wasm4-carts wasm-browser-test wasm-browser-demo wasm-browser-game wasm4-carts wasm4-tetromino wasm4-minicraft wasm4-flight benchmark
 
 DC=ldc2
 DFLAGS=-g -w -betterC -Isource
@@ -41,7 +41,7 @@ ext.arm64.o: test/ext.d
 ifeq ($(OS),Windows_NT)
 test: unittest test-integration-dqbe test-dqbe-abi test-dqbe-wasm test-wasm-browser-assets test-regression test-selfhost-dqbe
 else
-test: unittest test-integration test-integration-dqbe test-dqbe-abi test-dqbe-wasm test-wasm-browser-assets test-regression test-selfhost test-selfhost-dqbe
+test: unittest test-integration test-integration-dqbe test-dqbe-abi test-dqbe-wasm test-wasm-browser-assets test-wasm4-carts test-regression test-selfhost test-selfhost-dqbe
 endif
 
 test-integration: d2qbe qbe/qbe ext.$(OBJ_EXT)
@@ -62,6 +62,9 @@ test-dqbe-wasm: d2qbe dqbe
 test-wasm-browser-assets: d2qbe dqbe
 	./test/wasm_browser_assets_test.sh
 
+test-wasm4-carts: d2qbe dqbe
+	sh ./test/wasm4_carts_test.sh
+
 wasm-browser-test: d2qbe dqbe
 	./test/wasm_browser/build.sh test
 	./test/wasm_browser/serve.sh test
@@ -73,6 +76,18 @@ wasm-browser-demo: d2qbe dqbe
 wasm-browser-game: d2qbe dqbe
 	./test/wasm_browser/build.sh game
 	./test/wasm_browser/serve.sh game
+
+wasm4-carts: d2qbe dqbe
+	sh ./demo/wasm4/build.sh all
+
+wasm4-tetromino: wasm4-carts
+	w4 run tmp_wasm4/tetromino.wasm
+
+wasm4-minicraft: wasm4-carts
+	w4 run tmp_wasm4/minicraft.wasm
+
+wasm4-flight: wasm4-carts
+	w4 run tmp_wasm4/flight.wasm
 
 test-selfhost: d2qbe qbe/qbe ext.$(OBJ_EXT)
 	./test/self_host.sh
