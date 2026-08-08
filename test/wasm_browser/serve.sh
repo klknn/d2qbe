@@ -1,12 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-MODE=${1:?"usage: serve.sh <test|demo>"}
+MODE=${1:?"usage: serve.sh <test|demo|game>"}
 PORT=${WASM_BROWSER_PORT:-8787}
 
 case "$MODE" in
   test) PAGE=test.html ;;
   demo) PAGE=demo.html ;;
+  game) PAGE=game.html ;;
   *)
     echo "unknown browser page: $MODE" >&2
     exit 2

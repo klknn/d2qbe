@@ -1,4 +1,4 @@
-.PHONY: all test clean unittest test-integration test-regression test-selfhost unittest-frontend unittest-backend test-dqbe-abi test-dqbe-wasm test-wasm-browser-assets wasm-browser-test wasm-browser-demo benchmark
+.PHONY: all test clean unittest test-integration test-regression test-selfhost unittest-frontend unittest-backend test-dqbe-abi test-dqbe-wasm test-wasm-browser-assets wasm-browser-test wasm-browser-demo wasm-browser-game benchmark
 
 DC=ldc2
 DFLAGS=-g -w -betterC -Isource
@@ -69,6 +69,10 @@ wasm-browser-test: d2qbe dqbe
 wasm-browser-demo: d2qbe dqbe
 	./test/wasm_browser/build.sh demo
 	./test/wasm_browser/serve.sh demo
+
+wasm-browser-game: d2qbe dqbe
+	./test/wasm_browser/build.sh game
+	./test/wasm_browser/serve.sh game
 
 test-selfhost: d2qbe qbe/qbe ext.$(OBJ_EXT)
 	./test/self_host.sh

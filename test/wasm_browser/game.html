@@ -1,0 +1,109 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>d2qbe Wasm Tetromino</title>
+<style>
+  :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+  body { background: radial-gradient(circle at 50% 0, #2d3769, #0e1321 62%); color: #eef3ff; margin: 0; min-height: 100vh; display: grid; place-items: center; }
+  main { width: min(50rem, calc(100vw - 2rem)); }
+  h1 { margin-bottom: .1rem; } p { color: #c1cbe5; }
+  .game { display: flex; gap: 1.25rem; align-items: flex-start; flex-wrap: wrap; }
+  canvas { background: #0a1020; border: 3px solid #6d82b8; border-radius: .7rem; box-shadow: 0 .7rem 2rem #0008; image-rendering: pixelated; max-width: 100%; }
+  aside { background: #18233a; border: 1px solid #425a8c; border-radius: .75rem; min-width: 12rem; padding: 1rem; }
+  .stat { display: flex; justify-content: space-between; gap: 2rem; margin: .5rem 0; } strong { color: #8bf1be; font-variant-numeric: tabular-nums; }
+  button { background: #8bf1be; border: 0; border-radius: .55rem; color: #082016; cursor: pointer; font: inherit; font-weight: 750; padding: .6rem .9rem; width: 100%; }
+  button:focus-visible { outline: 3px solid white; outline-offset: 3px; }
+  kbd { background: #2b3a59; border-radius: .3rem; padding: .1rem .35rem; }
+  #message { min-height: 1.5rem; }
+</style>
+<main>
+  <h1>Wasm Tetromino</h1>
+  <p>← → で移動、↑ で回転、↓ で落下。行をそろえると、コンパイル済み Wasm が得点を計算します。</p>
+  <div class="game">
+    <canvas id="board" width="300" height="540" aria-label="テトリス盤面"></canvas>
+    <aside aria-live="polite">
+      <div class="stat"><span>得点</span><strong id="score">0</strong></div>
+      <div class="stat"><span>ライン</span><strong id="lines">0</strong></div>
+      <div class="stat"><span>レベル</span><strong id="level">0</strong></div>
+      <div class="stat"><span>連鎖</span><strong id="combo">0</strong></div>
+      <p><button id="start">ゲームを始める</button></p>
+      <p><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></p>
+      <p id="message">Wasm を読み込み中…</p>
+    </aside>
+  </div>
+</main>
+<script type="module">
+  const width = 10, height = 18, cell = 30;
+  const canvas = document.querySelector("#board"), context = canvas.getContext("2d");
+  const start = document.querySelector("#start"), message = document.querySelector("#message");
+  const labels = Object.fromEntries(["score", "lines", "level", "combo"].map((id) => [id, document.querySelector(`#${id}`)]));
+  const shapes = [
+    [[1, 1, 1, 1]], [[1, 1], [1, 1]], [[0, 2, 0], [2, 2, 2]],
+    [[3, 0, 0], [3, 3, 3]], [[0, 0, 4], [4, 4, 4]], [[0, 5, 5], [5, 5, 0]], [[6, 6, 0], [0, 6, 6]],
+  ];
+  const colors = ["", "#5bdff5", "#bd8cff", "#ffaf66", "#668fff", "#73e69b", "#ff6f91"];
+  const bytes = await (await fetch("../../tmp_wasm_browser/game.wasm")).arrayBuffer();
+  const { instance } = await WebAssembly.instantiate(bytes, {});
+  const state = { board: emptyBoard(), active: false, lines: 0, combo: 0, seed: 7, piece: null, timer: 0 };
+
+  function emptyBoard() { return Array.from({ length: height }, () => Array(width).fill(0)); }
+  function random() { state.seed = (state.seed * 1664525 + 1013904223) >>> 0; return state.seed / 2 ** 32; }
+  function copy(matrix) { return matrix.map((row) => [...row]); }
+  function newPiece() {
+    const matrix = copy(shapes[Math.floor(random() * shapes.length)]);
+    state.piece = { matrix, x: Math.floor((width - matrix[0].length) / 2), y: 0 };
+  }
+  function collides(piece) {
+    return piece.matrix.some((row, y) => row.some((value, x) => value &&
+      (piece.x + x < 0 || piece.x + x >= width || piece.y + y >= height || (piece.y + y >= 0 && state.board[piece.y + y][piece.x + x]))));
+  }
+  function drawCell(x, y, value) {
+    context.fillStyle = colors[value]; context.fillRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
+  }
+  function draw() {
+    context.fillStyle = "#0a1020"; context.fillRect(0, 0, canvas.width, canvas.height);
+    state.board.forEach((row, y) => row.forEach((value, x) => { if (value) drawCell(x, y, value); }));
+    if (state.piece) state.piece.matrix.forEach((row, y) => row.forEach((value, x) => { if (value && state.piece.y + y >= 0) drawCell(state.piece.x + x, state.piece.y + y, value); }));
+  }
+  function render() {
+    const level = Math.floor(state.lines / 10);
+    labels.lines.textContent = state.lines; labels.level.textContent = level; labels.combo.textContent = state.combo;
+    labels.score.textContent = instance.exports.main(state.lines, level, state.combo);
+    draw();
+  }
+  function merge() { state.piece.matrix.forEach((row, y) => row.forEach((value, x) => { if (value && state.piece.y + y >= 0) state.board[state.piece.y + y][state.piece.x + x] = value; })); }
+  function clearLines() {
+    let cleared = 0;
+    state.board = state.board.filter((row) => { if (row.every(Boolean)) { cleared += 1; return false; } return true; });
+    while (state.board.length < height) state.board.unshift(Array(width).fill(0));
+    state.lines += cleared; state.combo = cleared ? state.combo + 1 : 0;
+  }
+  function stop() { state.active = false; clearInterval(state.timer); start.disabled = false; message.textContent = `ゲームオーバー。Wasm 得点: ${labels.score.textContent}`; }
+  function lock() {
+    merge(); clearLines(); newPiece();
+    if (collides(state.piece)) stop();
+    render();
+  }
+  function drop() {
+    if (!state.active) return;
+    state.piece.y += 1;
+    if (collides(state.piece)) { state.piece.y -= 1; lock(); } else render();
+  }
+  function move(dx) { if (!state.active) return; state.piece.x += dx; if (collides(state.piece)) state.piece.x -= dx; render(); }
+  function rotate() {
+    if (!state.active) return;
+    const previous = state.piece.matrix;
+    state.piece.matrix = previous[0].map((_, x) => previous.map((row) => row[x]).reverse());
+    if (collides(state.piece)) state.piece.matrix = previous;
+    render();
+  }
+  document.addEventListener("keydown", (event) => {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) event.preventDefault();
+    if (event.key === "ArrowLeft") move(-1); if (event.key === "ArrowRight") move(1);
+    if (event.key === "ArrowUp") rotate(); if (event.key === "ArrowDown") drop();
+  });
+  start.addEventListener("click", () => {
+    state.board = emptyBoard(); state.lines = state.combo = 0; state.active = true; start.disabled = true;
+    newPiece(); clearInterval(state.timer); state.timer = setInterval(drop, 620); message.textContent = "ラインをそろえよう！"; render();
+  });
+  message.textContent = "準備完了。開始してね。"; render();
+</script>

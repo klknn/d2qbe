@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-MODE=${1:?"usage: build.sh <test|demo>"}
+MODE=${1:?"usage: build.sh <test|demo|game>"}
 D2QBE=${D2QBE:-./d2qbe}
 DQBE=${DQBE:-./dqbe}
 OUTPUT=tmp_wasm_browser
@@ -79,6 +79,12 @@ case "$MODE" in
       'extern(C) int host_value(); extern(C) int main() { int value = host_value(); return value * value + 1; }' \
       | "$DQBE" -t wasm32 > "$OUTPUT/demo.wasm"
     printf 'Built browser demo module in %s\n' "$OUTPUT"
+    ;;
+  game)
+    "$D2QBE" -t wasm32 \
+      'extern(C) int main(int lines, int level, int combo) { return lines * 100 + level * 50 + combo * 25; }' \
+      | "$DQBE" -t wasm32 > "$OUTPUT/game.wasm"
+    printf 'Built browser game module in %s\n' "$OUTPUT"
     ;;
   *)
     echo "unknown browser build mode: $MODE" >&2

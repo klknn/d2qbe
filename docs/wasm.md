@@ -181,6 +181,17 @@ and reruns compiled Wasm that calculates `n² + 1`.
 make wasm-browser-demo
 ```
 
+`make wasm-browser-game` keeps that demo intact and opens **Wasm Tetromino**,
+a dependency-free falling-block game. Browser JavaScript owns input, drawing,
+collision, rotation, and line clearing; the separately compiled `game.wasm`
+owns the score formula: `lines * 100 + level * 50 + combo * 25`. This makes
+function arguments and integer arithmetic observable through a small
+interactive program without requiring a runtime or game framework.
+
+```sh
+make wasm-browser-game
+```
+
 Both targets use only an already-installed `python3` as a local static server.
 Set `WASM_BROWSER_PORT=9000` to choose another port. Set
 `WASM_BROWSER_OPEN=0` to serve without opening a GUI, which is useful for
