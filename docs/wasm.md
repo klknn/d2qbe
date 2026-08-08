@@ -159,6 +159,36 @@ Opening the page with `file://` can prevent `fetch` from loading the module.
 `python3 -m http.server` is a convenient server if Python is already
 available, but it is not a project dependency.
 
+### Run the browser suite and demo
+
+`make wasm-browser-test` rebuilds and serves browser fixtures that mirror all
+twenty cases in `test/dqbe_wasm_test.sh`, opens the browser test page, and
+leaves the local server running until `Ctrl-C`. The page instantiates every
+module, calls its exported `main`, checks the return value and required memory
+page count, and supplies the fixed `env` imports used by the host-import
+tests.
+
+```sh
+make wasm-browser-test
+```
+
+`make wasm-browser-demo` builds and opens an interactive slider demo. Its
+Wasm module imports `env.host_value`; moving the slider changes the host value
+and reruns compiled Wasm that calculates `n² + 1`.
+
+```sh
+make wasm-browser-demo
+```
+
+Both targets use only an already-installed `python3` as a local static server.
+Set `WASM_BROWSER_PORT=9000` to choose another port. Set
+`WASM_BROWSER_OPEN=0` to serve without opening a GUI, which is useful for
+checking generated assets in a non-graphical environment.
+
+`make test` includes `make test-wasm-browser-assets`: it rebuilds the same
+fixtures and checks the manifest and both browser pages without requiring a
+GUI or leaving a server running.
+
 ### Develop a feature test-first
 
 1. Add the smallest failing case to `test/dqbe_wasm_test.sh`. Prefer a D
@@ -340,9 +370,14 @@ test first.
 - `make test-dqbe-wasm` — pass.
 - `make test` — pass. The existing backend self-host test remains skipped by
   its x86-only platform guard on this ARM64 host.
-- No standalone Wasm engine or validator is installed locally, so this change
-  has binary-layout and pipeline verification but not runtime execution in a
-  browser, Node, Wasmtime, or WABT yet.
+- `make wasm-browser-test` builds a browser-visible runtime suite for all
+  twenty existing Wasm pipeline fixtures; `make wasm-browser-demo` builds a
+  small interactive host-import demo. These are intentionally separate from
+  `make test` because they require a graphical browser and leave a local
+  server running.
+- No standalone Wasm engine or validator is a repository dependency. Use the
+  browser suite or an optional browser, Node, Wasmtime, or WABT installation
+  for independent runtime validation.
 
 ### Test coverage baseline
 

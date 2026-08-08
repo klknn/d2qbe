@@ -9,6 +9,8 @@
 !.gitignore
 !*.json
 !tool/filter_msg.py
+!test/wasm_browser/
+!test/wasm_browser/*.html
 tmp*
 test/self_host_dqbe.d
 

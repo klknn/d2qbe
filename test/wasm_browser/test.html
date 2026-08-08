@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>d2qbe Wasm browser tests</title>
+<style>
+  body { background: #10151f; color: #eaf0ff; font: 16px/1.5 system-ui, sans-serif; margin: 2rem; }
+  .pass { color: #75e39a; }
+  .fail { color: #ff8b9a; }
+</style>
+<h1>d2qbe Wasm browser tests</h1>
+<p id="summary">Loading generated Wasm fixtures…</p>
+<ul id="results"></ul>
+<script type="module">
+  const fixtureRoot = "../../tmp_wasm_browser/";
+  const resultList = document.querySelector("#results");
+  const summary = document.querySelector("#summary");
+
+  function addResult(name, passed, detail) {
+    const item = document.createElement("li");
+    item.className = passed ? "pass" : "fail";
+    item.textContent = `${passed ? "PASS" : "FAIL"}: ${name} — ${detail}`;
+    resultList.append(item);
+  }
+
+  const manifest = await (await fetch(`${fixtureRoot}manifest.json`)).json();
+  let failures = 0;
+  for (const testCase of manifest.cases) {
+    try {
+      const bytes = await (await fetch(`${fixtureRoot}${testCase.module}`)).arrayBuffer();
+      const { instance } = await WebAssembly.instantiate(bytes, {
+        env: {
+          host_increment(value) { return value + 1; },
+          host_log(value) { console.info("host_log", value); },
+          host_alloc(count) { return 0; },
+          host_ptr(value) { console.info("host_ptr", value); },
+        },
+      });
+      const actual = instance.exports.main(...testCase.args);
+      const pages = instance.exports.memory
+        ? instance.exports.memory.buffer.byteLength / 65536
+        : 0;
+      const passed = actual === testCase.expected && pages >= testCase.minimumPages;
+      if (!passed) failures++;
+      addResult(testCase.name, passed,
+        `expected ${testCase.expected}, got ${actual}; memory pages ${pages}`);
+    } catch (error) {
+      failures++;
+      addResult(testCase.name, false, error.message);
+    }
+  }
+
+  summary.textContent = failures === 0
+    ? `PASS: ${manifest.cases.length} browser Wasm cases passed`
+    : `FAIL: ${failures}/${manifest.cases.length} browser Wasm cases failed`;
+  summary.className = failures === 0 ? "pass" : "fail";
+  document.title = summary.textContent;
+</script>
