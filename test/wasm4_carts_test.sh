@@ -13,6 +13,7 @@ for cart in tetromino minicraft flight; do
   strings "tmp_wasm4/$cart.wasm" | grep -qx memory
   od -An -tx1 "tmp_wasm4/$cart.wasm" | tr -d '[:space:]' |
     grep -q '021a0203656e760472656374000003656e76066d656d6f7279020001'
+  od -An -tx1 "tmp_wasm4/$cart.wasm" | tr -d '[:space:]' | grep -q '0607017f0141'
   od -An -tx1 "tmp_wasm4/$cart.wasm" | tr -d '[:space:]' | grep -q '41a0330b'
 done
 

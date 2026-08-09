@@ -206,6 +206,9 @@ plain `wasm32`): it imports WASM-4's required `env.memory` and places static
 data plus the bump allocator after the console-owned region at `0x19a0`. This
 is essential — a self-defined memory or program data at address zero makes the
 runtime and cart observe different memory and results in a blank screen.
+The profile also retains the mutable allocator global; every target-generated
+`alloc4` references it, so omitting that global makes the Wasm validator reject
+the cart with `Invalid global index: 0`.
 
 Three compact D-only cartridges dogfood the compiler:
 

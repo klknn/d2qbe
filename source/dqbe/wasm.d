@@ -795,7 +795,9 @@ bool emit_wasm_program(FILE* output) {
     ok = ok && append_u32(memory, 1) && append_byte(memory, 0) && append_u32(memory, pages);
     ok = ok && append_section(binary, 5, memory);
     dispose(memory);
+  }
 
+  if (has_memory) {
     ByteBuffer globals;
     ok = ok && append_u32(globals, 1) && append_byte(globals, WASM_I32) &&
       append_byte(globals, 1) && append_byte(globals, WASM_I32_CONST) &&
