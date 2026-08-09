@@ -25,7 +25,7 @@ grep -q 'readGamepad' demo/wasm4/flight.d
 grep -q 'int\[400\] snakeX' demo/wasm4/snake.d
 grep -q 'int\[400\] snakeY' demo/wasm4/snake.d
 grep -q 'fruitX' demo/wasm4/snake.d
-grep -q 'int\[72\] board' demo/wasm4/puyo.d
+grep -q 'ushort\[72\] board' demo/wasm4/puyo.d
 grep -q 'void rotatePair' demo/wasm4/puyo.d
 grep -q 'int flood' demo/wasm4/puyo.d
 grep -q 'readGamepad' demo/wasm4/puyo.d

@@ -1,7 +1,7 @@
 // A dependency-free D port inspired by Shigeki Karita's wasm4-puyo.
 // It deliberately replaces the original env.rand dependency with nextColor().
 
-int[72] board;
+ushort[72] board;
 int[72] marks;
 int markNumber;
 int pairAX;
