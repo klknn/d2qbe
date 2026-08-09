@@ -12,7 +12,7 @@ build_cart() {
   name=$1
   source="$(sed -n '1,$p' demo/wasm4/wasm4.d)
 $(sed -n '1,$p' "demo/wasm4/$name.d")"
-  "$D2QBE" -t wasm32 "$source" | "$DQBE" -t wasm32 > "$OUTPUT/$name.wasm"
+  "$D2QBE" -t wasm4 "$source" | "$DQBE" -t wasm4 > "$OUTPUT/$name.wasm"
   printf 'Built D-only WASM-4 cartridge: %s\n' "$OUTPUT/$name.wasm"
 }
 

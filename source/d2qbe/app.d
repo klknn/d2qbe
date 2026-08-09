@@ -12,7 +12,8 @@ extern (C)
 int main(int argc, char** argv) {
   int input_index = 1;
   if (argc == 4 && (strcmp(argv[1], "-t") == 0 || strcmp(argv[1], "--target") == 0)) {
-    if (strcmp(argv[2], "wasm") == 0 || strcmp(argv[2], "wasm32") == 0) {
+    if (strcmp(argv[2], "wasm") == 0 || strcmp(argv[2], "wasm32") == 0 ||
+        strcmp(argv[2], "wasm4") == 0) {
       target_layout = TargetLayout.Wasm32;
     } else {
       fprintf(get_stderr(), "unknown target: %s\n", argv[2]);

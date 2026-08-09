@@ -201,7 +201,11 @@ for the project's betterC subset. It declares WASM-4's official `env.rect`
 import and accesses `DRAW_COLORS` and `GAMEPAD1` through the console's
 memory-mapped addresses. It writes the two `DRAW_COLORS` bytes separately, so
 the current byte-store backend is sufficient and does not overwrite adjacent
-input registers.
+input registers. The build uses the dedicated `wasm4` profile (rather than
+plain `wasm32`): it imports WASM-4's required `env.memory` and places static
+data plus the bump allocator after the console-owned region at `0x19a0`. This
+is essential — a self-defined memory or program data at address zero makes the
+runtime and cart observe different memory and results in a blank screen.
 
 Three compact D-only cartridges dogfood the compiler:
 
@@ -228,8 +232,9 @@ make wasm4-flight
 ```
 
 `make test` runs `test-wasm4-carts`; it has no `w4` dependency and verifies
-all three generated binaries export `start`/`update`, import `rect`, and use
-linear memory. `w4 run` is a separate interactive runtime check.
+all three generated binaries export `start`/`update`, import `rect` and
+`env.memory`, and start program data after WASM-4's reserved region. `w4 run`
+is a separate interactive runtime check.
 
 Both targets use only an already-installed `python3` as a local static server.
 Set `WASM_BROWSER_PORT=9000` to choose another port. Set

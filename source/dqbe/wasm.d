@@ -30,6 +30,13 @@ enum ubyte WASM_IF = 0x04;
 enum ubyte WASM_ELSE = 0x05;
 enum ubyte WASM_BR = 0x0c;
 enum ubyte WASM_EMPTY_BLOCK = 0x40;
+enum WASM4_PROGRAM_MEMORY_BASE = 0x19a0;
+
+bool wasm4_profile;
+
+void set_wasm4_profile(bool enabled) {
+  wasm4_profile = enabled;
+}
 
 struct ByteBuffer {
   ubyte* data;
@@ -298,8 +305,12 @@ int static_data_size() {
   return size;
 }
 
+int static_data_base() {
+  return wasm4_profile ? WASM4_PROGRAM_MEMORY_BASE : 0;
+}
+
 bool find_data_offset(const char* name, ref int offset) {
-  int current_offset = 0;
+  int current_offset = static_data_base();
   for (int i = 0; i < program_data_count; i++) {
     if (strcmp(program_data[i].name, name) == 0) {
       offset = current_offset;
@@ -719,6 +730,7 @@ bool emit_wasm_program(FILE* output) {
   }
   int data_size = static_data_size();
   if (data_size < 0) return false;
+  int data_base = static_data_base();
   for (int i = 0; i < program_functions_count; i++) {
     if (!supported_function(&program_functions[i])) return false;
   }
@@ -750,13 +762,19 @@ bool emit_wasm_program(FILE* output) {
   ok = ok && append_section(binary, 1, types);
   dispose(types);
 
-  if (wasm_imports_count != 0) {
+  bool has_memory = program_uses_memory() || wasm4_profile;
+  if (wasm_imports_count != 0 || wasm4_profile) {
     ByteBuffer imports;
-    ok = ok && append_u32(imports, cast(uint) wasm_imports_count);
+    int import_count = wasm_imports_count + (wasm4_profile ? 1 : 0);
+    ok = ok && append_u32(imports, cast(uint) import_count);
     for (int i = 0; ok && i < wasm_imports_count; i++) {
       WasmImport* imported = &wasm_imports[i];
       ok = append_name(imports, "env") && append_name(imports, imported.name + 1) &&
         append_byte(imports, 0) && append_u32(imports, cast(uint) i);
+    }
+    if (wasm4_profile) {
+      ok = ok && append_name(imports, "env") && append_name(imports, "memory") &&
+        append_byte(imports, 2) && append_byte(imports, 0) && append_u32(imports, 1);
     }
     ok = ok && append_section(binary, 2, imports);
     dispose(imports);
@@ -770,10 +788,9 @@ bool emit_wasm_program(FILE* output) {
   ok = ok && append_section(binary, 3, functions);
   dispose(functions);
 
-  bool has_memory = program_uses_memory();
-  if (has_memory) {
+  if (has_memory && !wasm4_profile) {
     ByteBuffer memory;
-    uint pages = cast(uint) ((data_size + 65535) / 65536);
+    uint pages = cast(uint) ((data_base + data_size + 65535) / 65536);
     if (pages == 0) pages = 1;
     ok = ok && append_u32(memory, 1) && append_byte(memory, 0) && append_u32(memory, pages);
     ok = ok && append_section(binary, 5, memory);
@@ -782,12 +799,12 @@ bool emit_wasm_program(FILE* output) {
     ByteBuffer globals;
     ok = ok && append_u32(globals, 1) && append_byte(globals, WASM_I32) &&
       append_byte(globals, 1) && append_byte(globals, WASM_I32_CONST) &&
-      append_i32(globals, data_size) && append_byte(globals, WASM_END);
+      append_i32(globals, data_base + data_size) && append_byte(globals, WASM_END);
     ok = ok && append_section(binary, 6, globals);
     dispose(globals);
   }
 
-  int exports = has_memory ? 1 : 0;
+  int exports = has_memory && !wasm4_profile ? 1 : 0;
   for (int i = 0; i < program_functions_count; i++) if (program_functions[i].is_export) exports++;
   ByteBuffer export_section;
   ok = ok && append_u32(export_section, cast(uint) exports);
@@ -797,7 +814,7 @@ bool emit_wasm_program(FILE* output) {
     ok = append_name(export_section, fn.name + 1) && append_byte(export_section, 0) &&
       append_u32(export_section, cast(uint) (wasm_imports_count + i));
   }
-  if (has_memory) {
+  if (has_memory && !wasm4_profile) {
     ok = ok && append_name(export_section, "memory") && append_byte(export_section, 2) &&
       append_u32(export_section, 0);
   }
@@ -815,7 +832,7 @@ bool emit_wasm_program(FILE* output) {
   if (program_data_count != 0) {
     ByteBuffer data;
     ok = ok && append_u32(data, cast(uint) program_data_count);
-    int offset = 0;
+    int offset = data_base;
     for (int i = 0; ok && i < program_data_count; i++) {
       ByteBuffer bytes;
       ok = append_data_definition(bytes, &program_data[i]);

@@ -7,7 +7,7 @@ import core.stdc.string;
 import dqbe.tokenize;
 import dqbe.parse;
 import dqbe.codegen;
-import dqbe.wasm : emit_wasm_program;
+import dqbe.wasm : emit_wasm_program, set_wasm4_profile;
 extern (C) FILE* get_stdin();
 extern (C) FILE* get_stdout();
 extern (C) FILE* get_stderr();
@@ -18,6 +18,7 @@ extern (C)
 int main(int argc, char** argv) {
   fprintf(get_stderr(), "DEBUG_APP_START: dqbe is starting!\n");
   bool target_wasm32 = false;
+  bool target_wasm4 = false;
 
   // Parse command line arguments
   for (int i = 1; i < argc; i++) {
@@ -28,7 +29,10 @@ int main(int argc, char** argv) {
         i++;
         
         // Parse arch
-        if (strstr(triple, "wasm32")) {
+        if (strstr(triple, "wasm4")) {
+          target_wasm32 = true;
+          target_wasm4 = true;
+        } else if (strstr(triple, "wasm32")) {
           target_wasm32 = true;
         } else if (strstr(triple, "x86_64") || strstr(triple, "amd64")) {
           target_arch = TargetArch.X86_64;
@@ -59,7 +63,10 @@ int main(int argc, char** argv) {
         char* qbe_target = argv[i + 1];
         i++;
         
-        if (strcmp(qbe_target, "wasm") == 0 || strcmp(qbe_target, "wasm32") == 0) {
+        if (strcmp(qbe_target, "wasm4") == 0) {
+          target_wasm32 = true;
+          target_wasm4 = true;
+        } else if (strcmp(qbe_target, "wasm") == 0 || strcmp(qbe_target, "wasm32") == 0) {
           target_wasm32 = true;
         } else if (strcmp(qbe_target, "amd64_sysv") == 0) {
           target_arch = TargetArch.X86_64;
@@ -129,6 +136,7 @@ int main(int argc, char** argv) {
   parse_program();
   int result = 0;
   if (target_wasm32) {
+    set_wasm4_profile(target_wasm4);
     if (!emit_wasm_program(get_stdout())) result = 1;
   } else {
     gen_program(get_stdout());
