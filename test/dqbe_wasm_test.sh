@@ -47,6 +47,15 @@ fi
 
 echo "PASS: d2qbe -> wasm32 supports local word storage"
 
+"$D2QBE" -t wasm32 'extern(C) int main() { uint frames = 7; return frames + 1; }' | "$DQBE" -t wasm32 > "$OUTPUT"
+HEADER=$(od -An -tx1 -N8 "$OUTPUT" | tr -d '[:space:]')
+if [ "$HEADER" != "0061736d01000000" ]; then
+  echo "FAILED: wasm32 unsigned-word pipeline did not emit a WebAssembly binary"
+  exit 1
+fi
+
+echo "PASS: d2qbe -> wasm32 supports uint word storage"
+
 "$D2QBE" -t wasm32 'extern(C) int main(int* p) { return *p; }' | "$DQBE" -t wasm32 > "$OUTPUT"
 HEADER=$(od -An -tx1 -N8 "$OUTPUT" | tr -d '[:space:]')
 if [ "$HEADER" != "0061736d01000000" ]; then

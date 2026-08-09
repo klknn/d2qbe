@@ -249,6 +249,26 @@ all four generated binaries export `start`/`update`, import `rect` and
 `env.memory`, and start program data after WASM-4's reserved region. `w4 run`
 is a separate interactive runtime check.
 
+### Puyo Puyo compatibility probe
+
+`ShigekiKarita/wasm4-puyo` is the next real-world dogfood target. Its original
+D source is a useful fuller game, but it is not a drop-in browser cartridge:
+the raw build imports `env.rand`, while the official browser runtime provides
+no such function. The port must therefore use a small deterministic D PRNG
+rather than add an unofficial JavaScript import.
+
+The initial d2qbe probe also identifies concrete frontend work. `uint` now
+lowers as the Wasm i32 word type with a pipeline test. Structs, fixed arrays,
+`foreach` ranges, and methods already parse; remaining early surface includes
+`ushort`/`ubyte`, static-local storage, and array literal initializers. Import aliases and the
+multi-file module arrangement are deliberately deferred: the first cart is
+kept as one dependency-free D source beside the existing WASM-4 binding.
+Each capability lands only with a focused compiler pipeline test and is then
+used by the cart. The intended milestone is a playable falling-pair board
+with left/right/rotate/down, gravity, four-or-more clearing, chain score, and
+`blit` rendering; this is more valuable than mechanically accepting every
+syntax feature before the game has a runnable core.
+
 Both targets use only an already-installed `python3` as a local static server.
 Set `WASM_BROWSER_PORT=9000` to choose another port. Set
 `WASM_BROWSER_OPEN=0` to serve without opening a GUI, which is useful for

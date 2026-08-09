@@ -380,6 +380,10 @@ bool is_type_name(const(char)* str, int len) {
 void init_types() {
   known_types_count = 0;
   register_type("int");
+  // Wasm i32 uses the same storage and arithmetic lowering for signed and
+  // unsigned word values.  Keeping the spelling preserves betterC source
+  // compatibility without inventing a distinct QBE integer type.
+  register_type("uint");
   register_type("char");
   register_type("bool");
   register_type("void");
