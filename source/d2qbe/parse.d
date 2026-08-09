@@ -385,6 +385,8 @@ void init_types() {
   // compatibility without inventing a distinct QBE integer type.
   register_type("uint");
   register_type("char");
+  register_type("ubyte");
+  register_type("ushort");
   register_type("bool");
   register_type("void");
   register_type("float");
@@ -412,7 +414,8 @@ int get_type_size(Type* t) {
     if (strcmp(t.name, "int") == 0) base_size = 4;
     else if (strcmp(t.name, "float") == 0) base_size = 4;
     else if (strcmp(t.name, "double") == 0) base_size = 8;
-    else if (strcmp(t.name, "char") == 0 || strcmp(t.name, "bool") == 0) base_size = 1;
+    else if (strcmp(t.name, "char") == 0 || strcmp(t.name, "bool") == 0 || strcmp(t.name, "ubyte") == 0) base_size = 1;
+    else if (strcmp(t.name, "ushort") == 0) base_size = 2;
     else if (strcmp(t.name, "void") == 0) base_size = 1;
     else if (strcmp(t.name, "size_t") == 0) base_size = target_pointer_size();
     else {
@@ -441,7 +444,8 @@ int get_type_alignment(Type* t) {
   if (strcmp(t.name, "int") == 0) return 4;
   if (strcmp(t.name, "float") == 0) return 4;
   if (strcmp(t.name, "double") == 0) return 8;
-  if (strcmp(t.name, "char") == 0 || strcmp(t.name, "bool") == 0) return 1;
+  if (strcmp(t.name, "char") == 0 || strcmp(t.name, "bool") == 0 || strcmp(t.name, "ubyte") == 0) return 1;
+  if (strcmp(t.name, "ushort") == 0) return 2;
   StructType* st = find_struct(t.name);
   if (st) {
     return st.alignment;

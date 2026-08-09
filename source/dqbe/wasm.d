@@ -19,8 +19,10 @@ enum ubyte WASM_GLOBAL_GET = 0x23;
 enum ubyte WASM_GLOBAL_SET = 0x24;
 enum ubyte WASM_I32_LOAD = 0x28;
 enum ubyte WASM_I32_LOAD8_U = 0x2d;
+enum ubyte WASM_I32_LOAD16_U = 0x2f;
 enum ubyte WASM_I32_STORE = 0x36;
 enum ubyte WASM_I32_STORE8 = 0x3a;
+enum ubyte WASM_I32_STORE16 = 0x3b;
 enum ubyte WASM_MEMORY_SIZE = 0x3f;
 enum ubyte WASM_MEMORY_GROW = 0x40;
 enum ubyte WASM_DROP = 0x1a;
@@ -438,6 +440,9 @@ bool append_assign(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
   } else if (strcmp(inst.op, "loadub") == 0) {
     if (!append_value(body, fn, inst.arg1) || !append_byte(body, WASM_I32_LOAD8_U) ||
         !append_u32(body, 0) || !append_u32(body, 0)) return false;
+  } else if (strcmp(inst.op, "loaduh") == 0) {
+    if (!append_value(body, fn, inst.arg1) || !append_byte(body, WASM_I32_LOAD16_U) ||
+        !append_u32(body, 1) || !append_u32(body, 0)) return false;
   } else if (strcmp(inst.op, "call") == 0) {
     if (!append_call(body, fn, inst)) return false;
   } else {
@@ -464,8 +469,11 @@ bool append_store(ref ByteBuffer body, FunctionDef* fn, Instruction* inst) {
   } else if (strcmp(inst.op, "storeb") == 0) {
     opcode = WASM_I32_STORE8;
     alignment = 0;
+  } else if (strcmp(inst.op, "storeh") == 0) {
+    opcode = WASM_I32_STORE16;
+    alignment = 1;
   } else {
-    wasm_error("wasm memory supports only storew and storeb");
+    wasm_error("wasm memory supports only storew, storeh, and storeb");
     return false;
   }
   return append_value(body, fn, inst.arg2) && append_value(body, fn, inst.arg1) &&
@@ -480,7 +488,7 @@ bool program_uses_memory() {
       Instruction* inst = &fn.instructions[j];
       if (inst.kind == InstKind.IK_store ||
           (inst.kind == InstKind.IK_assign &&
-           (strcmp(inst.op, "loadw") == 0 || strcmp(inst.op, "loadub") == 0 ||
+           (strcmp(inst.op, "loadw") == 0 || strcmp(inst.op, "loadub") == 0 || strcmp(inst.op, "loaduh") == 0 ||
             strncmp(inst.op, "alloc", 5) == 0))) {
         return true;
       }
@@ -977,4 +985,16 @@ unittest {
   assert(emit_wasm_program(output));
   fclose(output);
   remove("tmp_wasm_byte_memory_test.wasm");
+}
+
+unittest {
+  char* input = cast(char*) "export function w $main() {\n@start\n%address =w alloc4 2\nstoreh 513, %address\n%value =w loaduh %address\nret %value\n}\n";
+  token = tokenize(input);
+  parse_program();
+
+  FILE* output = fopen("tmp_wasm_halfword_memory_test.wasm", "wb");
+  assert(output != null);
+  assert(emit_wasm_program(output));
+  fclose(output);
+  remove("tmp_wasm_halfword_memory_test.wasm");
 }

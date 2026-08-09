@@ -266,9 +266,11 @@ no such function. The port must therefore use a small deterministic D PRNG
 rather than add an unofficial JavaScript import.
 
 The initial d2qbe probe also identifies concrete frontend work. `uint` now
-lowers as the Wasm i32 word type with a pipeline test. Structs, fixed arrays,
+lowers as the Wasm i32 word type, while `ubyte` and `ushort` now use unsigned
+8- and 16-bit memory loads/stores respectively; each has pipeline coverage
+and the halfword writer has a backend unit test. Structs, fixed arrays,
 `foreach` ranges, and methods already parse; remaining early surface includes
-`ushort`/`ubyte`, static-local storage, and array literal initializers. Import aliases and the
+static-local storage and array literal initializers. Import aliases and the
 multi-file module arrangement are deliberately deferred: the first cart is
 kept as one dependency-free D source beside the existing WASM-4 binding.
 Each capability lands only with a focused compiler pipeline test and is then

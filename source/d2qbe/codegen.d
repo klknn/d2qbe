@@ -1167,6 +1167,9 @@ int emit_load(int addr_reg, Type* t) {
   } else if (size == 1) {
     printf("  %%t%d =w loadub %%t%d\n", ret, addr_reg);
     set_reg_type(ret, 'w');
+  } else if (size == 2) {
+    printf("  %%t%d =w loaduh %%t%d\n", ret, addr_reg);
+    set_reg_type(ret, 'w');
   } else if (size == 4) {
     printf("  %%t%d =w loadw %%t%d\n", ret, addr_reg);
     set_reg_type(ret, 'w');
@@ -1204,6 +1207,8 @@ void emit_store(int val_reg, int addr_reg, Type* t) {
     printf("  stored %%t%d, %%t%d\n", val_reg, addr_reg);
   } else if (size == 1) {
     printf("  storeb %%t%d, %%t%d\n", val_reg, addr_reg);
+  } else if (size == 2) {
+    printf("  storeh %%t%d, %%t%d\n", val_reg, addr_reg);
   } else if (size == 4) {
     printf("  storew %%t%d, %%t%d\n", val_reg, addr_reg);
   } else {

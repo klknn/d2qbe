@@ -56,6 +56,15 @@ fi
 
 echo "PASS: d2qbe -> wasm32 supports uint word storage"
 
+"$D2QBE" -t wasm32 'extern(C) int main() { ubyte low = 255; ushort wide = 513; return low + wide; }' | "$DQBE" -t wasm32 > "$OUTPUT"
+BYTES=$(od -An -tx1 "$OUTPUT" | tr -d '[:space:]')
+if ! printf '%s' "$BYTES" | grep -q '3a0000.*3b0100.*2d0000.*2f0100'; then
+  echo "FAILED: wasm32 unsigned byte/halfword storage is missing narrow memory instructions"
+  exit 1
+fi
+
+echo "PASS: d2qbe -> wasm32 supports ubyte and ushort storage"
+
 "$D2QBE" -t wasm32 'extern(C) int main(int* p) { return *p; }' | "$DQBE" -t wasm32 > "$OUTPUT"
 HEADER=$(od -An -tx1 -N8 "$OUTPUT" | tr -d '[:space:]')
 if [ "$HEADER" != "0061736d01000000" ]; then
