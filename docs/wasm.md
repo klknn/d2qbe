@@ -242,7 +242,16 @@ used. Build them all with the existing compiler stages:
 make wasm4-carts
 ```
 
-To run one cart, install the optional official `w4` command and use one of:
+To run one cart, first fetch the optional official `w4` command. The helper
+uses the current OS to download the release asset (`w4-mac.zip`,
+`w4-linux.zip`, or `w4-windows.zip`) into the ignored `tmp_w4_cli` directory;
+it requires only `curl` and `unzip`, not npm.
+
+```sh
+make wasm4-cli
+```
+
+Then use one of:
 
 ```sh
 make wasm4-tetromino
@@ -250,6 +259,14 @@ make wasm4-minicraft
 make wasm4-flight
 make wasm4-snake
 make wasm4-puyo
+```
+
+The default web port is 4444. Override it for any WASM-4 cart without changing
+files; the target passes `W4_PORT` to the official CLI.
+
+```sh
+make wasm4-puyo W4_PORT=4445
+# http://localhost:4445
 ```
 
 `make test` runs `test-wasm4-carts`; it has no `w4` dependency and verifies

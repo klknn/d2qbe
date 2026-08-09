@@ -3,6 +3,15 @@ set -eu
 
 sh ./demo/wasm4/build.sh all
 
+grep -q '^W4 ?= tmp_w4_cli/w4$' Makefile
+grep -q '^W4_PORT ?= 4444$' Makefile
+grep -q 'W4_PORT=$(W4_PORT) $(W4) run' Makefile
+grep -q '^wasm4-cli:' Makefile
+test -f tools/download_w4.sh
+grep -q 'archive=w4-mac.zip' tools/download_w4.sh
+grep -q 'archive=w4-linux.zip' tools/download_w4.sh
+grep -q 'archive=w4-windows.zip' tools/download_w4.sh
+
 for cart in tetromino minicraft flight snake puyo; do
   test -f "demo/wasm4/$cart.d"
   test -f "tmp_wasm4/$cart.wasm"
