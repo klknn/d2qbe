@@ -3,7 +3,7 @@ set -eu
 
 sh ./demo/wasm4/build.sh all
 
-for cart in tetromino minicraft flight snake; do
+for cart in tetromino minicraft flight snake puyo; do
   test -f "demo/wasm4/$cart.d"
   test -f "tmp_wasm4/$cart.wasm"
   test "$(od -An -tx1 -N8 "tmp_wasm4/$cart.wasm" | tr -d '[:space:]')" = 0061736d01000000
@@ -25,5 +25,9 @@ grep -q 'readGamepad' demo/wasm4/flight.d
 grep -q 'int\[400\] snakeX' demo/wasm4/snake.d
 grep -q 'int\[400\] snakeY' demo/wasm4/snake.d
 grep -q 'fruitX' demo/wasm4/snake.d
+grep -q 'int\[72\] board' demo/wasm4/puyo.d
+grep -q 'void rotatePair' demo/wasm4/puyo.d
+grep -q 'int flood' demo/wasm4/puyo.d
+grep -q 'readGamepad' demo/wasm4/puyo.d
 
-echo "PASS: D-only WASM-4 cartridges build with drawing, input, and Snake state ABI"
+echo "PASS: D-only WASM-4 cartridges build with drawing, input, Snake, and Puyo state ABI"

@@ -227,6 +227,13 @@ uses parallel fixed arrays for the body so that it also exercises D global
 array layout, indexed loads/stores, loops, calls, and browser-facing drawing
 without JavaScript game logic.
 
+`demo/wasm4/puyo.d` is the first playable, dependency-free d2qbe port inspired
+by `wasm4-puyo`. It uses a 6×12 fixed-array board, a deterministic D PRNG,
+falling pairs, left/right/rotate/down input, four-or-more flood-fill clearing,
+gravity, chain scoring, and restart. It intentionally draws with the already
+tested `rect` ABI first; this removes the original cart's unavailable
+`env.rand` requirement before adding optional sprite/text polish.
+
 Each exports WASM-4's `start()` and per-frame `update()` callbacks. The
 runtime calls `update` about 60 times per second; no JavaScript game logic is
 used. Build them all with the existing compiler stages:
@@ -242,10 +249,11 @@ make wasm4-tetromino
 make wasm4-minicraft
 make wasm4-flight
 make wasm4-snake
+make wasm4-puyo
 ```
 
 `make test` runs `test-wasm4-carts`; it has no `w4` dependency and verifies
-all four generated binaries export `start`/`update`, import `rect` and
+all five generated binaries export `start`/`update`, import `rect` and
 `env.memory`, and start program data after WASM-4's reserved region. `w4 run`
 is a separate interactive runtime check.
 

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-MODE=${1:?"usage: build.sh <all|tetromino|minicraft|flight|snake>"}
+MODE=${1:?"usage: build.sh <all|tetromino|minicraft|flight|snake|puyo>"}
 D2QBE=${D2QBE:-./d2qbe}
 DQBE=${DQBE:-./dqbe}
 OUTPUT=tmp_wasm4
@@ -17,7 +17,7 @@ $(sed -n '1,$p' "demo/wasm4/$name.d")"
 }
 
 case "$MODE" in
-  all) build_cart tetromino; build_cart minicraft; build_cart flight; build_cart snake ;;
-  tetromino|minicraft|flight|snake) build_cart "$MODE" ;;
+  all) build_cart tetromino; build_cart minicraft; build_cart flight; build_cart snake; build_cart puyo ;;
+  tetromino|minicraft|flight|snake|puyo) build_cart "$MODE" ;;
   *) echo "unknown WASM-4 cartridge: $MODE" >&2; exit 2 ;;
 esac
