@@ -1,4 +1,4 @@
-.PHONY: all test clean unittest test-integration test-regression test-selfhost unittest-frontend unittest-backend test-dqbe-abi test-dqbe-wasm test-wasm-browser-assets test-wasm4-carts wasm-browser-test wasm-browser-demo wasm-browser-game wasm4-carts wasm4-tetromino wasm4-minicraft wasm4-flight benchmark
+.PHONY: all test clean unittest test-integration test-regression test-selfhost unittest-frontend unittest-backend test-dqbe-abi test-dqbe-wasm test-wasm-browser-assets test-wasm4-carts wasm-browser-test wasm-browser-demo wasm-browser-game wasm4-carts wasm4-tetromino wasm4-minicraft wasm4-flight wasm4-snake benchmark
 
 DC=ldc2
 DFLAGS=-g -w -betterC -Isource
@@ -88,6 +88,9 @@ wasm4-minicraft: wasm4-carts
 
 wasm4-flight: wasm4-carts
 	w4 run tmp_wasm4/flight.wasm
+
+wasm4-snake: wasm4-carts
+	w4 run tmp_wasm4/snake.wasm
 
 test-selfhost: d2qbe qbe/qbe ext.$(OBJ_EXT)
 	./test/self_host.sh

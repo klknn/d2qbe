@@ -3,7 +3,7 @@ set -eu
 
 sh ./demo/wasm4/build.sh all
 
-for cart in tetromino minicraft flight; do
+for cart in tetromino minicraft flight snake; do
   test -f "demo/wasm4/$cart.d"
   test -f "tmp_wasm4/$cart.wasm"
   test "$(od -An -tx1 -N8 "tmp_wasm4/$cart.wasm" | tr -d '[:space:]')" = 0061736d01000000
@@ -13,12 +13,17 @@ for cart in tetromino minicraft flight; do
   strings "tmp_wasm4/$cart.wasm" | grep -qx memory
   od -An -tx1 "tmp_wasm4/$cart.wasm" | tr -d '[:space:]' |
     grep -q '021a0203656e760472656374000003656e76066d656d6f7279020001'
-  od -An -tx1 "tmp_wasm4/$cart.wasm" | tr -d '[:space:]' | grep -q '0607017f0141'
+  # The allocator global is mutable i32 initialized with i32.const.  Its
+  # section length varies with static game data (Snake has two 400-cell arrays).
+  od -An -tx1 "tmp_wasm4/$cart.wasm" | tr -d '[:space:]' | grep -q '017f0141'
   od -An -tx1 "tmp_wasm4/$cart.wasm" | tr -d '[:space:]' | grep -q '41a0330b'
 done
 
 grep -q 'readGamepad' demo/wasm4/tetromino.d
 grep -q 'readGamepad' demo/wasm4/minicraft.d
 grep -q 'readGamepad' demo/wasm4/flight.d
+grep -q 'int\[400\] snakeX' demo/wasm4/snake.d
+grep -q 'int\[400\] snakeY' demo/wasm4/snake.d
+grep -q 'fruitX' demo/wasm4/snake.d
 
-echo "PASS: D-only WASM-4 cartridges build with drawing and input ABI"
+echo "PASS: D-only WASM-4 cartridges build with drawing, input, and Snake state ABI"

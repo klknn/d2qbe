@@ -218,6 +218,15 @@ Three compact D-only cartridges dogfood the compiler:
 - `demo/wasm4/flight.d` — a pseudo-3D horizon and controllable wireframe
   aircraft.
 
+`demo/wasm4/snake.d` is different: it is a D port of the core game mechanics
+from the [official WASM-4 Snake tutorial](https://wasm4.org/docs/tutorials/snake/creating-the-snake).
+It keeps the tutorial's 20×20 grid
+and 8×8 cells, tail-following movement, four-direction gamepad control,
+fruit growth, self-collision, and restart-on-button-one behaviour. The cart
+uses parallel fixed arrays for the body so that it also exercises D global
+array layout, indexed loads/stores, loops, calls, and browser-facing drawing
+without JavaScript game logic.
+
 Each exports WASM-4's `start()` and per-frame `update()` callbacks. The
 runtime calls `update` about 60 times per second; no JavaScript game logic is
 used. Build them all with the existing compiler stages:
@@ -232,10 +241,11 @@ To run one cart, install the optional official `w4` command and use one of:
 make wasm4-tetromino
 make wasm4-minicraft
 make wasm4-flight
+make wasm4-snake
 ```
 
 `make test` runs `test-wasm4-carts`; it has no `w4` dependency and verifies
-all three generated binaries export `start`/`update`, import `rect` and
+all four generated binaries export `start`/`update`, import `rect` and
 `env.memory`, and start program data after WASM-4's reserved region. `w4 run`
 is a separate interactive runtime check.
 
